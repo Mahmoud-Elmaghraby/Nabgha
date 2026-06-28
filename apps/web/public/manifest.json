@@ -1,0 +1,26 @@
+{
+  "name": "نبغة — إدارة المراكز التعليمية",
+  "short_name": "نبغة",
+  "description": "نظام إدارة المراكز التعليمية الخصوصية",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0E3B2E",
+  "theme_color": "#0E3B2E",
+  "lang": "ar",
+  "dir": "rtl",
+  "icons": [
+    {
+      "src": "/Logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/Logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

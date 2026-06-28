@@ -1,0 +1,23 @@
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800;900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --primary: #0E3B2E;
+  --primary-light: #1F6B4E;
+  --accent: #4FBF9F;
+  --gold: #D4AB53;
+  --bg: #F7F7F7;
+}
+
+* {
+  box-sizing: border-box;
+  font-family: 'Cairo', sans-serif;
+}
+
+body {
+  background-color: var(--bg);
+  direction: rtl;
+}

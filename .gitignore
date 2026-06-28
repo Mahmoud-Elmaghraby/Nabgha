@@ -1,0 +1,49 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+.next/
+out/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Turbo
+.turbo/
+
+# Prisma
+generated/
+
+# Backups
+backups/
+
+# WhatsApp Sessions
+wa-sessions/
+apps/desktop/release/ 
+nabgha-setup.exe 
+apps/api/.envnpx 
+set 
+cd 
+type 
+packages/db/cd 
+packages/db/type 
+apps/api/nabgha-server.exe 
+apps/desktop/release/*.exe 
+apps/desktop/release/win-unpacked/ 
+nabgha-setup.exe 

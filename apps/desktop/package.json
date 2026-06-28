@@ -1,0 +1,56 @@
+{
+  "name": "@nabgha/desktop",
+  "version": "1.0.0",
+  "description": "nabgha Desktop App",
+  "main": "dist/main.js",
+  "scripts": {
+    "dev": "electron .",
+    "build": "tsc && electron-builder",
+    "pack": "electron-builder --dir"
+  },
+  "dependencies": {
+    "better-sqlite3": "^9.4.3",
+    "electron-store": "^8.1.0"
+  },
+  "devDependencies": {
+    "electron": "^29.4.6",
+    "electron-builder": "^24.13.3",
+    "typescript": "5.9.2"
+  },
+  "build": {
+    "appId": "com.nabgha.desktop",
+    "productName": "Nabgha",
+    "directories": {
+      "output": "release"
+    },
+  "win": {
+  "target": "nsis",
+  "icon": "assets/icon.ico"
+},
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Nabgha"
+    },
+    "files": [
+      "dist/**/*",
+      "assets/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "../api/dist",
+        "to": "api/dist"
+      },
+      {
+        "from": "../api/node_modules",
+        "to": "api/node_modules"
+      },
+      {
+        "from": "../web/dist",
+        "to": "web/dist"
+      }
+    ]
+  }
+}

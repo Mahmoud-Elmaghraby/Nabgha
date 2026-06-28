@@ -1,0 +1,113 @@
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { sessionsApi } from '../api/sessions.api';
+import type { CreateSessionPayload, UpdateAttendancePayload, BulkUpdateAttendancePayload, ListSessionsParams } from '../types/session.types';
+
+export const SESSION_KEYS = {
+  all:        ['sessions'] as const,
+  list:       (params?: ListSessionsParams) => ['sessions', 'list', params] as const,
+  detail:     (id: string) => ['sessions', id] as const,
+  attendance: (id: string) => ['sessions', id, 'attendance'] as const,
+};
+
+export function useSessions(params?: ListSessionsParams) {
+  return useQuery({
+    queryKey: SESSION_KEYS.list(params),
+    queryFn: () => sessionsApi.list(params),
+  });
+}
+
+export function useSession(id: string) {
+  return useQuery({
+    queryKey: SESSION_KEYS.detail(id),
+    queryFn: () => sessionsApi.getById(id),
+    enabled: !!id,
+  });
+}
+
+export function usePreviousAbsent(sessionId: string) {
+  return useQuery({
+    queryKey: ['sessions', sessionId, 'previous-absent'],
+    queryFn: () => sessionsApi.getPreviousAbsent(sessionId),
+    enabled: !!sessionId,
+  });
+}
+
+export function useSessionAttendance(sessionId: string) {
+  return useQuery({
+    queryKey: SESSION_KEYS.attendance(sessionId),
+    queryFn: () => sessionsApi.getAttendance(sessionId),
+    enabled: !!sessionId,
+    refetchInterval: 10_000,
+    refetchIntervalInBackground: false,
+  });
+}
+
+export function useSessionMutations() {
+  const qc = useQueryClient();
+
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: SESSION_KEYS.all });
+  };
+
+  const create = useMutation({
+    mutationFn: (payload: CreateSessionPayload) => sessionsApi.create(payload),
+    onSuccess: invalidate,
+  });
+
+  const update = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: Partial<CreateSessionPayload> }) =>
+      sessionsApi.update(id, payload),
+    onSuccess: invalidate,
+  });
+
+  const remove = useMutation({
+    mutationFn: (id: string) => sessionsApi.delete(id),
+    onSuccess: invalidate,
+  });
+
+  const start = useMutation({
+    mutationFn: (id: string) => sessionsApi.start(id),
+    onSuccess: invalidate,
+  });
+
+  const complete = useMutation({
+    mutationFn: (id: string) => sessionsApi.complete(id),
+    onSuccess: invalidate,
+  });
+
+  const cancel = useMutation({
+    mutationFn: (id: string) => sessionsApi.cancel(id),
+    onSuccess: invalidate,
+  });
+
+  return { create, update, remove, start, complete, cancel };
+}
+
+export function useAttendanceMutations(sessionId: string) {
+  const qc = useQueryClient();
+
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: SESSION_KEYS.attendance(sessionId) });
+    qc.invalidateQueries({ queryKey: SESSION_KEYS.detail(sessionId) });
+    qc.invalidateQueries({ queryKey: SESSION_KEYS.all });
+  };
+
+  const updateOne = useMutation({
+    mutationFn: ({ studentId, payload }: { studentId: string; payload: UpdateAttendancePayload }) =>
+      sessionsApi.updateAttendance(sessionId, studentId, payload),
+    onSuccess: invalidate,
+  });
+
+  const bulkUpdate = useMutation({
+    mutationFn: (payload: BulkUpdateAttendancePayload) =>
+      sessionsApi.bulkUpdateAttendance(sessionId, payload),
+    onSuccess: invalidate,
+  });
+
+  const scanQr = useMutation({
+    mutationFn: (qrCode: string) => sessionsApi.scanQr(sessionId, qrCode),
+    onSuccess: invalidate,
+  });
+
+  return { updateOne, bulkUpdate, scanQr };
+}
