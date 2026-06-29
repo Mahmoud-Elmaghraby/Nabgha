@@ -29,7 +29,7 @@ export class RetryFailedMessagesUseCase {
 
   @Cron(CronExpression.EVERY_10_MINUTES)
   async retryAll(): Promise<void> {
-    if (process.env.DEPLOY_MODE === 'desktop') return;
+    // desktop mode — الـ WhatsApp شغال عادي
     try {
       const tenants = await this.prisma.tenant.findMany({
         where: { isActive: true },

@@ -8,7 +8,9 @@
     "db:push": "prisma db push",
     "db:generate": "prisma generate",
     "db:seed": "ts-node src/seed.ts",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "db:migrate": "node src/migrate.js",
+    "db:setup": "prisma db push && node src/migrate.js"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",

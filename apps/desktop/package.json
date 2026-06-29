@@ -4,7 +4,7 @@
   "description": "nabgha Desktop App",
   "main": "dist/main.js",
   "scripts": {
-    "dev": "electron .",
+    "dev": "tsc && electron dist/main.js",
     "build": "tsc && electron-builder",
     "pack": "electron-builder --dir"
   },
@@ -19,20 +19,22 @@
   },
   "build": {
     "appId": "com.nabgha.desktop",
-    "productName": "Nabgha",
+    "productName": "نبغة",
     "directories": {
       "output": "release"
     },
-  "win": {
-  "target": "nsis",
-  "icon": "assets/icon.ico"
-},
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
+      "allowToChangeInstallationDirectory": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Nabgha"
+      "shortcutName": "نبغة",
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico"
     },
     "files": [
       "dist/**/*",
@@ -50,6 +52,14 @@
       {
         "from": "../web/dist",
         "to": "web/dist"
+      },
+      {
+        "from": "../../packages/db/src",
+        "to": "db/src"
+      },
+      {
+        "from": "../../packages/db/node_modules",
+        "to": "db/node_modules"
       }
     ]
   }

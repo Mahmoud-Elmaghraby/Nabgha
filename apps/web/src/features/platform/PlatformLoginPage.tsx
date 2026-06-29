@@ -3,34 +3,30 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useMutation } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { authApi } from '@/features/auth/api/auth.api';
-import { useAuthStore } from '@/shared/stores/auth.store';
+import { platformAuthApi } from './api/platform-auth.api';
+import { usePlatformAuthStore } from './stores/platform-auth.store';
 
-const PlatformLoginSchema = z.object({
+const Schema = z.object({
   email: z.string().email('البريد الإلكتروني غير صحيح'),
   password: z.string().min(1, 'كلمة المرور مطلوبة'),
 });
 
-type PlatformLoginForm = z.infer<typeof PlatformLoginSchema>;
+type Form = z.infer<typeof Schema>;
 
 export default function PlatformLoginPage() {
   const navigate = useNavigate();
-  const setAuth = useAuthStore((state) => state.setAuth);
+  const setAuth = usePlatformAuthStore((s) => s.setAuth);
 
   const { mutate: login, isPending, error } = useMutation({
-    mutationFn: authApi.platformLogin,
+    mutationFn: platformAuthApi.login,
     onSuccess: (data) => {
       setAuth(data.user, data.accessToken, data.refreshToken);
       navigate('/platform/dashboard');
     },
   });
 
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-  } = useForm<PlatformLoginForm>({
-    resolver: zodResolver(PlatformLoginSchema),
+  const { register, handleSubmit, formState: { errors } } = useForm<Form>({
+    resolver: zodResolver(Schema),
   });
 
   return (
@@ -49,35 +45,25 @@ export default function PlatformLoginPage() {
 
         <form onSubmit={handleSubmit((data) => login(data))} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              البريد الإلكتروني
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">البريد الإلكتروني</label>
             <input
               {...register('email')}
               type="email"
               placeholder="admin@nabgha.com"
-              className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
             />
-            {errors.email && (
-              <p className="text-red-500 text-xs mt-1">{errors.email.message}</p>
-            )}
+            {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email.message}</p>}
           </div>
-
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              كلمة المرور
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">كلمة المرور</label>
             <input
               {...register('password')}
               type="password"
               placeholder="••••••••"
-              className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
             />
-            {errors.password && (
-              <p className="text-red-500 text-xs mt-1">{errors.password.message}</p>
-            )}
+            {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password.message}</p>}
           </div>
-
           <button
             type="submit"
             disabled={isPending}

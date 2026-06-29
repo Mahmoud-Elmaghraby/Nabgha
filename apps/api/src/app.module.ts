@@ -21,6 +21,7 @@ import { SessionsModule } from './modules/sessions/sessions.module';
 import { FinanceModule } from './modules/finance/finance.module';
 import { UploadModule } from './modules/upload/upload.module';
 import { TelegramModule } from './modules/telegram/telegram.module';
+import { PlatformModule } from './modules/platform/platform.module';
 
 @Module({
   imports: [
@@ -53,6 +54,7 @@ import { TelegramModule } from './modules/telegram/telegram.module';
     FinanceModule,
     UploadModule,
     TelegramModule,
+    PlatformModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: ZodValidationFilter },
