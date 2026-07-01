@@ -46,8 +46,16 @@
         "to": "api/dist"
       },
       {
-        "from": "../api/node_modules",
+        "from": "../api/node_modules_real/node_modules",
         "to": "api/node_modules"
+      },
+      {
+        "from": "../../packages/types",
+        "to": "api/node_modules/@nabgha/types"
+      },
+      {
+        "from": "../../packages/db",
+        "to": "api/node_modules/@nabgha/db"
       },
       {
         "from": "../web/dist",
@@ -58,8 +66,20 @@
         "to": "db/src"
       },
       {
-        "from": "../../packages/db/node_modules",
+        "from": "../../packages/db/prisma",
+        "to": "db/prisma"
+      },
+      {
+        "from": "../../packages/db/node_modules_real/node_modules",
         "to": "db/node_modules"
+      },
+      {
+        "from": "../api/node_modules_real/node_modules/prisma",
+        "to": "db/node_modules/prisma"
+      },
+      {
+        "from": "../api/node_modules_real/node_modules/@prisma",
+        "to": "db/node_modules/@prisma"
       }
     ]
   }

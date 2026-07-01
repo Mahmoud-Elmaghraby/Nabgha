@@ -96,10 +96,9 @@ export class TenantUseCase {
     const client = await pool.connect();
 
     try {
-      const migrationsDir = path.join(
-        __dirname, '..', '..', '..', '..', '..', '..', 
-        'packages', 'db', 'src', 'migrations', 'tenant'
-      );
+const migrationsDir = process.env.DB_MIGRATIONS_PATH
+  ? path.join(process.env.DB_MIGRATIONS_PATH, 'tenant')
+  : path.join(__dirname, '..', '..', '..', '..', '..', '..', 'packages', 'db', 'src', 'migrations', 'tenant');
 
       // إنشاء الـ schema
       await client.query(`CREATE SCHEMA IF NOT EXISTS "${schemaName}"`);

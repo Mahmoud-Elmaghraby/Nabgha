@@ -1,5 +1,6 @@
 # Dependencies
 node_modules/
+node_modules_real/
 .pnpm-store/
 
 # Build outputs
@@ -35,15 +36,14 @@ backups/
 
 # WhatsApp Sessions
 wa-sessions/
-apps/desktop/release/ 
-nabgha-setup.exe 
-apps/api/.envnpx 
-set 
-cd 
-type 
-packages/db/cd 
-packages/db/type 
-apps/api/nabgha-server.exe 
-apps/desktop/release/*.exe 
-apps/desktop/release/win-unpacked/ 
-nabgha-setup.exe 
+
+# Desktop build outputs
+apps/desktop/release/
+apps/desktop/release/win-unpacked/
+apps/desktop/release/*.exe
+
+# Installer
+nabgha-setup.exe
+
+# Nabgha server binary
+apps/api/nabgha-server.exe

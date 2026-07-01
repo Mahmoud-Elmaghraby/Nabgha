@@ -62,37 +62,33 @@ function waitForAPI(retries = 60): Promise<void> {
 // ── Start NestJS API ──────────────────────────────────────────
 function startAPI(): Promise<void> {
   return new Promise((resolve, reject) => {
-    // نجيب الـ node path الصح
-    // في dev mode نجيب الـ node path من which node
     let nodePath: string;
-    if (IS_PACKAGED) {
-      nodePath = path.join(RESOURCES, 'node', 'node.exe');
-    } else {
-      const { execSync } = require('child_process');
-      try {
-        nodePath = execSync('which node').toString().trim();
-      } catch {
-        nodePath = process.execPath.replace('electron', 'node');
-      }
+    const { execSync } = require('child_process');
+    try {
+      const cmd = process.platform === 'win32' ? 'where node' : 'which node';
+      nodePath = execSync(cmd).toString().trim().split('\n')[0].trim();
+    } catch {
+      nodePath = process.execPath.replace('electron.exe', 'node.exe').replace('electron', 'node');
     }
 
     const dbUrl = process.env.DATABASE_URL ?? 'postgresql://nabgha:nabgha123@127.0.0.1:5432/nabgha';
     const staticPath = process.env.STATIC_PATH ?? STATIC_PATH;
 
-    const env = {
-      ...process.env,
-      PORT: String(API_PORT),
-      DEPLOY_MODE: 'desktop',
-      STATIC_PATH: staticPath,
-      STORAGE_LOCAL_PATH: STORAGE_PATH,
-      STORAGE_PROVIDER: 'local',
-      ALLOW_NETWORK: 'true',
-      MULTI_TENANT: 'true',
-      JWT_SECRET: 'nabgha-desktop-jwt-2026',
-      PLATFORM_JWT_SECRET: 'nabgha-platform-jwt-2026',
-      DATABASE_URL: dbUrl,
-      DOTENV_DISABLED: 'true',
-    };
+const env = {
+  ...process.env,
+  PORT: String(API_PORT),
+  DEPLOY_MODE: 'desktop',
+  STATIC_PATH: staticPath,
+  STORAGE_LOCAL_PATH: STORAGE_PATH,
+  STORAGE_PROVIDER: 'local',
+  ALLOW_NETWORK: 'true',
+  MULTI_TENANT: 'true',
+  JWT_SECRET: 'nabgha-desktop-jwt-2026',
+  PLATFORM_JWT_SECRET: 'nabgha-platform-jwt-2026',
+  DATABASE_URL: dbUrl,
+  DOTENV_DISABLED: 'true',
+  DB_MIGRATIONS_PATH: path.join(DB_PATH, 'src', 'migrations'),
+};
 
     apiProcess = spawn(nodePath, [API_ENTRY], {
       env,
@@ -138,13 +134,13 @@ function runMigrations(): Promise<void> {
       return resolve();
     }
 
-    const { execSync: execSyncM } = require('child_process');
+  const { execSync: execSyncM } = require('child_process');
     let nodePath: string;
-    if (IS_PACKAGED) {
-      nodePath = path.join(RESOURCES, 'node', 'node.exe');
-    } else {
-      try { nodePath = execSyncM('which node').toString().trim(); }
-      catch { nodePath = process.execPath.replace('electron', 'node'); }
+    try {
+      const cmd = process.platform === 'win32' ? 'where node' : 'which node';
+      nodePath = execSyncM(cmd).toString().trim().split('\n')[0].trim();
+    } catch {
+      nodePath = process.execPath.replace('electron.exe', 'node.exe').replace('electron', 'node');
     }
     const dbUrl = process.env.DATABASE_URL ?? 'postgresql://nabgha:nabgha123@127.0.0.1:5432/nabgha';
     const env = {
