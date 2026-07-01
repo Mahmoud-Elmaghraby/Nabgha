@@ -47,3 +47,6 @@ nabgha-setup.exe
 
 # Nabgha server binary
 apps/api/nabgha-server.exe
+
+# Installer tools (Node.js + PostgreSQL binaries)
+tools/tools/ 
