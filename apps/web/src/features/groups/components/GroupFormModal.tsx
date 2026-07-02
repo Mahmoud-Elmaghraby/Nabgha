@@ -58,6 +58,8 @@ export function GroupFormModal({ open, onClose, group }: Props) {
   const validate = () => {
     const e: Record<string, string> = {};
     if (!name.trim() || name.length < 2) e.name = 'اسم المجموعة يجب أن يكون حرفين على الأقل';
+    if (!subjectGradeId) e.subjectGradeId = 'يجب اختيار المادة والصف';
+    if (!teacherId) e.teacherId = 'يجب اختيار المدرس';
     if (maxStudents < 1) e.maxStudents = 'الحد الأقصى يجب أن يكون 1 على الأقل';
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -67,8 +69,8 @@ export function GroupFormModal({ open, onClose, group }: Props) {
     if (!validate()) return;
     const payload = {
       name,
-      subjectGradeId: subjectGradeId || null,
-      teacherId: teacherId || null,
+      subjectGradeId,
+      teacherId,
       maxStudents,
       schedule,
     };
@@ -108,18 +110,20 @@ export function GroupFormModal({ open, onClose, group }: Props) {
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1.5">المادة والصف</label>
+              <label className="block text-sm font-semibold text-gray-700 mb-1.5">المادة والصف *</label>
               <select value={subjectGradeId} onChange={e => setSubjectGradeId(e.target.value)} className={inputClass}>
                 <option value="">اختر المادة والصف</option>
                 {gradeOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
+              {errors.subjectGradeId && <p className="text-red-500 text-xs mt-1">{errors.subjectGradeId}</p>}
             </div>
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1.5">المدرس</label>
+              <label className="block text-sm font-semibold text-gray-700 mb-1.5">المدرس *</label>
               <select value={teacherId} onChange={e => setTeacherId(e.target.value)} className={inputClass}>
                 <option value="">اختر مدرساً</option>
                 {teachers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
+              {errors.teacherId && <p className="text-red-500 text-xs mt-1">{errors.teacherId}</p>}
             </div>
           </div>
 

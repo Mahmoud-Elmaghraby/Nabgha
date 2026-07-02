@@ -1,30 +1,14 @@
 import { useAuthStore } from '../stores/auth.store';
-import { UserRole } from '@nabgha/types';
-
-const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
-  tenant_admin: ['*'],
-  accountant: ['payments.*', 'reports.*', 'financial.*'],
-  receptionist: ['students.*', 'attendance.*', 'payments.view', 'payments.create'],
-  teacher: ['students.view', 'groups.view', 'attendance.*', 'reports.view'],
-  parent: ['students.view'],
-};
+import { UserRole, hasPermission as checkPermission } from '@nabgha/types';
 
 export function usePermissions() {
   const user = useAuthStore((state) => state.user);
 
   const hasPermission = (permission: string): boolean => {
     if (!user) return false;
-
-    const permissions = ROLE_PERMISSIONS[user.role] || [];
-
-    if (permissions.includes('*')) return true;
-
-    if (permissions.includes(permission)) return true;
-
-    const [resource, action] = permission.split('.');
-    if (permissions.includes(`${resource}.*`)) return true;
-
-    return false;
+    // tenant_admin عنده bypass تلقائي — نفس منطق PermissionGuard في الـ backend
+    if (user.role === 'tenant_admin') return true;
+    return checkPermission(user.permissions || [], permission);
   };
 
   const hasRole = (role: UserRole): boolean => {

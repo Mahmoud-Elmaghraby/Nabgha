@@ -13,6 +13,8 @@ interface ReceiptData {
   treasuryName?: string;
   paidAt: string;
   notes?: string;
+  // لتحديد هوية المركز/المدرس اللي هتظهر على الإيصال — لو موجودة، الإيصال بيجيب البراندنج بناءً عليها
+  monthlyDueId?: string;
 }
 
 interface ThermalReceiptProps {
@@ -26,46 +28,56 @@ const PAYMENT_METHOD_AR: Record<string, string> = {
   vodafone: 'فودافون كاش', bank: 'تحويل بنكي', other: 'أخرى',
 };
 
-function useCenterSettings() {
+function useBrandingInfo(monthlyDueId?: string) {
   return useQuery({
-    queryKey: ['center-settings'],
+    queryKey: ['branding-info', monthlyDueId ?? null],
     queryFn: async () => {
-      const res = await apiClient.get('/settings/center');
+      const res = await apiClient.get('/settings/branding-info', {
+        params: monthlyDueId ? { monthlyDueId } : undefined,
+      });
       return res.data.data as {
-        centerName: string;
-        centerPhone: string | null;
-        centerAddress: string | null;
+        name: string;
+        phone: string | null;
+        address: string | null;
+        source: 'center' | 'teacher';
       };
     },
-    staleTime: 1000 * 60 * 10,
+    staleTime: 1000 * 30, // مش طويلة زي إعدادات المركز، لأنها بتختلف حسب الفاتورة
   });
 }
 
 export function ThermalReceipt({ receipt, onClose, autoPrint = false }: ThermalReceiptProps) {
-  const { data: centerSettings } = useCenterSettings();
+  const { data: branding } = useBrandingInfo(receipt.monthlyDueId);
 
   useEffect(() => {
-    if (autoPrint && centerSettings) {
+    if (autoPrint && branding) {
       setTimeout(() => window.print(), 400);
     }
-  }, [autoPrint, centerSettings]);
+  }, [autoPrint, branding]);
 
   const handlePrint = () => window.print();
 
   const d = new Date(receipt.paidAt);
   const date = `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
 
-  const centerName = centerSettings?.centerName || 'نبغة';
-  const centerPhone = centerSettings?.centerPhone || '';
-  const centerAddress = centerSettings?.centerAddress || '';
+  // لو الإعداد على "مدرس" وفيه سياق واضح، هيظهر اسم ورقم المدرس بدل المركز تلقائياً
+  const centerName = branding?.name || 'نبغة';
+  const centerPhone = branding?.phone || '';
+  const centerAddress = branding?.address || '';
 
   return (
     <>
       {/* Print CSS */}
       <style>{`
         @media print {
-          body > * { display: none !important; }
-          #thermal-receipt-print { display: block !important; }
+          body * { visibility: hidden; }
+          #thermal-receipt-print, #thermal-receipt-print * { visibility: visible; }
+          #thermal-receipt-print {
+            position: absolute;
+            top: 0;
+            left: 0;
+            display: block !important;
+          }
           @page { size: 58mm auto; margin: 0; }
         }
         #thermal-receipt-print {

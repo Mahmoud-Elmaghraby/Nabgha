@@ -12,6 +12,7 @@ import {
 import { ConnectDeviceUseCase } from './application/use-cases/connect-device.usecase';
 import { SendNotificationUseCase } from './application/use-cases/send-notification.usecase';
 import { GetMessagesUseCase } from './application/use-cases/get-messages.usecase';
+import { ResolveAudienceUseCase } from './application/use-cases/resolve-audience.usecase';
 import { RestoreSessionsUseCase } from './application/use-cases/restore-sessions.usecase';
 import { RetryFailedMessagesUseCase } from './application/use-cases/retry-failed-messages.usecase';
 import { SendBulkUseCase } from './application/use-cases/send-bulk.usecase';
@@ -44,6 +45,7 @@ import { WA_PROVIDER as WA_PROVIDER_TOKEN } from './domain/interfaces/wa-provide
     ConnectDeviceUseCase,
     SendNotificationUseCase,
     GetMessagesUseCase,
+    ResolveAudienceUseCase,
     RestoreSessionsUseCase,
     RetryFailedMessagesUseCase,
     SendBulkUseCase,

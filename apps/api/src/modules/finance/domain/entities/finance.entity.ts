@@ -96,6 +96,16 @@ export class MonthlyDueEntity {
   updateAmount(dueAmount: number, discountApplied: number): void {
     this.dueAmount = dueAmount;
     this.discountApplied = discountApplied;
+    // إعادة حساب الحالة — تعديل المبلغ ممكن يخلي المدفوع يغطي الفاتورة الجديدة أو العكس
+    if (this.status !== 'waived') {
+      if (this.paidAmount > 0 && this.paidAmount >= this.netDueAmount) {
+        this.status = 'paid';
+      } else if (this.paidAmount > 0) {
+        this.status = 'partial';
+      } else {
+        this.status = 'unpaid';
+      }
+    }
     this.updatedAt = new Date();
   }
 }

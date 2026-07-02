@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useVoiceSearch } from '@/shared/hooks/useVoiceSearch';
+import { usePermissions } from '@/shared/hooks/usePermissions';
 import { useSessionAttendance, useAttendanceMutations } from '../hooks/useSessions';
 import type { Session } from '../types/session.types';
 
@@ -9,6 +10,8 @@ interface Props {
 }
 
 export function DegreesSheet({ session, onClose }: Props) {
+  const { hasPermission } = usePermissions();
+  const canEdit = hasPermission('sessions.attendance');
   const { data: attendance = [], isLoading } = useSessionAttendance(session.id);
   const { updateOne } = useAttendanceMutations(session.id);
   const [degrees, setDegrees] = useState<Record<string, string>>({});
@@ -215,7 +218,8 @@ export function DegreesSheet({ session, onClose }: Props) {
                       onBlur={() => handleDegreeBlur(record.studentId)}
                       onKeyDown={e => handleKeyDown(e, record.studentId, index)}
                       placeholder="—"
-                      className="degree-input w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center font-mono focus:outline-none focus:ring-2 focus:ring-[#0E3B2E]/20 focus:border-[#0E3B2E]/40"
+                      disabled={!canEdit}
+                      className="degree-input w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center font-mono focus:outline-none focus:ring-2 focus:ring-[#0E3B2E]/20 focus:border-[#0E3B2E]/40 disabled:bg-gray-100 disabled:cursor-not-allowed"
                     />
                     {session.outOf && (
                       <span className="text-xs text-gray-400">/{session.outOf}</span>

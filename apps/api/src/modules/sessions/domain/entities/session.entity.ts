@@ -1,6 +1,6 @@
 export type SessionType = 'lesson' | 'lesson_revision' | 'lesson_exam' | 'exam' | 'grade_exam';
 export type SessionStatus = 'scheduled' | 'ongoing' | 'completed' | 'cancelled';
-export type AttendanceStatus = 'present' | 'absent' | 'late';
+export type AttendanceStatus = 'present' | 'absent' | 'late' | 'excused';
 
 export class AttendanceEntity {
   constructor(
@@ -35,6 +35,11 @@ export class AttendanceEntity {
     this.updatedAt = new Date();
   }
 
+  markExcused(): void {
+    this.status = 'excused';
+    this.updatedAt = new Date();
+  }
+
   setDegree(degree: number): void {
     this.degree = degree;
     this.updatedAt = new Date();
@@ -64,7 +69,7 @@ export class SessionEntity {
     public readonly groupName?: string,
     public readonly subjectName?: string,
     public readonly teacherName?: string,
-    public attendanceCount?: { present: number; absent: number; late: number; total: number },
+    public attendanceCount?: { present: number; absent: number; late: number; excused: number; total: number },
   ) {}
 
   get isGradeExam(): boolean { return this.type === 'grade_exam'; }

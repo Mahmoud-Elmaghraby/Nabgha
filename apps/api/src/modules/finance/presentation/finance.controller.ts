@@ -11,9 +11,9 @@ import { RequirePermission } from '../../../shared/infrastructure/guards/permiss
 import { ZodValidationPipe } from '../../../shared/infrastructure/pipes/zod-validation.pipe';
 import {
   CreateTreasurySchema, UpdateTreasurySchema,
-  GenerateDuesSchema, UpdateDueSchema, WaiveDueSchema, ListDuesSchema,
+  GenerateDuesSchema, UpdateDueSchema, WaiveDueSchema, ListDuesSchema, CreateManualDueSchema,
   CreatePaymentSchema, CancelPaymentSchema, RefundPaymentSchema, ListPaymentsSchema,
-  CreateExpenseSchema, UpdateExpenseSchema, ListExpensesSchema,
+  CreateExpenseSchema, UpdateExpenseSchema, ListExpensesSchema, CollectMultiSchema,
 } from '../application/dtos/finance.dto';
 
 @UseGuards(JwtAuthGuard, TenantGuard, RolesGuard, PermissionGuard)
@@ -87,6 +87,16 @@ export class FinanceController {
     @Body(new ZodValidationPipe(GenerateDuesSchema)) body: any,
   ) {
     const data = await this.useCase.generateDues(req.user.tenantId, body, req.user.sub);
+    return { success: true, data };
+  }
+
+  @Post('dues/manual')
+  @RequirePermission('finance.collect')
+  async createManualDue(
+    @Request() req: any,
+    @Body(new ZodValidationPipe(CreateManualDueSchema)) body: any,
+  ) {
+    const data = await this.useCase.createManualDue(req.user.tenantId, body, req.user.sub);
     return { success: true, data };
   }
 
@@ -228,7 +238,10 @@ export class FinanceController {
 
   @Post('collect/multi')
   @RequirePermission('finance.collect')
-  async collectMultiple(@Request() req: any, @Body() body: any) {
+  async collectMultiple(
+    @Request() req: any,
+    @Body(new ZodValidationPipe(CollectMultiSchema)) body: any,
+  ) {
     const data = await this.useCase.collectMultiplePayments(req.user.tenantId, body, req.user.sub);
     return { success: true, data };
   }

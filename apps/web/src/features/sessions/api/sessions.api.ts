@@ -2,6 +2,7 @@ import { apiClient } from '@/shared/lib/api/client';
 import type {
   Session, AttendanceRecord, CreateSessionPayload,
   UpdateAttendancePayload, BulkUpdateAttendancePayload, ListSessionsParams,
+  AddExternalAttendanceResult, AbsenceReportRow, AddExternalAttendanceIdentifier,
 } from '../types/session.types';
 
 export const sessionsApi = {
@@ -69,6 +70,21 @@ export const sessionsApi = {
 
   getPreviousAbsent: async (sessionId: string): Promise<string[]> => {
     const res = await apiClient.get(`/sessions/${sessionId}/previous-absent`);
+    return res.data.data;
+  },
+
+  getUnpaidStudents: async (sessionId: string): Promise<string[]> => {
+    const res = await apiClient.get(`/sessions/${sessionId}/unpaid`);
+    return res.data.data;
+  },
+
+  getAbsenceReport: async (sessionId: string): Promise<AbsenceReportRow[]> => {
+    const res = await apiClient.get(`/sessions/${sessionId}/absence-report`);
+    return res.data.data;
+  },
+
+  addExternalAttendance: async (sessionId: string, identifier: AddExternalAttendanceIdentifier): Promise<AddExternalAttendanceResult> => {
+    const res = await apiClient.post(`/sessions/${sessionId}/attendance/external`, identifier);
     return res.data.data;
   },
 

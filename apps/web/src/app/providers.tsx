@@ -1,6 +1,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactNode, useEffect, useState } from 'react';
 import { useAuthStore } from '@/shared/stores/auth.store';
+import { ToastProvider } from '@/shared/components/Toast';
+import { ConfirmProvider } from '@/shared/components/Confirm';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -34,9 +36,13 @@ function AuthInitializer({ children }: { children: ReactNode }) {
 export function Providers({ children }: { children: ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthInitializer>
-        {children}
-      </AuthInitializer>
+      <ToastProvider>
+        <ConfirmProvider>
+          <AuthInitializer>
+            {children}
+          </AuthInitializer>
+        </ConfirmProvider>
+      </ToastProvider>
     </QueryClientProvider>
   );
 }

@@ -2,16 +2,18 @@ import { useState } from 'react';
 import { usePlans, useDeletePlan } from '../hooks/usePlans';
 import { PlanFormModal } from '../components/PlanFormModal';
 import { Plus, Pencil, Trash2, Users } from 'lucide-react';
+import { useConfirm } from '@/shared/components/Confirm';
 import type { PlanDto } from '../types/plan.types';
 
 export default function PlansPage() {
   const { data: plans = [], isLoading } = usePlans();
+  const confirm = useConfirm();
   const deletePlan = useDeletePlan();
   const [modalOpen, setModalOpen] = useState(false);
   const [editPlan, setEditPlan] = useState<PlanDto | null>(null);
 
-  const handleDelete = (plan: PlanDto) => {
-    if (!confirm(`هل تريد حذف خطة "${plan.name}"؟`)) return;
+  const handleDelete = async (plan: PlanDto) => {
+    if (!(await confirm(`هل تريد حذف خطة "${plan.name}"؟`, { danger: true }))) return;
     deletePlan.mutate(plan.id);
   };
 

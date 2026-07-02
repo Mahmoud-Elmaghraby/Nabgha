@@ -2,6 +2,7 @@ import { useState, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '../lib/api/client';
+import { useToast } from './Toast';
 
 interface OngoingSession {
   id: string;
@@ -11,6 +12,7 @@ interface OngoingSession {
 }
 
 export function FloatingFab() {
+  const toast = useToast();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [showSessions, setShowSessions] = useState(false);
@@ -96,7 +98,7 @@ export function FloatingFab() {
 
   const handleAttendance = () => {
     if (ongoingSessions.length === 0) {
-      alert('لا توجد حصص جارية الآن');
+      toast.info('لا توجد حصص جارية الآن');
       setOpen(false);
       return;
     }

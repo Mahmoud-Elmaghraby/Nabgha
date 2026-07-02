@@ -20,6 +20,7 @@ export function CenterSettingsForm() {
       setForm({
         centerName: data.centerName,
         centerPhone: data.centerPhone ?? '',
+        centerPhone2: data.centerPhone2 ?? '',
         centerAddress: data.centerAddress ?? '',
         academicYear: data.academicYear ?? '',
         currency: data.currency,
@@ -77,15 +78,29 @@ export function CenterSettingsForm() {
         />
       </div>
 
-      <div>
-        <label className="text-xs text-gray-500 mb-1 block">رقم التليفون</label>
-        <input
-          value={form.centerPhone ?? ''}
-          onChange={e => update('centerPhone', e.target.value)}
-          placeholder="01012345678"
-          dir="ltr"
-          className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0E3B2E]/20 focus:border-[#0E3B2E]"
-        />
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="text-xs text-gray-500 mb-1 block">رقم التليفون</label>
+          <input
+            value={form.centerPhone ?? ''}
+            onChange={e => update('centerPhone', e.target.value)}
+            placeholder="01012345678"
+            dir="ltr"
+            className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0E3B2E]/20 focus:border-[#0E3B2E]"
+          />
+        </div>
+        <div>
+          <label className="text-xs text-gray-500 mb-1 block">
+            رقم هاتف إضافي <span className="text-gray-400">(اختياري)</span>
+          </label>
+          <input
+            value={form.centerPhone2 ?? ''}
+            onChange={e => update('centerPhone2', e.target.value)}
+            placeholder="01098765432"
+            dir="ltr"
+            className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0E3B2E]/20 focus:border-[#0E3B2E]"
+          />
+        </div>
       </div>
 
       <div>

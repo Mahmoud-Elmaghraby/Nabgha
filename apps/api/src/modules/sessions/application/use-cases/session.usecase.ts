@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { SendNotificationUseCase } from '../../../whatsapp/application/use-cases/send-notification.usecase';
+import { BrandingService } from '../../../settings/application/services/branding.service';
 import { KyselyService } from '../../../../shared/infrastructure/database/kysely.service';
 import { sql } from 'kysely';
 import { SessionRepository } from '../../infrastructure/session.repository';
@@ -18,6 +19,7 @@ export class SessionUseCase {
     private readonly repo: SessionRepository,
     private readonly sendNotification: SendNotificationUseCase,
     private readonly kysely: KyselyService,
+    private readonly branding: BrandingService,
   ) {}
 
   async list(tenantId: string, params: ListSessionsDto) {
@@ -64,6 +66,17 @@ export class SessionUseCase {
     if (session.status !== 'ongoing') throw new AppError('INVALID_STATUS', 'الحصة ليست جارية', 400);
     session.complete();
     await this.repo.save(tenantId, session);
+
+    // فحص رصيد التعويض لكل الغيابات الافتراضية (اللي محدش لمسها يدوي) قبل إقفال الحصة نهائياً
+    if (session.groupId) {
+      const absentRecords = await this.repo.findAbsentAttendanceForSession(tenantId, id);
+      for (const record of absentRecords) {
+        await this.tryExcuseWithCredit(tenantId, session, record).catch(err =>
+          this.logger.error(`Credit sweep failed for student ${record.studentId}: ${err.message}`),
+        );
+      }
+    }
+
     return session;
   }
 
@@ -102,6 +115,13 @@ export class SessionUseCase {
     if (!session.isOpen) throw new AppError('INVALID_STATUS', 'الحصة مغلقة', 400);
     const record = await this.repo.findAttendanceRecord(tenantId, sessionId, studentId);
     if (!record) throw new AppError('NOT_FOUND', 'الطالب غير مسجل في هذه الحصة', 404);
+
+    // لو التسجيل الصريح "غايب"، افحص رصيد التعويض الأول قبل ما تثبته غياب فعلي
+    if (data.status === 'absent' && session.groupId) {
+      const excused = await this.tryExcuseWithCredit(tenantId, session, record);
+      if (excused) return record;
+    }
+
     if (data.status === 'present') record.markPresent();
     else if (data.status === 'absent') record.markAbsent();
     else record.markLate();
@@ -118,6 +138,115 @@ export class SessionUseCase {
       .catch(err => this.logger.error('WA notification failed: ' + err.message));
 
     return record;
+  }
+
+  // ─── نظام رصيد التعويض (حضور بديل في مادة أخرى) ────────────
+
+  async addExternalAttendance(
+    tenantId: string, sessionId: string, identifier: { studentId?: string; studentCode?: string },
+  ): Promise<{ attendance: AttendanceEntity; excusedAbsence: boolean; creditCreated: boolean }> {
+    const session = await this.getById(tenantId, sessionId);
+    if (!session.isOpen) throw new AppError('SESSION_CLOSED', 'الحصة مغلقة', 400);
+    if (!session.groupId) throw new AppError('INVALID_SESSION_TYPE', 'هذه الميزة متاحة فقط لحصص المجموعات', 400);
+
+    let studentId = identifier.studentId;
+    if (!studentId && identifier.studentCode) {
+      const resolved = await this.repo.resolveStudentIdByCode(tenantId, identifier.studentCode);
+      if (!resolved) throw new AppError('NOT_FOUND', 'كود الطالب غير موجود', 404);
+      studentId = resolved;
+    }
+    if (!studentId) throw new AppError('VALIDATION_ERROR', 'بيانات الطالب غير كافية', 400);
+
+    const already = await this.repo.isStudentInAttendance(tenantId, sessionId, studentId);
+    if (already) throw new AppError('CONFLICT', 'الطالب مسجل بالفعل في حضور هذه الحصة', 409);
+
+    const subjectGradeId = await this.repo.getGroupSubjectGradeId(tenantId, session.groupId);
+    if (!subjectGradeId) throw new AppError('INVALID_GROUP', 'المجموعة غير مرتبطة بمادة', 400);
+
+    const record = await this.repo.addExternalAttendance(tenantId, sessionId, studentId);
+    const { weekStart, weekEnd } = this.getWeekBounds(session.startDate);
+
+    const pendingAbsence = await this.repo.findPendingAbsenceForSubject(
+      tenantId, studentId, subjectGradeId, weekStart, weekEnd,
+    );
+
+    if (pendingAbsence) {
+      pendingAbsence.markExcused();
+      pendingAbsence.notes = `معذور — حضر بديل في حصة "${session.title}" بتاريخ ${session.startDate.toLocaleDateString('ar-EG')}`;
+      await this.repo.saveAttendance(tenantId, pendingAbsence);
+
+      this.sendExcusedNotification(tenantId, pendingAbsence, session)
+        .catch(err => this.logger.error('ABSENCE_EXCUSED notification failed: ' + err.message));
+
+      return { attendance: record, excusedAbsence: true, creditCreated: false };
+    }
+
+    await this.repo.createAttendanceCredit(tenantId, {
+      studentId, subjectGradeId,
+      sourceSessionId: sessionId, sourceAttendanceId: record.id,
+      weekStart, weekEnd,
+    });
+
+    return { attendance: record, excusedAbsence: false, creditCreated: true };
+  }
+
+  private async tryExcuseWithCredit(
+    tenantId: string, session: SessionEntity, record: AttendanceEntity,
+  ): Promise<boolean> {
+    if (!session.groupId) return false;
+    const subjectGradeId = await this.repo.getGroupSubjectGradeId(tenantId, session.groupId);
+    if (!subjectGradeId) return false;
+
+    const { weekStart, weekEnd } = this.getWeekBounds(session.startDate);
+    const credit = await this.repo.findAvailableCredit(tenantId, record.studentId, subjectGradeId, weekStart, weekEnd);
+    if (!credit) return false;
+
+    record.markExcused();
+    record.notes = 'معذور — لديه رصيد تعويض (حضر بديل في مادة أخرى بنفس الأسبوع)';
+    await this.repo.saveAttendance(tenantId, record);
+    await this.repo.consumeCredit(tenantId, credit.id, record.id);
+
+    this.sendExcusedNotification(tenantId, record, session)
+      .catch(err => this.logger.error('ABSENCE_EXCUSED notification failed: ' + err.message));
+
+    return true;
+  }
+
+  private getWeekBounds(date: Date): { weekStart: Date; weekEnd: Date } {
+    // الأسبوع: من السبت للخميس — الجمعة إجازة وبرة الحساب
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+    const day = d.getDay(); // 0=أحد .. 6=سبت
+    const daysSinceSaturday = (day - 6 + 7) % 7;
+    const weekStart = new Date(d);
+    weekStart.setDate(d.getDate() - daysSinceSaturday);
+    weekStart.setHours(0, 0, 0, 0);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 5);
+    weekEnd.setHours(0, 0, 0, 0);
+    return { weekStart, weekEnd };
+  }
+
+  private async sendExcusedNotification(
+    tenantId: string, record: AttendanceEntity, session: SessionEntity,
+  ): Promise<void> {
+    if (!record.parentPhone) return;
+    const branding = await this.branding.getBrandingInfo(tenantId, { groupId: session.groupId ?? undefined });
+    const subject = session.groupName || session.grade || session.title;
+    const date = new Date(session.startDate).toLocaleDateString('ar-EG');
+
+    const result = await this.sendNotification.execute({
+      tenantId,
+      phone: record.parentPhone,
+      templateKey: 'ABSENCE_EXCUSED' as any,
+      vars: {
+        student_name: record.studentName || '',
+        subject,
+        date,
+        center_name: branding.name,
+      },
+    });
+    this.logger.log('ABSENCE_EXCUSED SendNotification result: ' + JSON.stringify(result));
   }
 
   async bulkUpdateAttendance(
@@ -143,6 +272,17 @@ export class SessionUseCase {
     const session = await this.getById(tenantId, sessionId);
     if (!session.groupId) return [];
     return this.repo.getPreviousAbsentStudents(tenantId, sessionId, session.groupId);
+  }
+
+  async getUnpaidStudents(tenantId: string, sessionId: string): Promise<string[]> {
+    const session = await this.getById(tenantId, sessionId);
+    if (!session.groupId) return [];
+    return this.repo.getUnpaidStudentIds(tenantId, session.groupId);
+  }
+
+  async getAbsenceReport(tenantId: string, sessionId: string) {
+    await this.getById(tenantId, sessionId);
+    return this.repo.getAbsenceReport(tenantId, sessionId);
   }
 
   async scanQr(tenantId: string, sessionId: string, data: ScanQrDto): Promise<AttendanceEntity> {
@@ -177,10 +317,7 @@ export class SessionUseCase {
   ): Promise<void> {
     if (!record.parentPhone) return;
 
-    const db = this.kysely.getTenantDb(tenantId);
-    const centerSettings = await db.selectFrom('center_settings')
-      .select(['center_name'])
-      .executeTakeFirst();
+    const branding = await this.branding.getBrandingInfo(tenantId, { groupId: session.groupId ?? undefined });
 
     const subject = session.groupName || session.grade || session.title;
     const date = new Date(session.startDate).toLocaleDateString('ar-EG');
@@ -204,7 +341,7 @@ export class SessionUseCase {
         subject,
         date,
         time,
-        center_name: centerSettings?.center_name || 'المركز',
+        center_name: branding.name,
       },
     });
 

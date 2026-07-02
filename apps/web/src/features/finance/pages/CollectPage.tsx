@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { useTreasuries, usePaymentMutations } from '../hooks/useFinance';
+import { useTreasuries, usePaymentMutations, useDueMutations } from '../hooks/useFinance';
+import { useSubjects } from '@/features/subjects/hooks/useSubjects';
+import { usePermissions } from '@/shared/hooks/usePermissions';
 import { DUE_STATUS_LABELS } from '../types/finance.types';
 import { FinanceLayout } from '../components/FinanceLayout';
 import { apiClient } from '../../../shared/lib/api/client';
@@ -39,8 +41,71 @@ export default function CollectPage() {
   const searchTimer = useRef<any>(null);
 
   const [searchParams] = useSearchParams();
+  const { hasPermission } = usePermissions();
   const { data: treasuries = [] } = useTreasuries();
   const { create: createPayment } = usePaymentMutations();
+  const { createManual } = useDueMutations();
+  const { data: subjects = [] } = useSubjects();
+
+  // ─── فاتورة يدوية (دفع مقدم / اشتراك في نص الشهر) ───
+  const [showManualDue, setShowManualDue] = useState(false);
+  const [manualSubjectGradeId, setManualSubjectGradeId] = useState('');
+  const [manualMonth, setManualMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [manualAmount, setManualAmount] = useState('');
+  const [manualProrate, setManualProrate] = useState(false);
+  const [manualStartDay, setManualStartDay] = useState(new Date().getDate());
+  const [manualError, setManualError] = useState<string | null>(null);
+
+  const gradeOptions = subjects.flatMap(item =>
+    item.grades.map(g => ({ value: g.id, label: `${item.subject.name} — ${g.grade}`, fee: Number(g.fee) }))
+  );
+  const selectedGradeOption = gradeOptions.find(g => g.value === manualSubjectGradeId);
+
+  const daysInMonth = (monthStr: string) => {
+    const [y, m] = monthStr.split('-').map(Number);
+    return new Date(y, m, 0).getDate();
+  };
+
+  useEffect(() => {
+    if (!selectedGradeOption) return;
+    if (!manualProrate) {
+      setManualAmount(String(selectedGradeOption.fee));
+    } else {
+      const total = daysInMonth(manualMonth);
+      const remaining = Math.max(1, total - manualStartDay + 1);
+      const prorated = Math.round((selectedGradeOption.fee / total) * remaining);
+      setManualAmount(String(prorated));
+    }
+  }, [selectedGradeOption, manualProrate, manualStartDay, manualMonth]);
+
+  const openManualDue = () => {
+    setManualSubjectGradeId('');
+    setManualMonth(new Date().toISOString().slice(0, 7));
+    setManualAmount('');
+    setManualProrate(false);
+    setManualStartDay(new Date().getDate());
+    setManualError(null);
+    setShowManualDue(true);
+  };
+
+  const handleCreateManualDue = async () => {
+    if (!selectedStudent || !manualSubjectGradeId || !manualAmount) return;
+    setManualError(null);
+    try {
+      await createManual.mutateAsync({
+        studentId: selectedStudent.studentId,
+        subjectGradeId: manualSubjectGradeId,
+        month: manualMonth,
+        dueAmount: Number(manualAmount),
+      });
+      setShowManualDue(false);
+      // إعادة تحميل فواتير الطالب عشان الفاتورة الجديدة تظهر على طول
+      const res = await apiClient.get('/finance/collect/student/' + selectedStudent.studentId + '/dues');
+      setSelectedStudent(res.data.data);
+    } catch (err: any) {
+      setManualError(err?.response?.data?.error?.message || 'حدث خطأ أثناء إنشاء الفاتورة');
+    }
+  };
 
   useEffect(() => {
     if (treasuries.length > 0 && !treasuryId) {
@@ -131,6 +196,8 @@ export default function CollectPage() {
         subjectName: selectedDuesList.map(d => d.subjectName).filter(Boolean).join(' / '),
         month: selectedDuesList.map(d => d.month).filter(Boolean).join(' / '),
         paidAt: new Date().toISOString(),
+        // لو اتحصّل أكتر من فاتورة مواد مختلفة مرة واحدة، بناخد سياق أول فاتورة بس للبراندنج
+        monthlyDueId: selectedDuesList[0]?.id,
       });
       setTimeout(() => {
         setQuery('');
@@ -254,10 +321,16 @@ export default function CollectPage() {
                 <div className="w-10 h-10 rounded-xl bg-[#0E3B2E]/10 flex items-center justify-center text-[#0E3B2E] font-bold">
                   {selectedStudent.studentName.charAt(0)}
                 </div>
-                <div>
+                <div className="flex-1">
                   <p className="font-bold text-gray-900">{selectedStudent.studentName}</p>
                   <p className="text-xs text-gray-400 font-mono">{selectedStudent.studentCode}</p>
                 </div>
+                {hasPermission('finance.collect') && (
+                  <button onClick={openManualDue}
+                    className="text-xs text-[#0E3B2E] border border-[#0E3B2E]/30 rounded-lg px-3 py-1.5 hover:bg-[#0E3B2E]/5 transition-colors shrink-0">
+                    + فاتورة يدوية
+                  </button>
+                )}
               </div>
 
               {selectedStudent.dues.length === 0 ? (
@@ -339,7 +412,7 @@ export default function CollectPage() {
                     </div>
                   )}
 
-                  {selectedDues.size > 0 && (
+                  {selectedDues.size > 0 && hasPermission('finance.collect') && (
                     <button onClick={handleCollect} disabled={loading}
                       className="w-full bg-[#0E3B2E] text-white rounded-2xl py-4 font-bold text-base disabled:opacity-60 hover:bg-[#1a5c44] transition-colors shadow-lg">
                       {loading ? (
@@ -375,6 +448,69 @@ export default function CollectPage() {
           onScan={handleCameraScan}
           onClose={() => setShowCamera(false)}
         />
+      )}
+
+      {showManualDue && selectedStudent && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4" dir="rtl">
+          <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md p-5 space-y-4">
+            <div>
+              <h2 className="text-base font-bold text-gray-900">فاتورة يدوية</h2>
+              <p className="text-sm text-gray-400 mt-0.5">
+                {selectedStudent.studentName} — لدفع مقدم لشهر لسه ما اتولدش، أو اشتراك في نص الشهر
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">المادة والصف</label>
+              <select value={manualSubjectGradeId} onChange={e => setManualSubjectGradeId(e.target.value)}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0E3B2E]/20">
+                <option value="">اختر المادة والصف</option>
+                {gradeOptions.map(o => <option key={o.value} value={o.value}>{o.label} ({o.fee} ج.م)</option>)}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">الشهر</label>
+              <input type="month" value={manualMonth} onChange={e => setManualMonth(e.target.value)}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0E3B2E]/20" />
+            </div>
+
+            <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+              <input type="checkbox" checked={manualProrate} onChange={e => setManualProrate(e.target.checked)}
+                className="w-4 h-4 accent-[#0E3B2E]" />
+              احتساب المبلغ بالتناسب (اشتراك في نص الشهر)
+            </label>
+
+            {manualProrate && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">يبدأ الاشتراك من يوم</label>
+                <input type="number" min={1} max={31} value={manualStartDay}
+                  onChange={e => setManualStartDay(Number(e.target.value))}
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0E3B2E]/20" />
+              </div>
+            )}
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                المبلغ {manualProrate && <span className="text-gray-400 font-normal">(مقترح تلقائياً — يمكن تعديله)</span>}
+              </label>
+              <input type="number" value={manualAmount} onChange={e => setManualAmount(e.target.value)}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0E3B2E]/20" />
+            </div>
+
+            {manualError && <p className="text-sm text-red-500">{manualError}</p>}
+
+            <div className="flex gap-2 pt-2">
+              <button onClick={handleCreateManualDue} disabled={createManual.isPending || !manualSubjectGradeId || !manualAmount}
+                className="flex-1 bg-[#0E3B2E] text-white rounded-xl py-2.5 text-sm font-bold disabled:opacity-60">
+                {createManual.isPending ? 'جاري الإنشاء...' : 'إنشاء الفاتورة'}
+              </button>
+              <button onClick={() => setShowManualDue(false)} className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm text-gray-600">
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );

@@ -89,6 +89,20 @@ export class SendNotificationUseCase {
 
     const body = template.render(vars);
 
+    // فحص الحد اليومي — كان معطّل بالكامل قبل كده، وده كان بيلغي الغرض من نظام الـ warmup
+    const sentToday = await this.messageRepo.countTodayByTenantId(tenantId);
+    const dailyLimit = session.getCurrentDailyLimit(settings.dailyLimit);
+    if (sentToday >= dailyLimit) {
+      this.logger.warn(`Daily limit reached for tenant ${tenantId} (${sentToday}/${dailyLimit}) — message queued for retry`);
+      const queued = await this.messageRepo.create({
+        tenantId, phone, templateKey, body,
+        status: 'pending', bulkJobId: bulkJobId ?? null,
+      });
+      queued.markFailed('daily_limit_reached');
+      await this.messageRepo.save(queued);
+      return { success: false, error: 'daily_limit_reached' };
+    }
+
     const message = await this.messageRepo.create({
       tenantId, phone, templateKey, body,
       status: 'pending', bulkJobId: bulkJobId ?? null,

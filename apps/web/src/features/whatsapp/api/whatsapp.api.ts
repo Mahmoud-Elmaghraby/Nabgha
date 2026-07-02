@@ -9,6 +9,8 @@ import type {
   WaBulkProgressDto,
   WaInboundMessageDto,
   SendBulkPayload,
+  ResolveAudienceParams,
+  AudienceStudent,
 } from '../types/whatsapp.types';
 
 export const whatsappApi = {
@@ -49,6 +51,10 @@ export const whatsappApi = {
     apiClient.get<{ data: WaInboundMessageDto[]; total: number }>('/whatsapp/inbound', { params }),
   markRead: (id: string) =>
     apiClient.put(`/whatsapp/inbound/${id}/read`),
+
+  // Audience
+  resolveAudience: (params: ResolveAudienceParams) =>
+    apiClient.get<{ data: AudienceStudent[]; total: number }>('/whatsapp/audience', { params }),
 
   // Test
   sendTest: (phone: string, templateKey: WaTemplateKey) =>

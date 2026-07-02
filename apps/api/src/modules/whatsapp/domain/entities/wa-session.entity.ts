@@ -22,11 +22,16 @@ export class WaSessionEntity {
     return this.status === 'connected';
   }
 
-  get currentDailyLimit(): number {
-    if (!this.warmupStartedAt) return 10;
-    const limits = [10, 10, 25, 25, 25, 50, 50, 50, 50, 50];
-    const day = Math.min(this.warmupDay, limits.length - 1);
-    return limits[day];
+  // بيرجع الحد اليومي الفعلي: أثناء فترة التسخين بيصعد تدريجياً، وبعدها بيستخدم
+  // الحد اللي المستخدم حدده في الإعدادات فعلياً (كان قبل كده متجمد على 50 للأبد بتجاهل الإعداد)
+  getCurrentDailyLimit(targetLimit: number): number {
+    if (!this.warmupStartedAt) return Math.min(10, targetLimit);
+    const warmupCurve = [10, 10, 25, 25, 25, 50, 50, 50, 50, 50];
+    if (this.warmupDay >= warmupCurve.length - 1) {
+      return targetLimit;
+    }
+    const day = Math.min(this.warmupDay, warmupCurve.length - 1);
+    return Math.min(warmupCurve[day], targetLimit);
   }
 
   get isWarmingUp(): boolean {

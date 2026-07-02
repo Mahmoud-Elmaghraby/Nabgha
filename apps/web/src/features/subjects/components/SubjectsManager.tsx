@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useSubjects, useSubjectMutations } from '../hooks/useSubjects';
 import { SubjectGradeForm } from './SubjectGradeForm';
 import { FormSheet } from '@/shared/components';
+import { useConfirm } from '@/shared/components/Confirm';
 import type { SubjectWithGradesDto, SubjectGradeDto } from '../types/subject.types';
 import { SUBJECT_COLORS, PAYMENT_TYPE_LABELS } from '../types/subject.types';
 
@@ -87,11 +88,12 @@ interface GradeRowProps {
 }
 
 function GradeRow({ subjectId, subjectName, grade }: GradeRowProps) {
+  const confirm = useConfirm();
   const { deleteGrade, updateGrade } = useSubjectMutations();
   const [editing, setEditing] = useState(false);
 
-  const handleDelete = () => {
-    if (!confirm(`حذف صف "${grade.grade}"؟`)) return;
+  const handleDelete = async () => {
+    if (!(await confirm(`حذف صف "${grade.grade}"؟`, { danger: true }))) return;
     deleteGrade.mutate({ subjectId, gradeId: grade.id });
   };
 
@@ -166,13 +168,14 @@ interface SubjectCardProps {
 }
 
 function SubjectCard({ item }: SubjectCardProps) {
+  const confirm = useConfirm();
   const { deleteSubject } = useSubjectMutations();
   const [expanded, setExpanded] = useState(false);
   const [editing, setEditing] = useState(false);
   const [addingGrade, setAddingGrade] = useState(false);
 
-  const handleDelete = () => {
-    if (!confirm(`حذف مادة "${item.subject.name}"؟`)) return;
+  const handleDelete = async () => {
+    if (!(await confirm(`حذف مادة "${item.subject.name}"؟`, { danger: true }))) return;
     deleteSubject.mutate(item.subject.id);
   };
 

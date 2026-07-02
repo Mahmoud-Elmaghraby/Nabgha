@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { sessionsApi } from '../api/sessions.api';
-import type { CreateSessionPayload, UpdateAttendancePayload, BulkUpdateAttendancePayload, ListSessionsParams } from '../types/session.types';
+import type { CreateSessionPayload, UpdateAttendancePayload, BulkUpdateAttendancePayload, ListSessionsParams, AddExternalAttendanceIdentifier } from '../types/session.types';
 
 export const SESSION_KEYS = {
   all:        ['sessions'] as const,
@@ -28,6 +28,22 @@ export function usePreviousAbsent(sessionId: string) {
   return useQuery({
     queryKey: ['sessions', sessionId, 'previous-absent'],
     queryFn: () => sessionsApi.getPreviousAbsent(sessionId),
+    enabled: !!sessionId,
+  });
+}
+
+export function useUnpaidStudents(sessionId: string) {
+  return useQuery({
+    queryKey: ['sessions', sessionId, 'unpaid'],
+    queryFn: () => sessionsApi.getUnpaidStudents(sessionId),
+    enabled: !!sessionId,
+  });
+}
+
+export function useAbsenceReport(sessionId: string | null) {
+  return useQuery({
+    queryKey: ['sessions', sessionId, 'absence-report'],
+    queryFn: () => sessionsApi.getAbsenceReport(sessionId!),
     enabled: !!sessionId,
   });
 }
@@ -109,5 +125,12 @@ export function useAttendanceMutations(sessionId: string) {
     onSuccess: invalidate,
   });
 
-  return { updateOne, bulkUpdate, scanQr };
+  const addExternal = useMutation({
+    mutationFn: (identifier: AddExternalAttendanceIdentifier) => sessionsApi.addExternalAttendance(sessionId, identifier),
+    // نستخدم invalidate العام (مش بس attendance الحصة الحالية) لأن العملية ممكن
+    // تعدّل حضور طالب في حصة تانية تماماً (إعفاء غياب أو استهلاك رصيد)
+    onSuccess: () => qc.invalidateQueries({ queryKey: SESSION_KEYS.all }),
+  });
+
+  return { updateOne, bulkUpdate, scanQr, addExternal };
 }

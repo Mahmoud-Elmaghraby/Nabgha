@@ -52,6 +52,14 @@ export interface FinanceStats {
   totalDues: number; totalCollected: number; totalPending: number;
   totalExpenses: number; duesCount: number; paidCount: number; unpaidCount: number;
 }
+export interface CreateManualDuePayload {
+  studentId: string;
+  subjectGradeId: string;
+  month: string;
+  dueAmount: number;
+  notes?: string;
+}
+
 export interface ListDuesParams { month?: string; studentId?: string; status?: DueStatus; page?: number; limit?: number; }
 export interface ListPaymentsParams { studentId?: string; treasuryId?: string; status?: PaymentStatus; from?: string; to?: string; page?: number; limit?: number; }
 export interface ListExpensesParams { treasuryId?: string; category?: ExpenseCategory; from?: string; to?: string; page?: number; limit?: number; }

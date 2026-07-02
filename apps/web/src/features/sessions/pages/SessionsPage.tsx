@@ -1,12 +1,16 @@
 import { useState } from 'react';
+import { useToast } from '@/shared/components/Toast';
+import { useConfirm } from '@/shared/components/Confirm';
 import { useGroups } from '@/features/groups/hooks/useGroups';
 import { GRADE_OPTIONS } from '@nabgha/types';
 import { useSessions, useSessionMutations } from '../hooks/useSessions';
 import { SessionFormModal } from '../components/SessionFormModal';
 import { AttendanceSheet } from '../components/AttendanceSheet';
 import { DegreesSheet } from '../components/DegreesSheet';
+import { AbsenceReportModal } from '../components/AbsenceReportModal';
 import type { Session, SessionType, SessionStatus } from '../types/session.types';
 import { SESSION_TYPE_LABELS, SESSION_STATUS_LABELS, sessionHasGrades } from '../types/session.types';
+import { usePermissions } from '@/shared/hooks/usePermissions';
 
 const TYPE_FILTER_OPTIONS: { value: SessionType | ''; label: string }[] = [
   { value: '', label: 'الكل' },
@@ -26,9 +30,11 @@ const STATUS_FILTER_OPTIONS: { value: SessionStatus | ''; label: string }[] = [
 ];
 
 export default function SessionsPage() {
+  const { hasPermission } = usePermissions();
   const [showForm, setShowForm] = useState(false);
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
   const [degreesSession, setDegreesSession] = useState<Session | null>(null);
+  const [reportSession, setReportSession] = useState<Session | null>(null);
   const [typeFilter, setTypeFilter] = useState<SessionType | ''>('');
   const [statusFilter, setStatusFilter] = useState<SessionStatus | ''>('');
   const [groupFilter, setGroupFilter] = useState('');
@@ -44,6 +50,8 @@ export default function SessionsPage() {
     page, limit,
   });
 
+  const toast = useToast();
+  const confirm = useConfirm();
   const { start, complete, cancel, remove } = useSessionMutations();
   const { data: groupsData } = useGroups();
   const groups = groupsData?.data || [];
@@ -53,14 +61,14 @@ export default function SessionsPage() {
   const totalPages = Math.ceil(total / limit);
 
   const handleAction = async (action: 'start' | 'complete' | 'cancel' | 'delete', id: string) => {
-    if (action === 'delete' && !confirm('هل أنت متأكد من الحذف؟')) return;
+    if (action === 'delete' && !(await confirm('هل أنت متأكد من الحذف؟', { danger: true }))) return;
     try {
       if (action === 'start')    await start.mutateAsync(id);
       if (action === 'complete') await complete.mutateAsync(id);
       if (action === 'cancel')   await cancel.mutateAsync(id);
       if (action === 'delete')   await remove.mutateAsync(id);
     } catch (err: any) {
-      alert(err?.response?.data?.error?.message || 'حدث خطأ');
+      toast.error(err?.response?.data?.error?.message || 'حدث خطأ');
     }
   };
 
@@ -72,13 +80,15 @@ export default function SessionsPage() {
           <h1 className="text-xl font-bold text-gray-900">الحصص والامتحانات</h1>
           <p className="text-sm text-gray-400 mt-0.5">{total} حصة</p>
         </div>
-        <button onClick={() => setShowForm(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-[#0E3B2E] text-white rounded-xl text-sm font-medium hover:bg-[#1F6B4E] transition-colors">
-          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M12 5v14M5 12h14" strokeLinecap="round"/>
-          </svg>
-          حصة جديدة
-        </button>
+        {hasPermission('sessions.create') && (
+          <button onClick={() => setShowForm(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-[#0E3B2E] text-white rounded-xl text-sm font-medium hover:bg-[#1F6B4E] transition-colors">
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 5v14M5 12h14" strokeLinecap="round"/>
+            </svg>
+            حصة جديدة
+          </button>
+        )}
       </div>
 
       {/* Filters */}
@@ -200,25 +210,31 @@ export default function SessionsPage() {
                       الدرجات
                     </button>
                   )}
-                  {session.status === 'scheduled' && (
+                  {session.status === 'completed' && (
+                    <button onClick={() => setReportSession(session)}
+                      className="text-xs px-3 py-1.5 bg-gray-50 text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors">
+                      تقرير الغياب
+                    </button>
+                  )}
+                  {hasPermission('sessions.edit') && session.status === 'scheduled' && (
                     <button onClick={() => handleAction('start', session.id)}
                       className="text-xs px-3 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg hover:bg-emerald-100">
                       بدء
                     </button>
                   )}
-                  {session.status === 'ongoing' && (
+                  {hasPermission('sessions.edit') && session.status === 'ongoing' && (
                     <button onClick={() => handleAction('complete', session.id)}
                       className="text-xs px-3 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100">
                       إنهاء
                     </button>
                   )}
-                  {(session.status === 'scheduled' || session.status === 'ongoing') && (
+                  {hasPermission('sessions.edit') && (session.status === 'scheduled' || session.status === 'ongoing') && (
                     <button onClick={() => handleAction('cancel', session.id)}
                       className="text-xs px-3 py-1.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg hover:bg-amber-100">
                       إلغاء
                     </button>
                   )}
-                  {session.status !== 'ongoing' && (
+                  {hasPermission('sessions.delete') && session.status !== 'ongoing' && (
                     <button onClick={() => handleAction('delete', session.id)}
                       className="text-xs px-3 py-1.5 bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100">
                       حذف
@@ -249,6 +265,7 @@ export default function SessionsPage() {
       {showForm && <SessionFormModal open={showForm} onClose={() => setShowForm(false)} />}
       {selectedSession && <AttendanceSheet session={selectedSession} onClose={() => setSelectedSession(null)} />}
       {degreesSession && <DegreesSheet session={degreesSession} onClose={() => setDegreesSession(null)} />}
+      {reportSession && <AbsenceReportModal session={reportSession} onClose={() => setReportSession(null)} />}
     </div>
   );
 }

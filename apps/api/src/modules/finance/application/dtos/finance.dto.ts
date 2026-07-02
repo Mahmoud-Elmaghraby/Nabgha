@@ -38,6 +38,15 @@ export const ListDuesSchema = z.object({
   limit: z.coerce.number().int().positive().max(100).default(20),
 });
 
+// ─── Manual Due (فاتورة يدوية — تسجيل مقدم / دفعة في نص الشهر) ─────
+export const CreateManualDueSchema = z.object({
+  studentId: z.string().uuid('طالب غير صحيح'),
+  subjectGradeId: z.string().uuid('مادة غير صحيحة'),
+  month: z.string().regex(/^\d{4}-\d{2}$/, 'صيغة الشهر غير صحيحة (YYYY-MM)'),
+  dueAmount: z.number().min(0, 'المبلغ لا يمكن أن يكون سالباً'),
+  notes: z.string().optional(),
+});
+
 // ─── Payment DTOs ─────────────────────────────────────────
 export const CreatePaymentSchema = z.object({
   monthlyDueId: z.string().uuid('فاتورة غير صحيحة'),
@@ -53,6 +62,16 @@ export const CancelPaymentSchema = z.object({
 
 export const RefundPaymentSchema = z.object({
   amount: z.number().positive('مبلغ الاسترجاع يجب أن يكون أكبر من صفر'),
+  notes: z.string().optional(),
+});
+
+export const CollectMultiSchema = z.object({
+  payments: z.array(z.object({
+    monthlyDueId: z.string().uuid(),
+    amount: z.number().positive(),
+  })).min(1, 'يجب اختيار فاتورة واحدة على الأقل'),
+  treasuryId: z.string().uuid('خزينة غير صحيحة'),
+  paymentMethod: z.enum(['cash', 'visa', 'instapay', 'vodafone', 'bank', 'other']),
   notes: z.string().optional(),
 });
 
@@ -94,6 +113,7 @@ export const ListExpensesSchema = z.object({
 });
 
 // ─── Types ────────────────────────────────────────────────
+export type CreateManualDueDto     = z.infer<typeof CreateManualDueSchema>;
 export type CreateTreasuryDto     = z.infer<typeof CreateTreasurySchema>;
 export type UpdateTreasuryDto     = z.infer<typeof UpdateTreasurySchema>;
 export type GenerateDuesDto       = z.infer<typeof GenerateDuesSchema>;
@@ -103,6 +123,7 @@ export type CreatePaymentDto      = z.infer<typeof CreatePaymentSchema>;
 export type CancelPaymentDto      = z.infer<typeof CancelPaymentSchema>;
 export type RefundPaymentDto      = z.infer<typeof RefundPaymentSchema>;
 export type ListPaymentsDto       = z.infer<typeof ListPaymentsSchema>;
+export type CollectMultiDto       = z.infer<typeof CollectMultiSchema>;
 export type CreateExpenseDto      = z.infer<typeof CreateExpenseSchema>;
 export type UpdateExpenseDto      = z.infer<typeof UpdateExpenseSchema>;
 export type ListExpensesDto       = z.infer<typeof ListExpensesSchema>;

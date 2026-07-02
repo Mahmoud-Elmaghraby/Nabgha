@@ -9,6 +9,7 @@ import type { TeacherDto } from '../types/teacher.types';
 const FormSchema = z.object({
   name: z.string().min(2, 'الاسم يجب أن يكون حرفين على الأقل'),
   phone: z.string().optional().or(z.literal('')),
+  phone2: z.string().optional().or(z.literal('')),
   email: z.string().email('البريد الإلكتروني غير صحيح').optional().or(z.literal('')),
   notes: z.string().optional(),
 });
@@ -37,9 +38,9 @@ export function TeacherFormModal({ open, onClose, teacher }: TeacherFormModalPro
   useEffect(() => {
     if (!open) return;
     if (teacher) {
-      reset({ name: teacher.name, phone: teacher.phone || '', email: teacher.email || '', notes: teacher.notes || '' });
+      reset({ name: teacher.name, phone: teacher.phone || '', phone2: teacher.phone2 || '', email: teacher.email || '', notes: teacher.notes || '' });
     } else {
-      reset({ name: '', phone: '', email: '', notes: '' });
+      reset({ name: '', phone: '', phone2: '', email: '', notes: '' });
     }
   }, [open, teacher, reset]);
 
@@ -47,6 +48,7 @@ export function TeacherFormModal({ open, onClose, teacher }: TeacherFormModalPro
     const payload = {
       name: data.name,
       phone: data.phone || null,
+      phone2: data.phone2 || null,
       email: data.email || null,
       notes: data.notes || null,
     };
@@ -85,11 +87,18 @@ export function TeacherFormModal({ open, onClose, teacher }: TeacherFormModalPro
             </div>
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                البريد الإلكتروني <span className="text-gray-400 font-normal">(اختياري)</span>
+                رقم هاتف إضافي <span className="text-gray-400 font-normal">(اختياري)</span>
               </label>
-              <input {...register('email')} type="email" className={inputClass} placeholder="ahmed@example.com" dir="ltr" />
-              {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email.message}</p>}
+              <input {...register('phone2')} className={inputClass} placeholder="01234567890" dir="ltr" />
             </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+              البريد الإلكتروني <span className="text-gray-400 font-normal">(اختياري)</span>
+            </label>
+            <input {...register('email')} type="email" className={inputClass} placeholder="ahmed@example.com" dir="ltr" />
+            {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email.message}</p>}
           </div>
 
           <div>

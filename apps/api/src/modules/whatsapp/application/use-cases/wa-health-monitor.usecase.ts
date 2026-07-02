@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { IWaProvider, WA_PROVIDER } from '../../domain/interfaces/wa-provider.interface';
 import { IWaSessionRepository, WA_SESSION_REPOSITORY } from '../../domain/repositories/wa.repository.interface';
+import { IWaSettingsRepository, WA_SETTINGS_REPOSITORY } from '../../domain/repositories/wa.repository.interface';
 import { PrismaService } from '../../../../shared/infrastructure/database/prisma.service';
 
 @Injectable()
@@ -11,6 +12,7 @@ export class WaHealthMonitorUseCase {
   constructor(
     @Inject(WA_PROVIDER) private readonly provider: IWaProvider,
     @Inject(WA_SESSION_REPOSITORY) private readonly sessionRepo: IWaSessionRepository,
+    @Inject(WA_SETTINGS_REPOSITORY) private readonly settingsRepo: IWaSettingsRepository,
     private readonly prisma: PrismaService,
   ) {}
 
@@ -74,13 +76,14 @@ export class WaHealthMonitorUseCase {
     isBanned: boolean;
   }> {
     const session = await this.sessionRepo.findByTenantId(tenantId);
+    const settings = await this.settingsRepo.findByTenantId(tenantId);
     const state = await this.provider.getConnectionState(tenantId);
 
     return {
       status: state.status,
       phone: state.phone ?? session?.phone ?? undefined,
       warmupDay: session?.warmupDay ?? 0,
-      dailyLimit: session?.currentDailyLimit ?? 10,
+      dailyLimit: session ? session.getCurrentDailyLimit(settings?.dailyLimit ?? 50) : 10,
       lastHealthCheck: session?.lastHealthCheck ?? undefined,
       isBanned: session?.isBanned ?? false,
     };

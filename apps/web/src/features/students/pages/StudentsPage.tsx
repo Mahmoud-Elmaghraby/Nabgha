@@ -6,9 +6,11 @@ import { StudentQrModal } from '../components/StudentQrModal';
 import type { StudentDto } from '../types/student.types';
 import { PageHeader } from '@/shared/components';
 import { useDebounce } from '@/shared/hooks/useDebounce';
+import { usePermissions } from '@/shared/hooks/usePermissions';
 import { GRADE_OPTIONS } from '@nabgha/types';
 
 export default function StudentsPage() {
+  const { hasPermission } = usePermissions();
   const [search, setSearch] = useState('');
   const [gradeFilter, setGradeFilter] = useState('');
   const debouncedSearch = useDebounce(search, 300);
@@ -28,7 +30,7 @@ export default function StudentsPage() {
       <PageHeader
         title="الطلاب"
         subtitle="إدارة طلاب المركز"
-        actions={[{
+        actions={hasPermission('students.create') ? [{
           label: 'إضافة طالب',
           onClick: () => setIsCreating(true),
           icon: (
@@ -36,7 +38,7 @@ export default function StudentsPage() {
               <path d="M12 5v14M5 12h14" strokeLinecap="round" />
             </svg>
           ),
-        }]}
+        }] : []}
       />
 
       <div className="px-4 md:px-6 py-4 bg-white border-b border-gray-100">

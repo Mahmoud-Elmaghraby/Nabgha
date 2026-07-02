@@ -4,6 +4,7 @@ import { GroupEntity, GroupStudentEntity } from '../../domain/entities/group.ent
 import { AppError } from '../../../../core/errors/app.error';
 import { SendNotificationUseCase } from '../../../whatsapp/application/use-cases/send-notification.usecase';
 import { KyselyService } from '../../../../shared/infrastructure/database/kysely.service';
+import { BrandingService } from '../../../settings/application/services/branding.service';
 import { sql } from 'kysely';
 import type { CreateGroupDto, UpdateGroupDto, ListGroupsDto } from '../dtos/group.dto';
 
@@ -15,6 +16,7 @@ export class GroupUseCase {
     private readonly repo: GroupRepository,
     private readonly sendNotification: SendNotificationUseCase,
     private readonly kysely: KyselyService,
+    private readonly branding: BrandingService,
   ) {}
 
   async list(
@@ -76,7 +78,13 @@ export class GroupUseCase {
 
     // إرسال إشعار واتساب
     this.sendGroupAddedNotification(tenantId, studentId, group)
-      .then(() => this.logger.log('GROUP_ADDED notification sent successfully'))
+      .then((result) => {
+        if (result?.success) {
+          this.logger.log('GROUP_ADDED notification sent successfully');
+        } else {
+          this.logger.warn('GROUP_ADDED notification NOT sent — reason: ' + (result?.error ?? 'unknown'));
+        }
+      })
       .catch(err => this.logger.error('Failed to send GROUP_ADDED notification: ' + err.message, err.stack));
 
     return enrollment;
@@ -113,7 +121,7 @@ export class GroupUseCase {
     tenantId: string,
     studentId: string,
     group: GroupEntity,
-  ): Promise<void> {
+  ): Promise<{ success: boolean; error?: string } | void> {
     const db = this.kysely.getTenantDb(tenantId);
 
     const student = await db
@@ -124,10 +132,7 @@ export class GroupUseCase {
 
     if (!student) return;
 
-    const centerSettings = await db
-      .selectFrom('center_settings')
-      .select(['center_name'])
-      .executeTakeFirst();
+    const branding = await this.branding.getBrandingInfo(tenantId, { groupId: group.id });
 
     const days = Array.isArray(group.schedule)
       ? group.schedule.map((s: any) => {
@@ -152,9 +157,11 @@ export class GroupUseCase {
         group_name: group.name,
         days,
         time,
+        center_name: branding.name,
       },
     });
     this.logger.log('SendNotification result: ' + JSON.stringify(result));
+    return result;
   }
 
   private async sendGroupRemovedNotification(
@@ -172,10 +179,7 @@ export class GroupUseCase {
 
     if (!student) return;
 
-    const centerSettings = await db
-      .selectFrom('center_settings')
-      .select(['center_name'])
-      .executeTakeFirst();
+    const branding = await this.branding.getBrandingInfo(tenantId, { groupId: group.id });
 
     await this.sendNotification.execute({
       tenantId,
@@ -184,7 +188,7 @@ export class GroupUseCase {
       vars: {
         student_name: student.full_name,
         group_name: group.name,
-        center_name: centerSettings?.center_name || 'المركز',
+        center_name: branding.name,
       },
     });
   }

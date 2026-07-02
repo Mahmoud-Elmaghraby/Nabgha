@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/shared/lib/api/client';
-import { generateLabelsPDF, generateCardsPDF, printLabelsDirect } from '@/shared/services/pdf/pdf.service';
+import { generateLabelsPDF, generateCardsPDF } from '@/shared/services/pdf/pdf.service';
+import { useToast } from '@/shared/components/Toast';
+import { LabelsPreviewModal } from './LabelsPreviewModal';
 import type { StudentQRData } from '@/shared/services/pdf/pdf.service';
 
 function useGroups() {
@@ -50,11 +52,13 @@ function useCenterSettings() {
 type PrintMode = 'label-pdf' | 'label-print' | 'card-pdf';
 
 export default function BarcodesPage() {
+  const toast = useToast();
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
   const [selectedStudents, setSelectedStudents] = useState<StudentQRData[]>([]);
   const [searchQ, setSearchQ] = useState('');
   const [printMode, setPrintMode] = useState<PrintMode>('label-pdf');
   const [loading, setLoading] = useState(false);
+  const [showLabelsPreview, setShowLabelsPreview] = useState(false);
 
   const { data: groups = [] } = useGroups();
   const { data: searchResults = [] } = useStudentsSearch(searchQ);
@@ -104,15 +108,17 @@ export default function BarcodesPage() {
 
   const handlePrint = async () => {
     if (selectedStudents.length === 0) return;
+    if (printMode === 'label-print') {
+      setShowLabelsPreview(true);
+      return;
+    }
     setLoading(true);
     try {
       if (printMode === 'label-pdf') {
         await generateLabelsPDF(selectedStudents, { centerName });
-      } else if (printMode === 'label-print') {
-        await printLabelsDirect(selectedStudents, centerName);
       } else if (printMode === 'card-pdf') {
         if (!cardSettings?.frontImage) {
-          alert('لم يتم إعداد صورة الكارت — اذهب للإعدادات → إعداد الكارت');
+          toast.error('لم يتم إعداد صورة الكارت — اذهب للإعدادات → إعداد الكارت');
           setLoading(false);
           return;
         }
@@ -140,7 +146,7 @@ export default function BarcodesPage() {
       }
     } catch (err) {
       console.error(err);
-      alert('حدث خطأ أثناء التوليد');
+      toast.error('حدث خطأ أثناء التوليد');
     } finally {
       setLoading(false);
     }
@@ -272,6 +278,14 @@ export default function BarcodesPage() {
         </button>
 
       </div>
+
+      {showLabelsPreview && (
+        <LabelsPreviewModal
+          students={selectedStudents}
+          centerName={centerName}
+          onClose={() => setShowLabelsPreview(false)}
+        />
+      )}
     </div>
   );
 }

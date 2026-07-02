@@ -3,6 +3,7 @@ export class TeacherEntity {
     public readonly id: string,
     public name: string,
     public phone: string | null,
+    public phone2: string | null,
     public email: string | null,
     public subjectIds: string[],
     public notes: string | null,
@@ -12,7 +13,7 @@ export class TeacherEntity {
     public deletedAt: Date | null,
   ) {}
 
-  update(data: Partial<Pick<TeacherEntity, 'name' | 'phone' | 'email' | 'subjectIds' | 'notes' | 'isActive'>>): void {
+  update(data: Partial<Pick<TeacherEntity, 'name' | 'phone' | 'phone2' | 'email' | 'subjectIds' | 'notes' | 'isActive'>>): void {
     Object.assign(this, data);
     this.updatedAt = new Date();
   }

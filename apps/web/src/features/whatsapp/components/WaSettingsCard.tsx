@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useWaSettings, useWaMutations } from '../hooks/useWhatsapp';
+import { usePermissions } from '@/shared/hooks/usePermissions';
 import type { WaSettingsDto } from '../types/whatsapp.types';
 
 interface ToggleRowProps {
@@ -33,6 +34,8 @@ function ToggleRow({ label, subtitle, checked, onChange, disabled }: ToggleRowPr
 }
 
 export function WaSettingsCard() {
+  const { hasPermission } = usePermissions();
+  const canEdit = hasPermission('settings.edit');
   const { data: settings, isLoading } = useWaSettings();
   const { updateSettings } = useWaMutations();
   const [local, setLocal] = useState<Partial<WaSettingsDto>>({});
@@ -63,17 +66,19 @@ export function WaSettingsCard() {
     <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-5">
       <div className="flex items-center justify-between">
         <h3 className="font-bold text-[#0E3B2E] text-base">إعدادات الإرسال</h3>
-        <button
-          onClick={handleSave}
-          disabled={updateSettings.isPending}
-          className={`px-4 py-1.5 text-sm rounded-lg transition-all ${
-            saved
-              ? 'bg-emerald-50 text-emerald-700'
-              : 'bg-[#0E3B2E] text-white hover:bg-[#1F6B4E]'
-          } disabled:opacity-50`}
-        >
-          {saved ? '✓ تم الحفظ' : updateSettings.isPending ? 'جاري...' : 'حفظ'}
-        </button>
+        {canEdit && (
+          <button
+            onClick={handleSave}
+            disabled={updateSettings.isPending}
+            className={`px-4 py-1.5 text-sm rounded-lg transition-all ${
+              saved
+                ? 'bg-emerald-50 text-emerald-700'
+                : 'bg-[#0E3B2E] text-white hover:bg-[#1F6B4E]'
+            } disabled:opacity-50`}
+          >
+            {saved ? '✓ تم الحفظ' : updateSettings.isPending ? 'جاري...' : 'حفظ'}
+          </button>
+        )}
       </div>
 
       <div>
@@ -82,6 +87,7 @@ export function WaSettingsCard() {
           subtitle="تفعيل أو تعطيل كل الإشعارات"
           checked={local.waEnabled ?? false}
           onChange={v => update('waEnabled', v)}
+          disabled={!canEdit}
         />
       </div>
 
@@ -126,31 +132,31 @@ export function WaSettingsCard() {
 
       <div>
         <p className="text-xs font-medium text-gray-500 mb-2">إشعارات الحضور</p>
-        <ToggleRow label="إشعار الغياب" subtitle="للأهل فور إغلاق الكشف" checked={local.notifyAbsent ?? true} onChange={v => update('notifyAbsent', v)} />
-        <ToggleRow label="إشعار الحضور" subtitle="تأكيد وصول الطالب" checked={local.notifyPresent ?? false} onChange={v => update('notifyPresent', v)} />
-        <ToggleRow label="إشعار التأخير" checked={local.notifyLate ?? true} onChange={v => update('notifyLate', v)} />
-        <ToggleRow label="تنبيه 3 غيابات متتالية" checked={local.notify3Absences ?? true} onChange={v => update('notify3Absences', v)} />
+        <ToggleRow label="إشعار الغياب" subtitle="للأهل فور إغلاق الكشف" checked={local.notifyAbsent ?? true} onChange={v => update('notifyAbsent', v)} disabled={!canEdit} />
+        <ToggleRow label="إشعار الحضور" subtitle="تأكيد وصول الطالب" checked={local.notifyPresent ?? false} onChange={v => update('notifyPresent', v)} disabled={!canEdit} />
+        <ToggleRow label="إشعار التأخير" checked={local.notifyLate ?? true} onChange={v => update('notifyLate', v)} disabled={!canEdit} />
+        <ToggleRow label="تنبيه 3 غيابات متتالية" checked={local.notify3Absences ?? true} onChange={v => update('notify3Absences', v)} disabled={!canEdit} />
       </div>
 
       <div>
         <p className="text-xs font-medium text-gray-500 mb-2">إشعارات المدفوعات</p>
-        <ToggleRow label="إيصال الدفع الفوري" checked={local.notifyPaymentConfirm ?? true} onChange={v => update('notifyPaymentConfirm', v)} />
-        <ToggleRow label="تذكير قبل الاستحقاق (7 أيام)" checked={local.notifyPaymentDue7d ?? true} onChange={v => update('notifyPaymentDue7d', v)} />
-        <ToggleRow label="تذكير قبل الاستحقاق (يوم)" checked={local.notifyPaymentDue1d ?? true} onChange={v => update('notifyPaymentDue1d', v)} />
-        <ToggleRow label="تنبيه التأخر في السداد" checked={local.notifyPaymentOverdue ?? true} onChange={v => update('notifyPaymentOverdue', v)} />
+        <ToggleRow label="إيصال الدفع الفوري" checked={local.notifyPaymentConfirm ?? true} onChange={v => update('notifyPaymentConfirm', v)} disabled={!canEdit} />
+        <ToggleRow label="تذكير قبل الاستحقاق (7 أيام)" checked={local.notifyPaymentDue7d ?? true} onChange={v => update('notifyPaymentDue7d', v)} disabled={!canEdit} />
+        <ToggleRow label="تذكير قبل الاستحقاق (يوم)" checked={local.notifyPaymentDue1d ?? true} onChange={v => update('notifyPaymentDue1d', v)} disabled={!canEdit} />
+        <ToggleRow label="تنبيه التأخر في السداد" checked={local.notifyPaymentOverdue ?? true} onChange={v => update('notifyPaymentOverdue', v)} disabled={!canEdit} />
       </div>
 
       <div>
         <p className="text-xs font-medium text-gray-500 mb-2">إشعارات الطلاب</p>
-        <ToggleRow label="ترحيب بالطالب الجديد" checked={local.notifyNewStudent ?? true} onChange={v => update('notifyNewStudent', v)} />
-        <ToggleRow label="إضافة لمجموعة" checked={local.notifyGroupAdded ?? true} onChange={v => update('notifyGroupAdded', v)} />
-        <ToggleRow label="إزالة من مجموعة" checked={local.notifyGroupRemoved ?? false} onChange={v => update('notifyGroupRemoved', v)} />
-        <ToggleRow label="إرسال كارت الطالب" checked={local.notifyStudentCard ?? false} onChange={v => update('notifyStudentCard', v)} />
+        <ToggleRow label="ترحيب بالطالب الجديد" checked={local.notifyNewStudent ?? true} onChange={v => update('notifyNewStudent', v)} disabled={!canEdit} />
+        <ToggleRow label="إضافة لمجموعة" checked={local.notifyGroupAdded ?? true} onChange={v => update('notifyGroupAdded', v)} disabled={!canEdit} />
+        <ToggleRow label="إزالة من مجموعة" checked={local.notifyGroupRemoved ?? false} onChange={v => update('notifyGroupRemoved', v)} disabled={!canEdit} />
+        <ToggleRow label="إرسال كارت الطالب" checked={local.notifyStudentCard ?? false} onChange={v => update('notifyStudentCard', v)} disabled={!canEdit} />
       </div>
 
       <div>
         <p className="text-xs font-medium text-gray-500 mb-2">Anti-Ban</p>
-        <ToggleRow label="Warm-up تلقائي" subtitle="للأرقام الجديدة — يزيد الحد تدريجياً" checked={local.warmupEnabled ?? true} onChange={v => update('warmupEnabled', v)} />
+        <ToggleRow label="Warm-up تلقائي" subtitle="للأرقام الجديدة — يزيد الحد تدريجياً" checked={local.warmupEnabled ?? true} onChange={v => update('warmupEnabled', v)} disabled={!canEdit} />
       </div>
     </div>
   );

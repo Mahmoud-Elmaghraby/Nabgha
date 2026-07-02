@@ -396,6 +396,15 @@ export class WaInboundRepository implements IWaInboundRepository {
     return rows.map(this.toEntity);
   }
 
+  async findById(tenantId: string, id: string): Promise<WaInboundMessageEntity | null> {
+    const db = this.kysely.getTenantDb(tenantId);
+    const row = await db.selectFrom('wa_inbound_messages').selectAll()
+      .where('tenant_id', '=', sql<string>`${tenantId}::uuid`)
+      .where('id', '=', sql<string>`${id}::uuid`)
+      .executeTakeFirst();
+    return row ? this.toEntity(row) : null;
+  }
+
   private toEntity(row: any): WaInboundMessageEntity {
     return new WaInboundMessageEntity(
       row.id, row.tenant_id, row.phone, row.body,

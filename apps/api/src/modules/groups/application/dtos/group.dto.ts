@@ -8,16 +8,16 @@ const ScheduleItemSchema = z.object({
 
 export const CreateGroupSchema = z.object({
   name: z.string().min(2, 'اسم المجموعة يجب أن يكون حرفين على الأقل').max(255),
-  subjectGradeId: z.string().uuid('معرف الصف غير صحيح').nullable().optional(),
-  teacherId: z.string().uuid('معرف المدرس غير صحيح').nullable().optional(),
+  subjectGradeId: z.string().uuid('يجب اختيار المادة والصف'),
+  teacherId: z.string().uuid('يجب اختيار المدرس'),
   maxStudents: z.number().int().min(1).max(200).default(30),
   schedule: z.array(ScheduleItemSchema).default([]),
 });
 
 export const UpdateGroupSchema = z.object({
   name: z.string().min(2).max(255).optional(),
-  subjectGradeId: z.string().uuid().nullable().optional(),
-  teacherId: z.string().uuid().nullable().optional(),
+  subjectGradeId: z.string().uuid('يجب اختيار المادة والصف').optional(),
+  teacherId: z.string().uuid('يجب اختيار المدرس').optional(),
   maxStudents: z.number().int().min(1).max(200).optional(),
   schedule: z.array(ScheduleItemSchema).optional(),
   isActive: z.boolean().optional(),

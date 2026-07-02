@@ -32,7 +32,10 @@ export function useDues(params: ListDuesParams) {
 
 export function useDueMutations() {
   const qc = useQueryClient();
-  const invalidate = () => qc.invalidateQueries({ queryKey: ['finance', 'dues'] });
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ['finance', 'dues'] });
+    qc.invalidateQueries({ queryKey: ['finance'] }); // يشمل نتائج البحث في التحصيل السريع
+  };
   const generate = useMutation({ mutationFn: financeApi.generateDues, onSuccess: invalidate });
   const update = useMutation({
     mutationFn: ({ id, data }: { id: string; data: any }) => financeApi.updateDue(id, data),
@@ -42,7 +45,8 @@ export function useDueMutations() {
     mutationFn: ({ id, notes }: { id: string; notes?: string }) => financeApi.waiveDue(id, notes),
     onSuccess: invalidate,
   });
-  return { generate, update, waive };
+  const createManual = useMutation({ mutationFn: financeApi.createManualDue, onSuccess: invalidate });
+  return { generate, update, waive, createManual };
 }
 
 export function usePayments(params: ListPaymentsParams) {

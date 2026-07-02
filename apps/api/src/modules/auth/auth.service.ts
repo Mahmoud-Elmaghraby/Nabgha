@@ -132,7 +132,11 @@ export class AuthService {
     const secret = this.config.get<string>('JWT_SECRET') as string;
     const accessToken = this.jwt.sign(payload, { secret, expiresIn: '15m' });
     const refreshToken = this.jwt.sign(payload, { secret, expiresIn: '30d' });
-    return { accessToken, refreshToken, user: { id: user.id, name: user.name, username: user.username, role: user.role } };
+    return {
+      accessToken,
+      refreshToken,
+      user: { id: user.id, name: user.name, username: user.username, role: user.role, permissions },
+    };
   }
 
   async platformLogin(email: string, password: string) {
@@ -156,7 +160,13 @@ export class AuthService {
       const secret = this.config.get<string>('JWT_SECRET') as string;
       const payload = this.jwt.verify(token, { secret }) as any;
       const newAccessToken = this.jwt.sign(
-        { sub: payload.sub, tenantId: payload.tenantId, role: payload.role, type: payload.type },
+        {
+          sub: payload.sub,
+          tenantId: payload.tenantId,
+          role: payload.role,
+          permissions: payload.permissions ?? [],
+          type: payload.type,
+        },
         { secret, expiresIn: '15m' },
       );
       return { accessToken: newAccessToken };

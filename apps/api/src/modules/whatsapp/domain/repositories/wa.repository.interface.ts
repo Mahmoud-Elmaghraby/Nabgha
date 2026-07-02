@@ -74,6 +74,7 @@ export interface IWaInboundRepository {
     offset?: number;
   }): Promise<{ data: WaInboundMessageEntity[]; total: number }>;
   findByPhone(tenantId: string, phone: string): Promise<WaInboundMessageEntity[]>;
+  findById(tenantId: string, id: string): Promise<WaInboundMessageEntity | null>;
 }
 
 export const WA_SESSION_REPOSITORY = Symbol('IWaSessionRepository');

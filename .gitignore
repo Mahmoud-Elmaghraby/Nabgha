@@ -50,3 +50,4 @@ apps/api/nabgha-server.exe
 
 # Installer tools (Node.js + PostgreSQL binaries)
 tools/
+apps/api/Nabgha/

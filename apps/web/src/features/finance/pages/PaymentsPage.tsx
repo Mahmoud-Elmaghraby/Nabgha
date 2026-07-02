@@ -1,11 +1,15 @@
 import { useState } from 'react';
+import { useToast } from '@/shared/components/Toast';
 import { usePayments, usePaymentMutations } from '../hooks/useFinance';
 import { PAYMENT_METHOD_LABELS, PAYMENT_STATUS_LABELS } from '../types/finance.types';
 import { FinanceLayout } from '../components/FinanceLayout';
 import { ThermalReceipt } from '../components/ThermalReceipt';
+import { usePermissions } from '@/shared/hooks/usePermissions';
 import type { Payment, PaymentStatus } from '../types/finance.types';
 
 export default function PaymentsPage() {
+  const { hasPermission } = usePermissions();
+  const canManage = hasPermission('finance.manage');
   const [statusFilter, setStatusFilter] = useState<PaymentStatus | ''>('');
   const [search, setSearch] = useState('');
   const [cancelModal, setCancelModal] = useState<Payment | null>(null);
@@ -16,6 +20,7 @@ export default function PaymentsPage() {
   const [refundNotes, setRefundNotes] = useState('');
 
   const { data, isLoading } = usePayments({ status: statusFilter || undefined, limit: 100 });
+  const toast = useToast();
   const { cancel, refund } = usePaymentMutations();
 
   const allPayments = data?.data ?? [];
@@ -30,7 +35,7 @@ export default function PaymentsPage() {
     try {
       await cancel.mutateAsync({ id: cancelModal.id, reason: cancelReason });
       setCancelModal(null); setCancelReason('');
-    } catch (err: any) { alert(err?.response?.data?.error?.message || 'حدث خطأ'); }
+    } catch (err: any) { toast.error(err?.response?.data?.error?.message || 'حدث خطأ'); }
   };
 
   const handleRefund = async () => {
@@ -38,7 +43,7 @@ export default function PaymentsPage() {
     try {
       await refund.mutateAsync({ id: refundModal.id, amount: Number(refundAmount), notes: refundNotes || undefined });
       setRefundModal(null); setRefundAmount(''); setRefundNotes('');
-    } catch (err: any) { alert(err?.response?.data?.error?.message || 'حدث خطأ'); }
+    } catch (err: any) { toast.error(err?.response?.data?.error?.message || 'حدث خطأ'); }
   };
 
   return (
@@ -100,7 +105,7 @@ export default function PaymentsPage() {
                         </svg>
                         طباعة
                       </button>
-                      {p.status === 'paid' && (
+                      {canManage && p.status === 'paid' && (
                         <>
                           <button onClick={() => { setRefundModal(p); setRefundAmount(String(p.amount)); }}
                             className="text-xs px-2 py-1 border border-orange-200 text-orange-600 rounded-lg hover:bg-orange-50 transition-colors">
@@ -134,6 +139,7 @@ export default function PaymentsPage() {
             month: printReceipt.month,
             treasuryName: printReceipt.treasuryName ?? undefined,
             paidAt: printReceipt.paidAt,
+            monthlyDueId: printReceipt.monthlyDueId,
           }}
           onClose={() => setPrintReceipt(null)}
         />

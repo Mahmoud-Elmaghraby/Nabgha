@@ -8,7 +8,7 @@ import { KyselyService } from "../../../../shared/infrastructure/database/kysely
 import { PrismaService } from "../../../../shared/infrastructure/database/prisma.service";
 import type {
   CreateTreasuryDto, UpdateTreasuryDto, GenerateDuesDto, UpdateDueDto,
-  CreatePaymentDto, CancelPaymentDto, RefundPaymentDto,
+  CreatePaymentDto, CancelPaymentDto, RefundPaymentDto, CreateManualDueDto,
   ListDuesDto, ListPaymentsDto, CreateExpenseDto, UpdateExpenseDto, ListExpensesDto,
 } from '../dtos/finance.dto';
 
@@ -64,7 +64,7 @@ export class FinanceUseCase {
     return due;
   }
 
-  async generateDues(tenantId: string, data: GenerateDuesDto, userId: string): Promise<{ created: number; skipped: number }> {
+  async generateDues(tenantId: string, data: GenerateDuesDto, userId?: string): Promise<{ created: number; skipped: number }> {
     const enrollments = await this.repo.getActiveEnrollments(tenantId);
     let created = 0;
     let skipped = 0;
@@ -108,9 +108,32 @@ export class FinanceUseCase {
     return due;
   }
 
+  // فاتورة يدوية — للدفع المقدم لشهر لسه ما اتولدش، أو تسجيل اشتراك طالب جديد
+  // انضم في نص الشهر (يوم 20 مثلاً) ومحتاج فاتورة بمبلغ مختلف عن السعر الكامل
+  async createManualDue(tenantId: string, data: CreateManualDueDto, userId: string) {
+    const exists = await this.repo.dueExists(tenantId, data.studentId, data.subjectGradeId, data.month);
+    if (exists) {
+      throw new AppError('ALREADY_EXISTS', 'يوجد بالفعل فاتورة لنفس الطالب والمادة في هذا الشهر', 409);
+    }
+    const due = await this.repo.createDue(tenantId, {
+      studentId: data.studentId,
+      subjectGradeId: data.subjectGradeId,
+      month: data.month,
+      dueAmount: data.dueAmount,
+      discountApplied: 0,
+      notes: data.notes,
+      createdBy: userId,
+    });
+    this.logger.log(`Manual due created: ${due.id} — student: ${data.studentId} — amount: ${data.dueAmount}`);
+    return due;
+  }
+
   async waiveDue(tenantId: string, id: string, notes?: string) {
     const due = await this.getDue(tenantId, id);
     if (due.status === 'paid') throw new AppError('INVALID_STATUS', 'الفاتورة مدفوعة بالفعل', 400);
+    if (due.paidAmount > 0) {
+      throw new AppError('INVALID_STATUS', 'لا يمكن إعفاء فاتورة تم تحصيل مبلغ منها بالفعل — استخدم استرجاع الدفعة بدلاً من ذلك', 400);
+    }
     due.waive();
     if (notes) due.notes = notes;
     await this.repo.saveDue(tenantId, due);
@@ -182,6 +205,10 @@ export class FinanceUseCase {
     const due = await this.getDue(tenantId, payment.monthlyDueId);
     const treasury = await this.getTreasury(tenantId, payment.treasuryId);
 
+    if (payment.amount > treasury.balance) {
+      throw new AppError('INSUFFICIENT_BALANCE', `رصيد الخزينة الحالي (${treasury.balance} جنيه) أقل من مبلغ الإيصال — لا يمكن الإلغاء الآن`, 400);
+    }
+
     const balanceBefore = treasury.balance;
     treasury.debit(payment.amount);
     due.reversePayment(payment.amount);
@@ -214,6 +241,10 @@ export class FinanceUseCase {
 
     const due = await this.getDue(tenantId, payment.monthlyDueId);
     const treasury = await this.getTreasury(tenantId, payment.treasuryId);
+
+    if (data.amount > treasury.balance) {
+      throw new AppError('INSUFFICIENT_BALANCE', `رصيد الخزينة الحالي (${treasury.balance} جنيه) أقل من مبلغ الاسترجاع المطلوب`, 400);
+    }
 
     const balanceBefore = treasury.balance;
     treasury.debit(data.amount);
@@ -401,7 +432,8 @@ export class FinanceUseCase {
       let totalSkipped = 0;
       for (const tenant of tenants) {
         try {
-          const result = await this.generateDues(tenant.id, { month }, 'system');
+          // بدون userId — بيتخزن created_by = NULL بدل محاولة تحويل نص 'system' لـ UUID (كان بيفشل قبل كده)
+          const result = await this.generateDues(tenant.id, { month });
           totalCreated += result.created;
           totalSkipped += result.skipped;
           this.logger.log(`Tenant ${tenant.id}: ${result.created} created, ${result.skipped} skipped`);

@@ -1,6 +1,6 @@
 export type SessionType = 'lesson' | 'lesson_revision' | 'lesson_exam' | 'exam' | 'grade_exam';
 export type SessionStatus = 'scheduled' | 'ongoing' | 'completed' | 'cancelled';
-export type AttendanceStatus = 'present' | 'absent' | 'late';
+export type AttendanceStatus = 'present' | 'absent' | 'late' | 'excused';
 
 export const SESSION_TYPE_LABELS: Record<SessionType, string> = {
   lesson:           'حصة عادية',
@@ -21,6 +21,7 @@ export const ATTENDANCE_STATUS_LABELS: Record<AttendanceStatus, { label: string;
   present: { label: 'حاضر',   class: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
   absent:  { label: 'غايب',   class: 'bg-red-50 text-red-600 border-red-200' },
   late:    { label: 'متأخر',  class: 'bg-amber-50 text-amber-700 border-amber-200' },
+  excused: { label: 'معذور',  class: 'bg-purple-50 text-purple-700 border-purple-200' },
 };
 
 export interface AttendanceRecord {
@@ -97,6 +98,17 @@ export interface BulkUpdateAttendancePayload {
   }[];
 }
 
+export interface AddExternalAttendanceIdentifier {
+  studentId?: string;
+  studentCode?: string;
+}
+
+export interface AddExternalAttendanceResult {
+  attendance: AttendanceRecord;
+  excusedAbsence: boolean;
+  creditCreated: boolean;
+}
+
 export interface ListSessionsParams {
   type?: SessionType;
   groupId?: string;
@@ -106,6 +118,15 @@ export interface ListSessionsParams {
   to?: string;
   page?: number;
   limit?: number;
+}
+
+export interface AbsenceReportRow {
+  studentId: string;
+  studentName: string;
+  studentCode: string;
+  parentPhone: string | null;
+  absentCount: number;
+  totalSessions: number;
 }
 
 // ─── Helper functions ─────────────────────────────────────

@@ -9,11 +9,14 @@ import type { StudentDto } from '../types/student.types';
 
 const FormSchema = z.object({
   fullName: z.string().min(2, 'الاسم يجب أن يكون حرفين على الأقل'),
-  parentPhone: z.string().min(7, 'رقم الهاتف غير صحيح'),
-  studentPhone: z.string().optional().or(z.literal('')),
+  parentPhone: z.string().min(7, 'رقم هاتف ولي الأمر غير صحيح'),
+  studentPhone: z.string().min(7, 'رقم هاتف الطالب غير صحيح'),
   dateOfBirth: z.string().optional().or(z.literal('')),
-  grade: z.string().optional(),
-  notes: z.string().optional(),
+  grade: z.string().min(1, 'المرحلة الدراسية مطلوبة'),
+  address: z.string().optional().or(z.literal('')),
+  school: z.string().optional().or(z.literal('')),
+  parentOccupation: z.string().optional().or(z.literal('')),
+  notes: z.string().optional().or(z.literal('')),
 });
 
 type FormValues = z.infer<typeof FormSchema>;
@@ -42,10 +45,16 @@ export function StudentFormModal({ open, onClose, student }: Props) {
         studentPhone: student.studentPhone || '',
         dateOfBirth: student.dateOfBirth ? student.dateOfBirth.split('T')[0] : '',
         grade: student.grade || '',
+        address: student.address || '',
+        school: student.school || '',
+        parentOccupation: student.parentOccupation || '',
         notes: student.notes || '',
       });
     } else {
-      reset({ fullName: '', parentPhone: '', studentPhone: '', dateOfBirth: '', grade: '', notes: '' });
+      reset({
+        fullName: '', parentPhone: '', studentPhone: '', dateOfBirth: '',
+        grade: '', address: '', school: '', parentOccupation: '', notes: '',
+      });
     }
   }, [open, student, reset]);
 
@@ -53,9 +62,12 @@ export function StudentFormModal({ open, onClose, student }: Props) {
     const payload = {
       fullName: data.fullName,
       parentPhone: data.parentPhone,
-      studentPhone: data.studentPhone || null,
+      studentPhone: data.studentPhone,
       dateOfBirth: data.dateOfBirth || null,
-      grade: data.grade || null,
+      grade: data.grade,
+      address: data.address || null,
+      school: data.school || null,
+      parentOccupation: data.parentOccupation || null,
       notes: data.notes || null,
     };
     if (isEdit && student) {
@@ -69,7 +81,7 @@ export function StudentFormModal({ open, onClose, student }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-lg bg-white rounded-2xl shadow-xl border-0 p-6" dir="rtl" aria-describedby={undefined}>
+      <DialogContent className="max-w-lg bg-white rounded-2xl shadow-xl border-0 p-6 max-h-[90vh] overflow-y-auto" dir="rtl" aria-describedby={undefined}>
         <DialogHeader>
           <DialogTitle className="text-lg font-bold text-gray-900">
             {isEdit ? 'تعديل بيانات الطالب' : 'إضافة طالب جديد'}
@@ -90,26 +102,48 @@ export function StudentFormModal({ open, onClose, student }: Props) {
               {errors.parentPhone && <p className="text-red-500 text-xs mt-1">{errors.parentPhone.message}</p>}
             </div>
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                هاتف الطالب <span className="text-gray-400 font-normal">(اختياري)</span>
-              </label>
+              <label className="block text-sm font-semibold text-gray-700 mb-1.5">هاتف الطالب *</label>
               <input {...register('studentPhone')} className={inputClass} placeholder="01234567890" dir="ltr" />
+              {errors.studentPhone && <p className="text-red-500 text-xs mt-1">{errors.studentPhone.message}</p>}
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1.5">المرحلة الدراسية</label>
+              <label className="block text-sm font-semibold text-gray-700 mb-1.5">المرحلة الدراسية *</label>
               <select {...register('grade')} className={inputClass}>
                 <option value="">اختر المرحلة</option>
                 {GRADE_OPTIONS.map(g => <option key={g} value={g}>{g}</option>)}
               </select>
+              {errors.grade && <p className="text-red-500 text-xs mt-1">{errors.grade.message}</p>}
             </div>
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1.5">
                 تاريخ الميلاد <span className="text-gray-400 font-normal">(اختياري)</span>
               </label>
               <input {...register('dateOfBirth')} type="date" className={inputClass} />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+              المدرسة <span className="text-gray-400 font-normal">(اختياري)</span>
+            </label>
+            <input {...register('school')} className={inputClass} placeholder="مدرسة النصر الثانوية" />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                وظيفة ولي الأمر <span className="text-gray-400 font-normal">(اختياري)</span>
+              </label>
+              <input {...register('parentOccupation')} className={inputClass} placeholder="مهندس" />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                العنوان <span className="text-gray-400 font-normal">(اختياري)</span>
+              </label>
+              <input {...register('address')} className={inputClass} placeholder="شارع، منطقة، مدينة" />
             </div>
           </div>
 

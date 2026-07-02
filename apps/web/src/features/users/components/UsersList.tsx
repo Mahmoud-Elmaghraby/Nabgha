@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useDeleteUser } from '../hooks/useUserMutations';
+import { useConfirm } from '@/shared/components/Confirm';
 import type { UserDto } from '../types/user.types';
 import { getAvatarColor } from './avatarColor';
 import { getRoleLabel } from '@nabgha/types';
@@ -20,11 +21,12 @@ interface UsersListProps {
 }
 
 export function UsersList({ users, onEdit, isLoading }: UsersListProps) {
+  const confirm = useConfirm();
   const { mutate: deleteUser } = useDeleteUser();
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const handleDelete = (id: string) => {
-    if (!confirm('هل أنت متأكد من حذف هذا المستخدم؟')) return;
+  const handleDelete = async (id: string) => {
+    if (!(await confirm('هل أنت متأكد من حذف هذا المستخدم؟', { danger: true }))) return;
     setDeletingId(id);
     deleteUser(id, { onSettled: () => setDeletingId(null) });
   };
@@ -72,7 +74,8 @@ export function UsersList({ users, onEdit, isLoading }: UsersListProps) {
       header: 'الصلاحيات',
       hideOnMobile: true,
       render: (user) =>
-        user.permissions.includes('*') ? (
+        // tenant_admin عنده bypass كامل حتى لو permissions فاضية في الداتابيز — نفس منطق PermissionGuard
+        user.role === 'tenant_admin' || user.permissions.includes('*') ? (
           <span className="inline-flex items-center gap-1 text-xs font-medium text-[#D4AB53]">
             <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />

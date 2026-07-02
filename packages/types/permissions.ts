@@ -70,19 +70,16 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
       { key: 'sessions.create', label: 'إضافة حصة' },
       { key: 'sessions.edit', label: 'تعديل حصة' },
       { key: 'sessions.delete', label: 'حذف حصة' },
-  { key: 'finance.view', label: 'عرض الحسابات' },
-  { key: 'finance.collect', label: 'تحصيل المدفوعات' },
-  { key: 'finance.manage', label: 'إدارة الحسابات' },
       { key: 'sessions.attendance', label: 'تسجيل الحضور' },
     ],
   },
   {
-    group: 'payments',
-    groupLabel: 'المدفوعات',
+    group: 'finance',
+    groupLabel: 'المالية',
     permissions: [
-      { key: 'payments.view', label: 'عرض المدفوعات' },
-      { key: 'payments.create', label: 'إضافة دفعة' },
-      { key: 'payments.pay', label: 'تسجيل دفع' },
+      { key: 'finance.view', label: 'عرض الحسابات' },
+      { key: 'finance.collect', label: 'تحصيل المدفوعات' },
+      { key: 'finance.manage', label: 'إدارة الحسابات (الخزائن والمصروفات)' },
     ],
   },
   {
@@ -91,6 +88,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     permissions: [
       { key: 'reports.view', label: 'عرض التقارير' },
       { key: 'reports.export', label: 'تصدير التقارير' },
+      { key: 'reports.send_whatsapp', label: 'إرسال رسائل واتساب جماعية' },
     ],
   },
   {
@@ -119,7 +117,7 @@ export function getPermissionLabel(key: string): string {
 export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, string[]> = {
   tenant_admin: ['*'],
   teacher: ['students.view', 'groups.view', 'sessions.view', 'sessions.attendance', 'reports.view', 'teachers.view'],
-  secretary: ['students.view', 'students.create', 'students.edit', 'sessions.view', 'sessions.create', 'sessions.edit', 'sessions.attendance', 'payments.view', 'payments.create', 'teachers.view', 'groups.view'],
+  secretary: ['students.view', 'students.create', 'students.edit', 'sessions.view', 'sessions.create', 'sessions.edit', 'sessions.attendance', 'finance.view', 'finance.collect', 'teachers.view', 'groups.view'],
   parent: ['students.view'],
 };
 

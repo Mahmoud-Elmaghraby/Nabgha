@@ -21,6 +21,7 @@ export class BaileysProvider implements IWaProvider, OnModuleDestroy {
   private connectedCallbacks = new Map<string, (phone: string) => void>();
   private disconnectedCallbacks = new Map<string, (reason: string) => void>();
   private messageCallbacks = new Map<string, (phone: string, body: string) => void>();
+  private reconnectAttempts = new Map<string, number>();
 
   constructor(@Inject('REDIS_CLIENT') private readonly redis: Redis) {}
 
@@ -31,9 +32,17 @@ export class BaileysProvider implements IWaProvider, OnModuleDestroy {
   }
 
   async connect(tenantId: string): Promise<void> {
-    if (this.sockets.has(tenantId)) {
+    const currentState = this.states.get(tenantId);
+    if (currentState?.status === 'connected') {
       this.logger.log(`Already connected for tenant ${tenantId}`);
       return;
+    }
+
+    // لو فيه socket قديم عالق (QR منتهي الصلاحية مثلاً)، نقفله ونبدأ من جديد للحصول على QR جديد
+    const staleSocket = this.sockets.get(tenantId);
+    if (staleSocket) {
+      try { staleSocket.end(undefined); } catch {}
+      this.sockets.delete(tenantId);
     }
 
     const sessionDir = this.getSessionDir(tenantId);
@@ -74,6 +83,7 @@ export class BaileysProvider implements IWaProvider, OnModuleDestroy {
         this.connectedCallbacks.get(tenantId)?.(phone);
         await this.redis.set(`wa:status:${tenantId}`, 'connected');
         await this.redis.set(`wa:phone:${tenantId}`, phone);
+        this.reconnectAttempts.delete(tenantId);
         this.logger.log(`Tenant ${tenantId} connected — phone: ${phone}`);
       }
 
@@ -88,10 +98,15 @@ export class BaileysProvider implements IWaProvider, OnModuleDestroy {
         this.sockets.delete(tenantId);
 
         if (shouldReconnect) {
-          this.logger.warn(`Tenant ${tenantId} disconnected — reconnecting...`);
-          setTimeout(() => this.connect(tenantId), 3000);
+          // تصاعد أُسّي للتأخير — بدل محاولة كل 3 ثواني للأبد (خطر لو المشكلة حظر مؤقت)
+          const attempts = (this.reconnectAttempts.get(tenantId) ?? 0) + 1;
+          this.reconnectAttempts.set(tenantId, attempts);
+          const delay = Math.min(3000 * Math.pow(2, attempts - 1), 5 * 60 * 1000);
+          this.logger.warn(`Tenant ${tenantId} disconnected — reconnecting in ${Math.round(delay / 1000)}s (attempt ${attempts})`);
+          setTimeout(() => this.connect(tenantId), delay);
         } else {
           this.logger.warn(`Tenant ${tenantId} logged out`);
+          this.reconnectAttempts.delete(tenantId);
           fs.rmSync(this.getSessionDir(tenantId), { recursive: true, force: true });
         }
       }

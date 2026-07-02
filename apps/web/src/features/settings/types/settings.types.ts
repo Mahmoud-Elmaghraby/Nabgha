@@ -3,6 +3,7 @@ export interface CenterSettingsDto {
   centerName: string;
   centerLogoUrl: string | null;
   centerPhone: string | null;
+  centerPhone2: string | null;
   centerAddress: string | null;
   currency: string;
   currencySymbol: string;
@@ -10,3 +11,9 @@ export interface CenterSettingsDto {
 }
 
 export type UpdateCenterSettingsPayload = Partial<Omit<CenterSettingsDto, 'id'>>;
+
+export type BrandingMode = 'center' | 'teacher';
+
+export interface BrandingSettingsDto {
+  mode: BrandingMode;
+}

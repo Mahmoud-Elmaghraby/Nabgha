@@ -46,6 +46,16 @@ export const ScanQrSchema = z.object({
   qrCode: z.string().min(1, 'QR code مطلوب'),
 });
 
+// إضافة طالب "بديل" (مش من روستر المجموعة الأصلية للحصة) عبر QR أو بحث بالاسم
+// studentId لمسار البحث بالاسم (عندنا المعرف الداخلي جاهز أصلاً من نتيجة البحث)
+// studentCode لمسار مسح الباركود (الباركود يحمل الكود الظاهري بس، مش المعرف الداخلي)
+export const AddExternalAttendanceSchema = z.object({
+  studentId: z.string().uuid().optional(),
+  studentCode: z.string().min(1).optional(),
+}).refine(data => !!data.studentId || !!data.studentCode, {
+  message: 'يجب توفير معرف الطالب أو كوده',
+});
+
 export const ListSessionsSchema = z.object({
   type: z.enum(['lesson', 'lesson_revision', 'lesson_exam', 'exam', 'grade_exam']).optional(),
   groupId: z.string().uuid().optional(),
@@ -62,4 +72,5 @@ export type UpdateSessionDto = z.infer<typeof UpdateSessionSchema>;
 export type UpdateAttendanceDto = z.infer<typeof UpdateAttendanceSchema>;
 export type BulkUpdateAttendanceDto = z.infer<typeof BulkUpdateAttendanceSchema>;
 export type ScanQrDto = z.infer<typeof ScanQrSchema>;
+export type AddExternalAttendanceDto = z.infer<typeof AddExternalAttendanceSchema>;
 export type ListSessionsDto = z.infer<typeof ListSessionsSchema>;

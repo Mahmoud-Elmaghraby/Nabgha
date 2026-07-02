@@ -1,8 +1,10 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as Minio from 'minio';
 import * as fs from 'fs';
 import * as path from 'path';
+
+const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
 @Injectable()
 export class StorageService implements OnModuleInit {
@@ -64,6 +66,40 @@ export class StorageService implements OnModuleInit {
     }
   }
 
+  // ─── التحقق من magic bytes — مش بس الـ MIME type ─────────
+  private validateMagicBytes(buffer: Buffer, mimetype: string): boolean {
+    if (buffer.length < 12) return false;
+    const jpeg = buffer[0] === 0xFF && buffer[1] === 0xD8 && buffer[2] === 0xFF;
+    const png = buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47;
+    const webp = buffer[8] === 0x57 && buffer[9] === 0x45 && buffer[10] === 0x42 && buffer[11] === 0x50;
+    if (mimetype === 'image/jpeg' && !jpeg) return false;
+    if (mimetype === 'image/png' && !png) return false;
+    if (mimetype === 'image/webp' && !webp) return false;
+    return true;
+  }
+
+  /**
+   * دالة موحدة: تحقق كامل (نوع + magic bytes + حجم) ثم رفع الملف.
+   * تُستخدم من أي endpoint محتاج يرفع صورة — بدل تكرار نفس المنطق في كل كونترولر.
+   */
+  async validateAndUploadImage(
+    file: { buffer: Buffer; mimetype: string; originalname: string; size: number } | undefined,
+    folder: string,
+    maxSizeBytes: number,
+  ): Promise<string> {
+    if (!file) throw new BadRequestException('لم يتم رفع أي ملف');
+    if (file.size > maxSizeBytes) {
+      throw new BadRequestException(`حجم الملف يتجاوز ${Math.round(maxSizeBytes / (1024 * 1024))}MB`);
+    }
+    if (!ALLOWED_IMAGE_TYPES.includes(file.mimetype)) {
+      throw new BadRequestException('نوع الملف غير مدعوم — يُسمح فقط بـ JPEG, PNG, WebP');
+    }
+    if (!this.validateMagicBytes(file.buffer, file.mimetype)) {
+      throw new BadRequestException('الملف تالف أو غير صحيح');
+    }
+    return this.uploadFile(file.buffer, file.originalname, file.mimetype, folder);
+  }
+
   async uploadFile(
     buffer: Buffer,
     originalName: string,
@@ -93,13 +129,19 @@ export class StorageService implements OnModuleInit {
   async deleteFile(url: string): Promise<void> {
     try {
       if (this.isDesktop) {
-        const relativePath = url.replace('/storage/', '');
+        // شكل الرابط: /storage/{folder}/{fileName}
+        const relativePath = url.replace(/^\/storage\//, '');
         const fullPath = path.join(this.localStoragePath, relativePath);
         if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
         return;
       }
-      const urlObj = new URL(url);
-      const key = urlObj.pathname.replace(`/${this.bucket}/`, '');
+      // شكل الرابط: /storage/{bucket}/{folder}/{fileName} — رابط نسبي مش absolute URL
+      const prefix = `/storage/${this.bucket}/`;
+      if (!url.startsWith(prefix)) {
+        this.logger.warn(`URL format not recognized for deletion: ${url}`);
+        return;
+      }
+      const key = url.slice(prefix.length);
       await this.client.removeObject(this.bucket, key);
     } catch (err: any) {
       this.logger.warn(`Failed to delete file: ${err.message}`);

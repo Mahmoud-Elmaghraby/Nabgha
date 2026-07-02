@@ -5,8 +5,10 @@ import { TeacherFormModal } from '../components/TeacherFormModal';
 import type { TeacherDto } from '../types/teacher.types';
 import { PageHeader } from '@/shared/components';
 import { useDebounce } from '@/shared/hooks/useDebounce';
+import { usePermissions } from '@/shared/hooks/usePermissions';
 
 export default function TeachersPage() {
+  const { hasPermission } = usePermissions();
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 300);
   const [editingTeacher, setEditingTeacher] = useState<TeacherDto | null>(null);
@@ -21,7 +23,7 @@ export default function TeachersPage() {
       <PageHeader
         title="المدرسون"
         subtitle="إدارة مدرسي المركز"
-        actions={[{
+        actions={hasPermission('teachers.create') ? [{
           label: 'إضافة مدرس',
           onClick: () => setIsCreating(true),
           icon: (
@@ -29,7 +31,7 @@ export default function TeachersPage() {
               <path d="M12 5v14M5 12h14" strokeLinecap="round" />
             </svg>
           ),
-        }]}
+        }] : []}
       />
 
       <div className="px-4 md:px-6 py-4 bg-white border-b border-gray-100">

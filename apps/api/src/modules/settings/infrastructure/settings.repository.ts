@@ -21,6 +21,7 @@ export class CenterSettingsRepository {
       center_name: data.centerName ?? 'المركز التعليمي',
       center_logo_url: data.centerLogoUrl ?? null,
       center_phone: data.centerPhone ?? null,
+      center_phone_2: data.centerPhone2 ?? null,
       center_address: data.centerAddress ?? null,
       currency: data.currency ?? 'EGP',
       currency_symbol: data.currencySymbol ?? 'ج.م',
@@ -31,6 +32,7 @@ export class CenterSettingsRepository {
       center_name: data.centerName ?? 'المركز التعليمي',
       center_logo_url: data.centerLogoUrl ?? null,
       center_phone: data.centerPhone ?? null,
+      center_phone_2: data.centerPhone2 ?? null,
       center_address: data.centerAddress ?? null,
       currency: data.currency ?? 'EGP',
       currency_symbol: data.currencySymbol ?? 'ج.م',
@@ -47,6 +49,7 @@ export class CenterSettingsRepository {
       center_name: settings.centerName,
       center_logo_url: settings.centerLogoUrl,
       center_phone: settings.centerPhone,
+      center_phone_2: settings.centerPhone2,
       center_address: settings.centerAddress,
       currency: settings.currency,
       currency_symbol: settings.currencySymbol,
@@ -60,7 +63,7 @@ export class CenterSettingsRepository {
   private toEntity(row: any): CenterSettingsEntity {
     return new CenterSettingsEntity(
       row.id, row.center_name, row.center_logo_url,
-      row.center_phone, row.center_address,
+      row.center_phone, row.center_phone_2, row.center_address,
       row.currency, row.currency_symbol,
       row.academic_year, row.created_at, row.updated_at,
     );

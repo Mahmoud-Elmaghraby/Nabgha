@@ -41,8 +41,7 @@ export class HandleInboundUseCase {
   }
 
   async markRead(tenantId: string, messageId: string): Promise<void> {
-    const messages = await this.inboundRepo.findByTenantId(tenantId, { limit: 1 });
-    const msg = messages.data.find((m) => m.id === messageId);
+    const msg = await this.inboundRepo.findById(tenantId, messageId);
     if (msg) {
       msg.markRead();
       await this.inboundRepo.save(msg);

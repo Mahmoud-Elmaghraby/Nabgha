@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { IWaSettingsRepository, WA_SETTINGS_REPOSITORY } from '../../domain/repositories/wa.repository.interface';
 import { WaSettingsEntity } from '../../domain/entities/wa-settings.entity';
+import { AppError } from '../../../../core/errors/app.error';
 
 export interface UpdateSettingsInput {
   tenantId: string;
@@ -45,7 +46,7 @@ export class UpdateSettingsUseCase {
 
     if (data.delayMinSeconds !== undefined && data.delayMaxSeconds !== undefined) {
       if (data.delayMinSeconds > data.delayMaxSeconds) {
-        throw new Error('delay_min_cannot_exceed_max');
+        throw new AppError('VALIDATION_ERROR', 'الحد الأدنى للتأخير يجب أن يكون أصغر من أو يساوي الحد الأقصى', 400);
       }
     }
 

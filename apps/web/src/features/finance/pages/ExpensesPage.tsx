@@ -1,7 +1,10 @@
 import { useState } from 'react';
+import { useToast } from '@/shared/components/Toast';
+import { useConfirm } from '@/shared/components/Confirm';
 import { useExpenses, useExpenseMutations, useTreasuries } from '../hooks/useFinance';
 import { EXPENSE_CATEGORY_LABELS } from '../types/finance.types';
 import { FinanceLayout } from '../components/FinanceLayout';
+import { usePermissions } from '@/shared/hooks/usePermissions';
 import type { ExpenseCategory } from '../types/finance.types';
 
 const getCurrentMonthRange = () => {
@@ -13,12 +16,16 @@ const getCurrentMonthRange = () => {
 };
 
 export default function ExpensesPage() {
+  const { hasPermission } = usePermissions();
+  const canManage = hasPermission('finance.manage');
   const [categoryFilter, setCategoryFilter] = useState<ExpenseCategory | ''>('');
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ treasuryId: '', category: 'other' as ExpenseCategory, title: '', amount: '', expenseDate: new Date().toISOString().slice(0, 10), notes: '' });
 
   const { from, to } = getCurrentMonthRange();
   const { data, isLoading } = useExpenses({ category: categoryFilter || undefined, from, to, limit: 100 });
+  const toast = useToast();
+  const confirm = useConfirm();
   const { create, remove } = useExpenseMutations();
   const { data: treasuries = [] } = useTreasuries();
 
@@ -36,7 +43,7 @@ export default function ExpensesPage() {
       await create.mutateAsync({ treasuryId: form.treasuryId, category: form.category, title: form.title, amount: Number(form.amount), expenseDate: form.expenseDate || undefined, notes: form.notes || undefined });
       setShowForm(false);
       setForm({ treasuryId: treasuries[0]?.id || '', category: 'other', title: '', amount: '', expenseDate: new Date().toISOString().slice(0, 10), notes: '' });
-    } catch (err: any) { alert(err?.response?.data?.error?.message || 'حدث خطأ'); }
+    } catch (err: any) { toast.error(err?.response?.data?.error?.message || 'حدث خطأ'); }
   };
 
   return (
@@ -74,10 +81,12 @@ export default function ExpensesPage() {
             <option value="">كل الفئات</option>
             {Object.entries(EXPENSE_CATEGORY_LABELS).map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
           </select>
-          <button onClick={() => { setForm(p => ({ ...p, treasuryId: treasuries[0]?.id || '' })); setShowForm(true); }}
-            className="mr-auto bg-[#0E3B2E] text-white rounded-xl px-4 py-2 text-sm font-medium">
-            + مصروف جديد
-          </button>
+          {canManage && (
+            <button onClick={() => { setForm(p => ({ ...p, treasuryId: treasuries[0]?.id || '' })); setShowForm(true); }}
+              className="mr-auto bg-[#0E3B2E] text-white rounded-xl px-4 py-2 text-sm font-medium">
+              + مصروف جديد
+            </button>
+          )}
         </div>
 
         {/* List */}
@@ -103,12 +112,14 @@ export default function ExpensesPage() {
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <p className="font-bold text-red-600">{e.amount.toLocaleString('ar-EG')} ج</p>
-                    <button onClick={async () => { if (confirm('حذف هذا المصروف؟')) { try { await remove.mutateAsync(e.id); } catch(err: any) { alert(err?.response?.data?.error?.message || 'خطأ'); } } }}
-                      className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-red-50 text-red-400 transition-colors">
-                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/>
-                      </svg>
-                    </button>
+                    {canManage && (
+                      <button onClick={async () => { if (await confirm('حذف هذا المصروف؟', { danger: true })) { try { await remove.mutateAsync(e.id); } catch(err: any) { toast.error(err?.response?.data?.error?.message || 'خطأ'); } } }}
+                        className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-red-50 text-red-400 transition-colors">
+                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/>
+                        </svg>
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>

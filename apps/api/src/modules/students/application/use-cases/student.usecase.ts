@@ -5,7 +5,7 @@ import { AppError } from '../../../../core/errors/app.error';
 import type { CreateStudentDto, UpdateStudentDto, ListStudentsDto } from '../dtos/student.dto';
 import { randomUUID } from 'crypto';
 import { SendNotificationUseCase } from '../../../whatsapp/application/use-cases/send-notification.usecase';
-import { KyselyService } from '../../../../shared/infrastructure/database/kysely.service';
+import { BrandingService } from '../../../settings/application/services/branding.service';
 
 @Injectable()
 export class StudentUseCase {
@@ -14,7 +14,7 @@ export class StudentUseCase {
   constructor(
     private readonly repo: StudentRepository,
     private readonly sendNotification: SendNotificationUseCase,
-    private readonly kysely: KyselyService,
+    private readonly branding: BrandingService,
   ) {}
 
   async list(
@@ -98,11 +98,8 @@ export class StudentUseCase {
   }
 
   private async sendNewStudentNotification(tenantId: string, student: StudentEntity): Promise<void> {
-    const db = this.kysely.getTenantDb(tenantId);
-    const centerSettings = await db
-      .selectFrom('center_settings')
-      .select(['center_name'])
-      .executeTakeFirst();
+    // مفيش مدرس مرتبط بلحظة تسجيل الطالب (لسه مش متسجل في أي مادة) — هترجع بيانات المركز دايماً
+    const branding = await this.branding.getBrandingInfo(tenantId, {});
 
     const result = await this.sendNotification.execute({
       tenantId,
@@ -110,7 +107,7 @@ export class StudentUseCase {
       templateKey: 'NEW_STUDENT',
       vars: {
         student_name: student.fullName,
-        center_name: (centerSettings as any)?.center_name || 'المركز',
+        center_name: branding.name,
       },
     });
 

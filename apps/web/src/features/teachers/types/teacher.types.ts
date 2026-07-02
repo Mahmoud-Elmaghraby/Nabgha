@@ -2,6 +2,7 @@ export interface TeacherDto {
   id: string;
   name: string;
   phone: string | null;
+  phone2: string | null;
   email: string | null;
   subjectIds: string[];
   notes: string | null;
@@ -13,6 +14,7 @@ export interface TeacherDto {
 export interface CreateTeacherPayload {
   name: string;
   phone?: string | null;
+  phone2?: string | null;
   email?: string | null;
   subjectIds?: string[];
   notes?: string | null;
@@ -21,6 +23,7 @@ export interface CreateTeacherPayload {
 export interface UpdateTeacherPayload {
   name?: string;
   phone?: string | null;
+  phone2?: string | null;
   email?: string | null;
   subjectIds?: string[];
   notes?: string | null;

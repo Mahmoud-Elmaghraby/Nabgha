@@ -66,12 +66,13 @@ export class ConnectDeviceUseCase {
   async getStatus(tenantId: string): Promise<{ status: string; phone?: string; qrCode?: string; warmupDay?: number; dailyLimit?: number }> {
     const state = await this.provider.getConnectionState(tenantId);
     const session = await this.sessionRepo.findByTenantId(tenantId);
+    const settings = await this.settingsRepo.findByTenantId(tenantId);
     return {
       status: state.status,
       phone: state.phone ?? session?.phone ?? undefined,
       qrCode: session?.qrCode ?? undefined,
       warmupDay: session?.warmupDay,
-      dailyLimit: session?.currentDailyLimit,
+      dailyLimit: session ? session.getCurrentDailyLimit(settings?.dailyLimit ?? 50) : undefined,
     };
   }
 

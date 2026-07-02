@@ -7,6 +7,9 @@ export interface StudentDto {
   studentPhone: string | null;
   dateOfBirth: string | null;
   grade: string | null;
+  address: string | null;
+  school: string | null;
+  parentOccupation: string | null;
   notes: string | null;
   qrCode: string;
   studentCode: string | null;
@@ -18,18 +21,24 @@ export interface StudentDto {
 export interface CreateStudentPayload {
   fullName: string;
   parentPhone: string;
-  studentPhone?: string | null;
+  studentPhone: string;
   dateOfBirth?: string | null;
-  grade?: string | null;
+  grade: string;
+  address?: string | null;
+  school?: string | null;
+  parentOccupation?: string | null;
   notes?: string | null;
 }
 
 export interface UpdateStudentPayload {
   fullName?: string;
   parentPhone?: string;
-  studentPhone?: string | null;
+  studentPhone?: string;
   dateOfBirth?: string | null;
-  grade?: string | null;
+  grade?: string;
+  address?: string | null;
+  school?: string | null;
+  parentOccupation?: string | null;
   notes?: string | null;
   isActive?: boolean;
 }

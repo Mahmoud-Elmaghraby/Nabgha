@@ -15,9 +15,10 @@ import { HandleInboundUseCase } from '../application/use-cases/handle-inbound.us
 import { WaHealthMonitorUseCase } from '../application/use-cases/wa-health-monitor.usecase';
 import { SendNotificationUseCase } from '../application/use-cases/send-notification.usecase';
 import { GetMessagesUseCase } from '../application/use-cases/get-messages.usecase';
+import { ResolveAudienceUseCase } from '../application/use-cases/resolve-audience.usecase';
 import {
   UpdateSettingsSchema, UpdateTemplateSchema,
-  SendBulkSchema, SendTestSchema,
+  SendBulkSchema, SendTestSchema, ResolveAudienceSchema,
 } from '../application/dtos/wa.dto';
 import { WaTemplateKey } from '../domain/entities/wa-template.entity';
 import { AppError } from '../../../core/errors/app.error';
@@ -36,6 +37,7 @@ export class WaController {
     private readonly healthMonitor: WaHealthMonitorUseCase,
     private readonly sendNotification: SendNotificationUseCase,
     private readonly getMessages: GetMessagesUseCase,
+    private readonly resolveAudience: ResolveAudienceUseCase,
     @Inject(WA_PROVIDER) private readonly provider: IWaProvider,
   ) {}
 
@@ -124,6 +126,16 @@ export class WaController {
   @RequirePermission('settings.edit')
   async resetTemplate(@Request() req: any, @Param('key') key: string) {
     const data = await this.updateTemplate.resetToDefault(req.user.tenantId, key as WaTemplateKey);
+    return { success: true, data };
+  }
+
+  // ─── Audience Resolution (لتحديد المستلمين تلقائياً بدل الإدخال اليدوي) ───
+  @Get('audience')
+  @RequirePermission('reports.send_whatsapp')
+  async resolveAudienceHandler(@Request() req: any, @Query() query: any) {
+    const parsed = ResolveAudienceSchema.safeParse(query);
+    if (!parsed.success) throw new AppError('VALIDATION_ERROR', parsed.error.message, 400);
+    const data = await this.resolveAudience.execute(req.user.tenantId, parsed.data);
     return { success: true, data };
   }
 

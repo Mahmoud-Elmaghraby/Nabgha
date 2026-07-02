@@ -4,9 +4,10 @@ import { StudentUseCase } from './application/use-cases/student.usecase';
 import { StudentRepository } from './infrastructure/student.repository';
 import { WhatsAppModule } from '../whatsapp/whatsapp.module';
 import { DatabaseModule } from '../../shared/infrastructure/database/database.module';
+import { SettingsModule } from '../settings/settings.module';
 
 @Module({
-  imports: [WhatsAppModule, DatabaseModule],
+  imports: [WhatsAppModule, DatabaseModule, SettingsModule],
   controllers: [StudentController],
   providers: [StudentUseCase, StudentRepository],
   exports: [StudentUseCase, StudentRepository],

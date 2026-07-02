@@ -1,11 +1,18 @@
 import { useState } from 'react';
+import { useToast } from '@/shared/components/Toast';
+import { useConfirm } from '@/shared/components/Confirm';
 import { useTreasuries, useTreasuryMutations } from '../hooks/useFinance';
 import { TREASURY_TYPE_LABELS } from '../types/finance.types';
 import { FinanceLayout } from '../components/FinanceLayout';
+import { usePermissions } from '@/shared/hooks/usePermissions';
 import type { Treasury, TreasuryType } from '../types/finance.types';
 
 export default function TreasuriesPage() {
+  const { hasPermission } = usePermissions();
+  const canManage = hasPermission('finance.manage');
   const { data: treasuries = [], isLoading } = useTreasuries();
+  const toast = useToast();
+  const confirm = useConfirm();
   const { create, update, remove } = useTreasuryMutations();
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Treasury | null>(null);
@@ -20,7 +27,7 @@ export default function TreasuriesPage() {
       else { await create.mutateAsync(form); }
       setShowForm(false); setEditing(null);
       setForm({ name: '', type: 'cash', notes: '' });
-    } catch (err: any) { alert(err?.response?.data?.error?.message || 'حدث خطأ'); }
+    } catch (err: any) { toast.error(err?.response?.data?.error?.message || 'حدث خطأ'); }
   };
 
   const handleEdit = (t: Treasury) => {
@@ -28,9 +35,9 @@ export default function TreasuriesPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('حذف هذه الخزينة؟')) return;
+    if (!(await confirm('حذف هذه الخزينة؟', { danger: true }))) return;
     try { await remove.mutateAsync(id); }
-    catch (err: any) { alert(err?.response?.data?.error?.message || 'لا يمكن حذف خزينة بها رصيد'); }
+    catch (err: any) { toast.error(err?.response?.data?.error?.message || 'لا يمكن حذف خزينة بها رصيد'); }
   };
 
   return (
@@ -55,14 +62,16 @@ export default function TreasuriesPage() {
                     <p className="font-bold text-gray-900">{t.name}</p>
                     <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">{TREASURY_TYPE_LABELS[t.type]}</span>
                   </div>
-                  <div className="flex gap-1">
-                    <button onClick={() => handleEdit(t)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-500 transition-colors">
-                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                    </button>
-                    <button onClick={() => handleDelete(t.id)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-red-50 text-red-400 transition-colors">
-                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>
-                    </button>
-                  </div>
+                  {canManage && (
+                    <div className="flex gap-1">
+                      <button onClick={() => handleEdit(t)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-500 transition-colors">
+                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                      </button>
+                      <button onClick={() => handleDelete(t.id)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-red-50 text-red-400 transition-colors">
+                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+                      </button>
+                    </div>
+                  )}
                 </div>
                 <div className="mt-4 pt-4 border-t border-gray-50">
                   <p className="text-2xl font-bold text-[#0E3B2E]">{t.balance.toLocaleString('ar-EG')}</p>
@@ -75,10 +84,12 @@ export default function TreasuriesPage() {
         )}
 
         {/* Add */}
-        <button onClick={() => { setEditing(null); setForm({ name: '', type: 'cash', notes: '' }); setShowForm(true); }}
-          className="w-full py-3 border-2 border-dashed border-gray-200 rounded-2xl text-gray-400 hover:border-[#0E3B2E] hover:text-[#0E3B2E] transition-colors text-sm font-medium">
-          + إضافة خزينة جديدة
-        </button>
+        {canManage && (
+          <button onClick={() => { setEditing(null); setForm({ name: '', type: 'cash', notes: '' }); setShowForm(true); }}
+            className="w-full py-3 border-2 border-dashed border-gray-200 rounded-2xl text-gray-400 hover:border-[#0E3B2E] hover:text-[#0E3B2E] transition-colors text-sm font-medium">
+            + إضافة خزينة جديدة
+          </button>
+        )}
 
         {/* Form Modal */}
         {showForm && (

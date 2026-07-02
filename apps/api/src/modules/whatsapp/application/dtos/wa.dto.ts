@@ -39,6 +39,20 @@ export const SendBulkSchema = z.object({
   scheduledAt: z.string().datetime().optional(),
 });
 
+export const ResolveAudienceSchema = z.object({
+  type: z.enum(['all', 'group', 'subjectGrade', 'grade', 'teacher']),
+  groupId: z.string().uuid().optional(),
+  subjectGradeId: z.string().uuid().optional(),
+  grade: z.string().optional(),
+  teacherId: z.string().uuid().optional(),
+}).refine((data) => {
+  if (data.type === 'group') return !!data.groupId;
+  if (data.type === 'subjectGrade') return !!data.subjectGradeId;
+  if (data.type === 'grade') return !!data.grade;
+  if (data.type === 'teacher') return !!data.teacherId;
+  return true;
+}, { message: 'بيانات ناقصة حسب نوع الجمهور المختار' });
+
 export const SendTestSchema = z.object({
   phone: z.string().min(10).max(20),
   templateKey: z.string().min(1),
@@ -48,3 +62,4 @@ export type UpdateSettingsDto = z.infer<typeof UpdateSettingsSchema>;
 export type UpdateTemplateDto = z.infer<typeof UpdateTemplateSchema>;
 export type SendBulkDto = z.infer<typeof SendBulkSchema>;
 export type SendTestDto = z.infer<typeof SendTestSchema>;
+export type ResolveAudienceDto = z.infer<typeof ResolveAudienceSchema>;

@@ -54,6 +54,10 @@ export class RetryFailedMessagesUseCase {
 
     const db = this.kysely.getTenantDb(tenantId);
 
+    let sentToday = await this.messageRepo.countTodayByTenantId(tenantId);
+    const dailyLimit = session.getCurrentDailyLimit(settings.dailyLimit);
+    if (sentToday >= dailyLimit) return; // الحد اليومي مستهلك بالفعل — هننتظر بكرة
+
     // جيب الرسائل الفاشلة اللي ممكن نعيد إرسالها
     const failedMessages = await db
       .selectFrom('wa_messages_log')
@@ -71,6 +75,11 @@ export class RetryFailedMessagesUseCase {
     this.logger.log(`Retrying ${failedMessages.length} failed messages for tenant ${tenantId}`);
 
     for (const msg of failedMessages) {
+      if (sentToday >= dailyLimit) {
+        this.logger.log(`Daily limit reached mid-retry for tenant ${tenantId} — stopping until tomorrow`);
+        break;
+      }
+
       try {
         const result = await this.provider.sendMessage(tenantId, msg.phone, msg.body);
 
@@ -83,6 +92,7 @@ export class RetryFailedMessagesUseCase {
             } as any)
             .where('id', '=', sql<string>`${msg.id}::uuid`)
             .execute();
+          sentToday++;
           this.logger.log(`Retry succeeded for message ${msg.id}`);
         } else {
           await db.updateTable('wa_messages_log')

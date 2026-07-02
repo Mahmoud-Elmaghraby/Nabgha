@@ -35,16 +35,16 @@ export interface GroupStudentDto {
 
 export interface CreateGroupPayload {
   name: string;
-  subjectGradeId?: string | null;
-  teacherId?: string | null;
+  subjectGradeId: string;
+  teacherId: string;
   maxStudents: number;
   schedule: ScheduleItem[];
 }
 
 export interface UpdateGroupPayload {
   name?: string;
-  subjectGradeId?: string | null;
-  teacherId?: string | null;
+  subjectGradeId?: string;
+  teacherId?: string;
   maxStudents?: number;
   schedule?: ScheduleItem[];
   isActive?: boolean;

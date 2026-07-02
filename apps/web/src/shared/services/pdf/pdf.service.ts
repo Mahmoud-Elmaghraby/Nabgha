@@ -202,44 +202,18 @@ export async function generateCardsPDF(
   doc.save(`cards-${Date.now()}.pdf`);
 }
 
-// ─── Print Labels directly ────────────────────────────────
-export async function printLabelsDirect(
+// ─── توليد صور الليبلز فقط (بدون فتح نافذة) — تُستخدم لمعاينة الطباعة داخل التطبيق ───
+// (استبدلت الطريقة القديمة بفتح نافذة منفصلة window.open، لأن المتصفحات الحديثة بتحظرها
+// بصمت لما بتتفتح بعد أي عملية غير متزامنة زي توليد الباركودات، من غير أي رسالة خطأ للمستخدم)
+export async function generateLabelImages(
   students: StudentQRData[],
-  centerName = 'نبغة'
-): Promise<void> {
+  options: LabelOptions = {}
+): Promise<string[]> {
   const pxPerMm = 3.78;
   const labelW = Math.floor(60 * pxPerMm);
   const labelH = Math.floor(70 * pxPerMm);
 
-  const canvases = await Promise.all(
-    students.map(s => drawLabelCanvas(s, labelW, labelH, { showName: true, showCode: true, centerName }))
+  return Promise.all(
+    students.map(s => drawLabelCanvas(s, labelW, labelH, { showName: true, showCode: true, ...options }))
   );
-
-  const html = `
-    <html dir="rtl">
-    <head>
-      <style>
-        @media print {
-          @page { size: A4; margin: 8mm; }
-          body { margin: 0; }
-        }
-        body { font-family: Arial, sans-serif; }
-        .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3mm; }
-        .label { page-break-inside: avoid; }
-        .label img { width: 100%; display: block; }
-      </style>
-    </head>
-    <body>
-      <div class="grid">
-        ${canvases.map(src => `<div class="label"><img src="${src}" /></div>`).join('')}
-      </div>
-    </body>
-    </html>
-  `;
-
-  const win = window.open('', '_blank');
-  if (!win) return;
-  win.document.write(html);
-  win.document.close();
-  win.onload = () => { win.print(); win.close(); };
 }

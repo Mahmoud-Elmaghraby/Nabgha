@@ -41,6 +41,7 @@ export interface TeachersTable {
   id: Generated<string>;
   name: string;
   phone: string | null;
+  phone_2: string | null;
   email: string | null;
   subject_ids: string;
   notes: string | null;
@@ -114,10 +115,25 @@ export interface AttendanceTable {
   id: Generated<string>;
   session_id: string;
   student_id: string;
-  status: Generated<'present' | 'absent' | 'late'>;
+  status: Generated<'present' | 'absent' | 'late' | 'excused'>;
   degree: number | null;
   scanned_at: Date | null;
   notes: string | null;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+export interface AttendanceCreditsTable {
+  id: Generated<string>;
+  student_id: string;
+  subject_grade_id: string;
+  source_session_id: string;
+  source_attendance_id: string;
+  week_start: Date;
+  week_end: Date;
+  status: Generated<'available' | 'consumed' | 'expired'>;
+  consumed_attendance_id: string | null;
+  consumed_at: Date | null;
   created_at: Generated<Date>;
   updated_at: Generated<Date>;
 }
@@ -144,6 +160,7 @@ export interface CenterSettingsTable {
   center_name: string;
   center_logo_url: string | null;
   center_phone: string | null;
+  center_phone_2: string | null;
   center_address: string | null;
   currency: Generated<string>;
   currency_symbol: Generated<string>;
@@ -335,6 +352,7 @@ export interface TenantDatabase {
   group_students: GroupStudentsTable;
   sessions: SessionsTable;
   attendance: AttendanceTable;
+  attendance_credits: AttendanceCreditsTable;
   notifications: NotificationsTable;
   tenant_settings: TenantSettingsTable;
   center_settings: CenterSettingsTable;
@@ -360,6 +378,7 @@ export type Group = Selectable<GroupsTable>;
 export type GroupStudent = Selectable<GroupStudentsTable>;
 export type Session = Selectable<SessionsTable>;
 export type Attendance = Selectable<AttendanceTable>;
+export type AttendanceCredit = Selectable<AttendanceCreditsTable>;
 export type Payment = Selectable<PaymentsTable>;
 
 export type NewSubject = Insertable<SubjectsTable>;

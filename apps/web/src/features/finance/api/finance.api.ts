@@ -1,5 +1,5 @@
 import { apiClient } from '../../../shared/lib/api/client';
-import type { Treasury, MonthlyDue, Payment, Expense, FinanceStats, ListDuesParams, ListPaymentsParams, ListExpensesParams } from '../types/finance.types';
+import type { Treasury, MonthlyDue, Payment, Expense, FinanceStats, ListDuesParams, ListPaymentsParams, ListExpensesParams, CreateManualDuePayload } from '../types/finance.types';
 
 export interface StudentFinancialProfile {
   studentId: string;
@@ -42,6 +42,10 @@ export const financeApi = {
   },
   updateDue: async (id: string, data: any): Promise<MonthlyDue> => {
     const res = await apiClient.put(`/finance/dues/${id}`, data);
+    return res.data.data;
+  },
+  createManualDue: async (data: CreateManualDuePayload): Promise<MonthlyDue> => {
+    const res = await apiClient.post('/finance/dues/manual', data);
     return res.data.data;
   },
   waiveDue: async (id: string, notes?: string): Promise<MonthlyDue> => {

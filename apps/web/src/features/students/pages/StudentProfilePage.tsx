@@ -2,9 +2,12 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useStudent, useStudentGroups, useStudentMutations } from '../hooks/useStudents';
+import { usePermissions } from '@/shared/hooks/usePermissions';
 import { useGroupMutations, useGroups } from '@/features/groups/hooks/useGroups';
 import { useSubjects } from '@/features/subjects/hooks/useSubjects';
 import { useStudentFinancialProfile, useStudentPayments } from '@/features/finance/hooks/useFinance';
+import { useToast } from '@/shared/components/Toast';
+import { useConfirm } from '@/shared/components/Confirm';
 import { StudentFormModal } from '../components/StudentFormModal';
 import { StudentQrModal } from '../components/StudentQrModal';
 import { apiClient } from '@/shared/lib/api/client';
@@ -17,6 +20,9 @@ export default function StudentProfilePage() {
   const { data: student, isLoading } = useStudent(id!);
   const { data: studentGroups = [] } = useStudentGroups(id!);
   const { toggleActive, deleteStudent } = useStudentMutations();
+  const { hasPermission } = usePermissions();
+  const toast = useToast();
+  const confirm = useConfirm();
   const { addStudent, removeStudent } = useGroupMutations();
   const { data: allGroups } = useGroups();
   const { data: subjects = [] } = useSubjects();
@@ -89,26 +95,34 @@ export default function StudentProfilePage() {
   });
 
   const handleDelete = async () => {
-    if (!confirm('هل أنت متأكد من حذف هذا الطالب؟')) return;
+    if (!(await confirm('هل أنت متأكد من حذف هذا الطالب؟', { danger: true }))) return;
     try {
       await deleteStudent.mutateAsync(id!);
       navigate('/students');
     } catch (err: any) {
-      alert(err?.response?.data?.error?.message || 'لا يمكن حذف الطالب');
+      toast.error(err?.response?.data?.error?.message || 'لا يمكن حذف الطالب');
     }
   };
 
   const handleAddToGroup = async () => {
     if (!selectedGroupId) return;
-    await addStudent.mutateAsync({ groupId: selectedGroupId, payload: { studentId: id!, discount } });
-    setAddingGroup(false);
-    setSelectedGroupId('');
-    setDiscount(0);
+    try {
+      await addStudent.mutateAsync({ groupId: selectedGroupId, payload: { studentId: id!, discount } });
+      setAddingGroup(false);
+      setSelectedGroupId('');
+      setDiscount(0);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error?.message || 'حدث خطأ أثناء إضافة الطالب للمجموعة');
+    }
   };
 
   const handleRemoveFromGroup = async (groupId: string) => {
-    if (!confirm('هل تريد إزالة الطالب من هذه المجموعة؟')) return;
-    await removeStudent.mutateAsync({ groupId, studentId: id! });
+    if (!(await confirm('هل تريد إزالة الطالب من هذه المجموعة؟', { danger: true }))) return;
+    try {
+      await removeStudent.mutateAsync({ groupId, studentId: id! });
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error?.message || 'حدث خطأ أثناء إزالة الطالب من المجموعة');
+    }
   };
 
   // حسابات مالية
@@ -189,6 +203,24 @@ export default function StudentProfilePage() {
                 </p>
               </div>
             )}
+            {student.school && (
+              <div>
+                <p className="text-xs text-gray-400 mb-1">المدرسة</p>
+                <p className="text-sm font-medium text-gray-800">{student.school}</p>
+              </div>
+            )}
+            {student.parentOccupation && (
+              <div>
+                <p className="text-xs text-gray-400 mb-1">وظيفة ولي الأمر</p>
+                <p className="text-sm font-medium text-gray-800">{student.parentOccupation}</p>
+              </div>
+            )}
+            {student.address && (
+              <div className="col-span-2">
+                <p className="text-xs text-gray-400 mb-1">العنوان</p>
+                <p className="text-sm font-medium text-gray-800">{student.address}</p>
+              </div>
+            )}
             {student.notes && (
               <div className="col-span-2">
                 <p className="text-xs text-gray-400 mb-1">ملاحظات</p>
@@ -199,30 +231,36 @@ export default function StudentProfilePage() {
 
           {/* Actions */}
           <div className="px-6 py-3 flex items-center gap-2">
-            <button onClick={() => setEditing(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-[#0E3B2E] border border-[#0E3B2E]/20 rounded-lg hover:bg-[#0E3B2E]/5 transition-colors">
-              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-              </svg>
-              تعديل
-            </button>
-            <button onClick={() => toggleActive.mutate(id!)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border transition-colors ${
-                student.isActive
-                  ? 'text-amber-600 border-amber-200 hover:bg-amber-50'
-                  : 'text-emerald-600 border-emerald-200 hover:bg-emerald-50'
-              }`}>
-              {student.isActive ? 'تعطيل' : 'تفعيل'}
-            </button>
-            <button onClick={handleDelete}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors mr-auto">
-              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <polyline points="3 6 5 6 21 6"/>
-                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-              </svg>
-              حذف
-            </button>
+            {hasPermission('students.edit') && (
+              <button onClick={() => setEditing(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-[#0E3B2E] border border-[#0E3B2E]/20 rounded-lg hover:bg-[#0E3B2E]/5 transition-colors">
+                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                </svg>
+                تعديل
+              </button>
+            )}
+            {hasPermission('students.edit') && (
+              <button onClick={() => toggleActive.mutate(id!)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border transition-colors ${
+                  student.isActive
+                    ? 'text-amber-600 border-amber-200 hover:bg-amber-50'
+                    : 'text-emerald-600 border-emerald-200 hover:bg-emerald-50'
+                }`}>
+                {student.isActive ? 'تعطيل' : 'تفعيل'}
+              </button>
+            )}
+            {hasPermission('students.delete') && (
+              <button onClick={handleDelete}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors mr-auto">
+                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="3 6 5 6 21 6"/>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                </svg>
+                حذف
+              </button>
+            )}
           </div>
         </div>
 
@@ -269,13 +307,15 @@ export default function StudentProfilePage() {
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <p className="text-sm text-gray-500">{studentGroups.length} مجموعة</p>
-                  <button onClick={() => setAddingGroup(!addingGroup)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-[#0E3B2E] text-white rounded-lg hover:bg-[#1F6B4E] transition-colors">
-                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M12 5v14M5 12h14" strokeLinecap="round"/>
-                    </svg>
-                    إضافة لمجموعة
-                  </button>
+                  {hasPermission('groups.edit') && (
+                    <button onClick={() => setAddingGroup(!addingGroup)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-[#0E3B2E] text-white rounded-lg hover:bg-[#1F6B4E] transition-colors">
+                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M12 5v14M5 12h14" strokeLinecap="round"/>
+                      </svg>
+                      إضافة لمجموعة
+                    </button>
+                  )}
                 </div>
                 {addingGroup && (
                   <div className="p-4 bg-gray-50 rounded-xl border border-gray-200 space-y-3">
@@ -322,10 +362,12 @@ export default function StudentProfilePage() {
                           </span>
                         </div>
                       </div>
-                      <button onClick={() => handleRemoveFromGroup(g.groupId)}
-                        className="text-xs text-red-500 hover:text-red-700 px-2 py-1 hover:bg-red-50 rounded-lg transition-colors">
-                        إزالة
-                      </button>
+                      {hasPermission('groups.edit') && (
+                        <button onClick={() => handleRemoveFromGroup(g.groupId)}
+                          className="text-xs text-red-500 hover:text-red-700 px-2 py-1 hover:bg-red-50 rounded-lg transition-colors">
+                          إزالة
+                        </button>
+                      )}
                     </div>
                   ))
                 )}

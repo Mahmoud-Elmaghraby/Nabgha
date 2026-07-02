@@ -9,6 +9,7 @@ export const WA_TEMPLATE_KEYS = [
   'NEW_STUDENT',
   'GROUP_ADDED',
   'GROUP_REMOVED',
+  'ABSENCE_EXCUSED',
 ] as const;
 
 export type WaTemplateKey = typeof WA_TEMPLATE_KEYS[number];
@@ -22,8 +23,9 @@ export const WA_DEFAULT_TEMPLATES: Record<WaTemplateKey, string> = {
   PAYMENT_DUE:      'تذكير: موعد سداد {student_name} ({amount} جنيه) بعد {days} أيام — {center_name}',
   PAYMENT_OVERDUE:  'تنبيه: تأخر سداد {student_name} بمبلغ {amount} جنيه منذ {days} أيام — يرجى التواصل',
   NEW_STUDENT:      'مرحباً بكم! تم تسجيل {student_name} في {center_name} بنجاح 🎉',
-  GROUP_ADDED:      'تم إضافة {student_name} لمجموعة {group_name} — أيام: {days} الساعة {time} 📅',
+  GROUP_ADDED:      'تم إضافة {student_name} لمجموعة {group_name} مع {center_name} — أيام: {days} الساعة {time} 📅',
   GROUP_REMOVED:    'تم إلغاء تسجيل {student_name} من مجموعة {group_name} — {center_name}',
+  ABSENCE_EXCUSED:  'نبغة: تم إعفاء {student_name} من غياب {subject} بتاريخ {date} — حضر حصة بديلة ✅',
 };
 
 export const WA_TEMPLATE_VARIABLES: Record<WaTemplateKey, string[]> = {
@@ -35,8 +37,9 @@ export const WA_TEMPLATE_VARIABLES: Record<WaTemplateKey, string[]> = {
   PAYMENT_DUE:     ['{student_name}', '{amount}', '{days}', '{center_name}'],
   PAYMENT_OVERDUE: ['{student_name}', '{amount}', '{days}'],
   NEW_STUDENT:     ['{student_name}', '{center_name}'],
-  GROUP_ADDED:     ['{student_name}', '{group_name}', '{days}', '{time}'],
+  GROUP_ADDED:     ['{student_name}', '{group_name}', '{days}', '{time}', '{center_name}'],
   GROUP_REMOVED:   ['{student_name}', '{group_name}', '{center_name}'],
+  ABSENCE_EXCUSED: ['{student_name}', '{subject}', '{date}'],
 };
 
 export class WaTemplateEntity {

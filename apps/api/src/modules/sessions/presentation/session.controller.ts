@@ -1,23 +1,32 @@
 import {
   Controller, Get, Post, Put, Patch, Delete,
   Body, Param, Query, UseGuards, Request,
+  UseInterceptors, UploadedFile,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../../../shared/infrastructure/guards/jwt-auth.guard';
 import { TenantGuard } from '../../../shared/infrastructure/guards/tenant.guard';
 import { RolesGuard } from '../../../shared/infrastructure/guards/roles.guard';
 import { PermissionGuard } from '../../../shared/infrastructure/guards/permission.guard';
 import { RequirePermission } from '../../../shared/infrastructure/guards/permission.decorator';
 import { SessionUseCase } from '../application/use-cases/session.usecase';
+import { StorageService } from '../../../shared/infrastructure/storage/storage.service';
 import { AppError } from '../../../core/errors/app.error';
 import {
   CreateSessionSchema, UpdateSessionSchema, UpdateAttendanceSchema,
   BulkUpdateAttendanceSchema, ScanQrSchema, ListSessionsSchema,
+  AddExternalAttendanceSchema,
 } from '../application/dtos/session.dto';
 
 @Controller('sessions')
 @UseGuards(JwtAuthGuard, TenantGuard, RolesGuard, PermissionGuard)
 export class SessionController {
-  constructor(private readonly useCase: SessionUseCase) {}
+  constructor(
+    private readonly useCase: SessionUseCase,
+    private readonly storage: StorageService,
+  ) {}
+
+  private static readonly MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB
 
   // ─── CRUD ─────────────────────────────────────────────────
   @Get()
@@ -126,6 +135,21 @@ export class SessionController {
     return { success: true, data };
   }
 
+  // ─── إنذار عدم السداد + تقرير الغياب ─────────────────────
+  @Get(':id/unpaid')
+  @RequirePermission('sessions.view')
+  async getUnpaid(@Request() req: any, @Param('id') id: string) {
+    const data = await this.useCase.getUnpaidStudents(req.user.tenantId, id);
+    return { success: true, data };
+  }
+
+  @Get(':id/absence-report')
+  @RequirePermission('sessions.view')
+  async getAbsenceReport(@Request() req: any, @Param('id') id: string) {
+    const data = await this.useCase.getAbsenceReport(req.user.tenantId, id);
+    return { success: true, data };
+  }
+
   // ─── QR Scan ──────────────────────────────────────────────
   @Post(':id/scan')
   @RequirePermission('sessions.attendance')
@@ -137,6 +161,36 @@ export class SessionController {
     const parsed = ScanQrSchema.safeParse(body);
     if (!parsed.success) throw new AppError('VALIDATION_ERROR', parsed.error.message, 400);
     const data = await this.useCase.scanQr(req.user.tenantId, id, parsed.data);
+    return { success: true, data };
+  }
+
+  // ─── صورة الحصة (لأنواع الامتحان/التسميع) ─────────────────
+  @Post(':id/image')
+  @RequirePermission('sessions.attendance')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
+  async uploadSessionImage(
+    @Request() req: any,
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    const url = await this.storage.validateAndUploadImage(
+      file, `tenants/${req.user.tenantId}/sessions`, 5 * 1024 * 1024,
+    );
+    const data = await this.useCase.setImage(req.user.tenantId, id, url);
+    return { success: true, data };
+  }
+
+  // ─── حضور بديل (طالب من مجموعة تانية) ─────────────────────
+  @Post(':id/attendance/external')
+  @RequirePermission('sessions.attendance')
+  async addExternalAttendance(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: any,
+  ) {
+    const parsed = AddExternalAttendanceSchema.safeParse(body);
+    if (!parsed.success) throw new AppError('VALIDATION_ERROR', parsed.error.message, 400);
+    const data = await this.useCase.addExternalAttendance(req.user.tenantId, id, parsed.data);
     return { success: true, data };
   }
 }

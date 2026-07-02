@@ -4,6 +4,7 @@ export class CenterSettingsEntity {
     public centerName: string,
     public centerLogoUrl: string | null,
     public centerPhone: string | null,
+    public centerPhone2: string | null,
     public centerAddress: string | null,
     public currency: string,
     public currencySymbol: string,

@@ -42,6 +42,7 @@ export class TeacherRepository {
       .values({
         name: data.name,
         phone: data.phone ?? null,
+        phone_2: data.phone2 ?? null,
         email: data.email ?? null,
         subject_ids: JSON.stringify(data.subjectIds ?? []) as any,
         notes: data.notes ?? null,
@@ -59,6 +60,7 @@ export class TeacherRepository {
       .set({
         name: teacher.name,
         phone: teacher.phone,
+        phone_2: teacher.phone2,
         email: teacher.email,
         subject_ids: JSON.stringify(teacher.subjectIds) as any,
         notes: teacher.notes,
@@ -75,6 +77,7 @@ export class TeacherRepository {
       row.id,
       row.name,
       row.phone,
+      row.phone_2,
       row.email,
       Array.isArray(row.subject_ids) ? row.subject_ids : JSON.parse(row.subject_ids || '[]'),
       row.notes,

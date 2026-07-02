@@ -1,9 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
-import { useSessionAttendance, useAttendanceMutations, usePreviousAbsent } from '../hooks/useSessions';
+import { useToast } from '@/shared/components/Toast';
+import { useSessionAttendance, useAttendanceMutations, usePreviousAbsent, useUnpaidStudents } from '../hooks/useSessions';
 import { QrCameraScanner } from './QrCameraScanner';
 import { sessionsApi } from '../api/sessions.api';
 import { useQueryClient } from '@tanstack/react-query';
 import { SESSION_KEYS } from '../hooks/useSessions';
+import { useStudents } from '@/features/students/hooks/useStudents';
+import { useDebounce } from '@/shared/hooks/useDebounce';
+import { usePermissions } from '@/shared/hooks/usePermissions';
 import { ATTENDANCE_STATUS_LABELS } from '../types/session.types';
 import { sessionHasImage } from '../types/session.types';
 import type { Session, AttendanceStatus } from '../types/session.types';
@@ -14,9 +18,14 @@ interface Props {
 }
 
 export function AttendanceSheet({ session, onClose }: Props) {
+  const toast = useToast();
+  const { hasPermission } = usePermissions();
+  const canMark = hasPermission('sessions.attendance');
+
   const { data: attendance = [], isLoading } = useSessionAttendance(session.id);
-  const { updateOne, scanQr } = useAttendanceMutations(session.id);
+  const { updateOne, scanQr, addExternal } = useAttendanceMutations(session.id);
   const { data: previousAbsent = [] } = usePreviousAbsent(session.id);
+  const { data: unpaidStudents = [] } = useUnpaidStudents(session.id);
   const qc = useQueryClient();
   const [scanInput, setScanInput] = useState('');
   const [searchFilter, setSearchFilter] = useState('');
@@ -26,11 +35,22 @@ export function AttendanceSheet({ session, onClose }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
   const scanRef = useRef<HTMLInputElement>(null);
 
+  // ─── طالب من مجموعة تانية (بديل) ───
+  const [showExternal, setShowExternal] = useState(false);
+  const [externalSearch, setExternalSearch] = useState('');
+  const debouncedExternalSearch = useDebounce(externalSearch, 300);
+  const enrolledIds = new Set(attendance.map(a => a.studentId));
+  const { data: externalCandidates } = useStudents({
+    search: debouncedExternalSearch || undefined,
+    limit: 10,
+  });
+  const externalResults = (externalCandidates?.data || []).filter(s => !enrolledIds.has(s.id));
+
   const isOpen = session.status === 'scheduled' || session.status === 'ongoing';
 
   useEffect(() => {
-    if (isOpen) scanRef.current?.focus();
-  }, [isOpen, attendance]);
+    if (isOpen && canMark) scanRef.current?.focus();
+  }, [isOpen, canMark, attendance]);
 
   const handleImageUpload = async (file: File) => {
     setUploading(true);
@@ -38,9 +58,33 @@ export function AttendanceSheet({ session, onClose }: Props) {
       await sessionsApi.uploadImage(session.id, file);
       qc.invalidateQueries({ queryKey: SESSION_KEYS.all });
     } catch (err: any) {
-      alert(err?.response?.data?.error?.message || 'فشل رفع الصورة');
+      toast.error(err?.response?.data?.error?.message || 'فشل رفع الصورة');
     } finally {
       setUploading(false);
+    }
+  };
+
+  const showExternalResultMsg = (result: { excusedAbsence: boolean; creditCreated: boolean }, name: string) => {
+    if (result.excusedAbsence) {
+      setScanMsg({ text: `✅ ${name} — تم تسجيل حضوره وإعفاء غياب سابق تلقائياً`, ok: true });
+    } else if (result.creditCreated) {
+      setScanMsg({ text: `✅ ${name} — تم تسجيل حضوره (رصيد تعويض متاح لو غاب لاحقاً بنفس المادة)`, ok: true });
+    } else {
+      setScanMsg({ text: `✅ ${name} — تم تسجيل حضوره`, ok: true });
+    }
+    setTimeout(() => setScanMsg(null), 4000);
+  };
+
+  const handleAddExternal = async (studentId: string, studentName: string) => {
+    try {
+      const result = await addExternal.mutateAsync({ studentId });
+      showExternalResultMsg(result, studentName);
+      setExternalSearch('');
+      setShowExternal(false);
+    } catch (err: any) {
+      const msg = err?.response?.data?.error?.message || 'فشل تسجيل الحضور';
+      setScanMsg({ text: `❌ ${msg}`, ok: false });
+      setTimeout(() => setScanMsg(null), 3000);
     }
   };
 
@@ -55,6 +99,24 @@ export function AttendanceSheet({ session, onClose }: Props) {
       setSearchFilter('');
       return { studentId: record.studentId };
     } catch (err: any) {
+      const code = err?.response?.data?.error?.code;
+      // الطالب مش من روستر الحصة دي — نحاول نتعرف عليه من كود الباركود (الباركود يحمل الكود الظاهري بس)
+      // ونضيفه كـ"بديل"؛ الـ Backend هو اللي بيترجم الكود لمعرف داخلي
+      if (code === 'NOT_FOUND') {
+        try {
+          let studentCode = qrCode.trim();
+          try {
+            const parsed = JSON.parse(qrCode.trim());
+            if (parsed.code) studentCode = parsed.code;
+          } catch { /* مش JSON — نستخدم النص كما هو كـ كود مباشرة */ }
+
+          const result = await addExternal.mutateAsync({ studentCode });
+          showExternalResultMsg(result, result.attendance.studentName);
+          scanRef.current?.focus();
+          setScanInput('');
+          return { studentId: result.attendance.studentId };
+        } catch { /* فشلت الإضافة برضو — نعرض الخطأ العادي تحت */ }
+      }
       const msg = err?.response?.data?.error?.message || 'QR غير صحيح';
       setScanMsg({ text: `❌ ${msg}`, ok: false });
       setTimeout(() => setScanMsg(null), 3000);
@@ -77,6 +139,7 @@ export function AttendanceSheet({ session, onClose }: Props) {
   const present = attendance.filter(a => a.status === 'present').length;
   const late    = attendance.filter(a => a.status === 'late').length;
   const absent  = attendance.filter(a => a.status === 'absent').length;
+  const excused = attendance.filter(a => a.status === 'excused').length;
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4" dir="rtl">
@@ -89,7 +152,7 @@ export function AttendanceSheet({ session, onClose }: Props) {
             <p className="text-xs text-gray-400">{session.groupName || session.grade}</p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            {sessionHasImage(session.type) && (
+            {canMark && sessionHasImage(session.type) && (
               <>
                 <input ref={fileRef} type="file" accept="image/*" className="hidden"
                   onChange={e => e.target.files?.[0] && handleImageUpload(e.target.files[0])} />
@@ -109,7 +172,7 @@ export function AttendanceSheet({ session, onClose }: Props) {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-3 gap-2 px-4 py-3 border-b border-gray-50 shrink-0">
+        <div className="grid grid-cols-4 gap-2 px-4 py-3 border-b border-gray-50 shrink-0">
           <div className="text-center bg-emerald-50 rounded-xl py-2">
             <p className="text-lg font-bold text-emerald-600">{present}</p>
             <p className="text-xs text-emerald-500">حاضر</p>
@@ -122,10 +185,14 @@ export function AttendanceSheet({ session, onClose }: Props) {
             <p className="text-lg font-bold text-red-500">{absent}</p>
             <p className="text-xs text-red-400">غايب</p>
           </div>
+          <div className="text-center bg-purple-50 rounded-xl py-2">
+            <p className="text-lg font-bold text-purple-500">{excused}</p>
+            <p className="text-xs text-purple-400">معذور</p>
+          </div>
         </div>
 
-        {/* QR Scanner */}
-        {isOpen && (
+        {/* QR Scanner + طالب بديل */}
+        {isOpen && canMark && (
           <div className="px-4 py-3 border-b border-gray-50 shrink-0 space-y-2">
             <div className="flex items-center gap-2">
               <div className="flex items-center gap-2 flex-1 p-2.5 bg-gray-50 rounded-xl border border-gray-200">
@@ -163,6 +230,49 @@ export function AttendanceSheet({ session, onClose }: Props) {
                 {scanMsg.text}
               </p>
             )}
+
+            {/* طالب من مجموعة تانية */}
+            <button onClick={() => setShowExternal(!showExternal)}
+              className="text-xs text-gray-400 hover:text-[#0E3B2E] underline">
+              {showExternal ? 'إخفاء' : 'طالب من مجموعة تانية؟'}
+            </button>
+
+            {showExternal && (
+              <div className="p-3 bg-purple-50/50 rounded-xl border border-purple-100 space-y-2">
+                <p className="text-xs text-purple-600">
+                  للطالب اللي حضر بديل مادته الأصلية في مجموعة تانية (مش من روستر الحصة دي)
+                </p>
+                <input
+                  type="text"
+                  value={externalSearch}
+                  onChange={e => setExternalSearch(e.target.value)}
+                  placeholder="ابحث باسم الطالب..."
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-200"
+                />
+                {externalSearch && (
+                  <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                    {externalResults.length === 0 ? (
+                      <p className="text-xs text-gray-400 text-center py-2">لا توجد نتائج</p>
+                    ) : (
+                      externalResults.map(s => (
+                        <div key={s.id} className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-gray-100">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-gray-900 truncate">{s.fullName}</p>
+                            <p className="text-xs text-gray-400">{s.grade || 'بدون مرحلة'}</p>
+                          </div>
+                          <button
+                            onClick={() => handleAddExternal(s.id, s.fullName)}
+                            disabled={addExternal.isPending}
+                            className="text-xs bg-purple-600 text-white px-2.5 py-1.5 rounded-lg hover:bg-purple-700 disabled:opacity-50 shrink-0">
+                            إضافة
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -182,6 +292,7 @@ export function AttendanceSheet({ session, onClose }: Props) {
                 <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold shrink-0 ${
                   record.status === 'present' ? 'bg-emerald-100 text-emerald-700' :
                   record.status === 'late'    ? 'bg-amber-100 text-amber-700' :
+                  record.status === 'excused' ? 'bg-purple-100 text-purple-700' :
                                                 'bg-red-100 text-red-600'
                 }`}>
                   {record.studentName.charAt(0)}
@@ -196,12 +307,22 @@ export function AttendanceSheet({ session, onClose }: Props) {
                         ⚠️ غايب السابقة
                       </span>
                     )}
+                    {unpaidStudents.includes(record.studentId) && (
+                      <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full shrink-0">
+                        💰 لسه مدفعش
+                      </span>
+                    )}
+                    {record.status === 'excused' && (
+                      <span className="text-xs bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded-full shrink-0" title={record.notes || ''}>
+                        معذور
+                      </span>
+                    )}
                   </div>
                   <p className="text-xs text-gray-400 font-mono">{record.studentCode}</p>
                 </div>
 
                 {/* Status */}
-                {isOpen ? (
+                {isOpen && canMark ? (
                   <div className="flex gap-1 shrink-0">
                     {(['present', 'late', 'absent'] as AttendanceStatus[]).map(s => (
                       <button key={s} onClick={() => handleStatusChange(record.studentId, s)}
@@ -225,7 +346,7 @@ export function AttendanceSheet({ session, onClose }: Props) {
         </div>
       </div>
 
-      {showCamera && (
+      {showCamera && canMark && (
         <QrCameraScanner
           onScan={async (qr) => { await handleScan(qr); }}
           previousAbsent={previousAbsent}

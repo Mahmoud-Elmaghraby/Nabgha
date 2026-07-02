@@ -62,9 +62,12 @@ export class StudentRepository {
       .values({
         full_name: data.fullName,
         parent_phone: data.parentPhone,
-        student_phone: data.studentPhone ?? null,
+        student_phone: data.studentPhone,
         date_of_birth: data.dateOfBirth ? new Date(data.dateOfBirth) : null,
-        grade: data.grade ?? null,
+        grade: data.grade,
+        address: data.address ?? null,
+        school: data.school ?? null,
+        parent_occupation: data.parentOccupation ?? null,
         notes: data.notes ?? null,
         qr_code: data.qrCode,
         student_code: data.studentCode,
@@ -85,6 +88,9 @@ export class StudentRepository {
         student_phone: student.studentPhone,
         date_of_birth: student.dateOfBirth,
         grade: student.grade,
+        address: student.address,
+        school: student.school,
+        parent_occupation: student.parentOccupation,
         notes: student.notes,
         is_active: student.isActive,
         updated_at: new Date(),
@@ -159,20 +165,23 @@ export class StudentRepository {
   }
 
   private toEntity(row: any): StudentEntity {
-    return new StudentEntity(
-      row.id,
-      row.full_name,
-      row.parent_phone,
-      row.student_phone,
-      row.date_of_birth,
-      row.grade,
-      row.notes,
-      row.qr_code,
-      row.student_code ?? null,
-      row.is_active,
-      row.created_at,
-      row.updated_at,
-      row.deleted_at,
-    );
+    return new StudentEntity({
+      id: row.id,
+      fullName: row.full_name,
+      parentPhone: row.parent_phone,
+      studentPhone: row.student_phone,
+      dateOfBirth: row.date_of_birth,
+      grade: row.grade,
+      address: row.address,
+      school: row.school,
+      parentOccupation: row.parent_occupation,
+      notes: row.notes,
+      qrCode: row.qr_code,
+      studentCode: row.student_code ?? null,
+      isActive: row.is_active,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      deletedAt: row.deleted_at,
+    });
   }
 }

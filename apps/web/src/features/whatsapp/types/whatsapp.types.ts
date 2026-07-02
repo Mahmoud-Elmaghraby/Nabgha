@@ -55,7 +55,7 @@ export interface WaTemplateDto {
 export type WaTemplateKey =
   | 'ABSENT' | 'PRESENT' | 'LATE' | 'THREE_ABSENCES'
   | 'PAYMENT_CONFIRM' | 'PAYMENT_DUE' | 'PAYMENT_OVERDUE'
-  | 'NEW_STUDENT' | 'GROUP_ADDED';
+  | 'NEW_STUDENT' | 'GROUP_ADDED' | 'GROUP_REMOVED' | 'ABSENCE_EXCUSED';
 
 export const WA_TEMPLATE_LABELS: Record<WaTemplateKey, string> = {
   ABSENT: 'إشعار الغياب',
@@ -67,6 +67,8 @@ export const WA_TEMPLATE_LABELS: Record<WaTemplateKey, string> = {
   PAYMENT_OVERDUE: 'تنبيه تأخر السداد',
   NEW_STUDENT: 'ترحيب بالطالب الجديد',
   GROUP_ADDED: 'إضافة لمجموعة',
+  GROUP_REMOVED: 'إزالة من مجموعة',
+  ABSENCE_EXCUSED: 'إعفاء غياب (حضور بديل)',
 };
 
 export const WA_TEMPLATE_VARIABLES: Record<WaTemplateKey, string[]> = {
@@ -79,6 +81,8 @@ export const WA_TEMPLATE_VARIABLES: Record<WaTemplateKey, string[]> = {
   PAYMENT_OVERDUE: ['{student_name}', '{amount}', '{days}'],
   NEW_STUDENT:     ['{student_name}', '{center_name}'],
   GROUP_ADDED:     ['{student_name}', '{group_name}', '{days}', '{time}'],
+  GROUP_REMOVED:   ['{student_name}', '{group_name}', '{center_name}'],
+  ABSENCE_EXCUSED: ['{student_name}', '{subject}', '{date}'],
 };
 
 export interface WaBulkProgressDto {
@@ -105,4 +109,22 @@ export interface SendBulkPayload {
   body: string;
   phones: string[];
   scheduledAt?: string;
+}
+
+export type AudienceType = 'all' | 'group' | 'subjectGrade' | 'grade' | 'teacher';
+export type PhoneSource = 'parent' | 'student';
+
+export interface ResolveAudienceParams {
+  type: AudienceType;
+  groupId?: string;
+  subjectGradeId?: string;
+  grade?: string;
+  teacherId?: string;
+}
+
+export interface AudienceStudent {
+  studentId: string;
+  studentName: string;
+  parentPhone: string | null;
+  studentPhone: string | null;
 }

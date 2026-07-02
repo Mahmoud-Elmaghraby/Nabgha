@@ -52,7 +52,8 @@ export class SendBulkUseCase {
       createdBy, scheduledAt: scheduledAt ?? null,
     });
 
-    this.processJobInBackground(job.id, tenantId, phones, body, settings.delayMinSeconds, settings.delayMaxSeconds, session.currentDailyLimit);
+    const effectiveDailyLimit = session.getCurrentDailyLimit(settings.dailyLimit);
+    this.processJobInBackground(job.id, tenantId, phones, body, settings.delayMinSeconds, settings.delayMaxSeconds, effectiveDailyLimit);
 
     return {
       jobId: job.id,
@@ -114,8 +115,17 @@ export class SendBulkUseCase {
       }
 
       if (sentToday >= dailyLimit) {
-        this.logger.warn(`Job ${jobId} — daily limit reached. Remaining queued for tomorrow.`);
-        break;
+        // بدل ما نتجاهل الأرقام الباقية بصمت (كان بيحصل قبل كده)، نسجلها فاشلة قابلة لإعادة
+        // المحاولة تلقائياً بكرة عبر retry-failed-messages.usecase.ts
+        const skipped = await this.messageRepo.create({
+          tenantId, phone, templateKey: null,
+          body, status: 'pending', bulkJobId: jobId,
+        });
+        skipped.markFailed('daily_limit_reached');
+        await this.messageRepo.save(skipped);
+        job.incrementFailed();
+        await this.bulkJobRepo.save(job);
+        continue;
       }
 
       const message = await this.messageRepo.create({

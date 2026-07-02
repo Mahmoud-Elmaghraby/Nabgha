@@ -1,12 +1,18 @@
 import { useState } from 'react';
+import { useToast } from '@/shared/components/Toast';
+import { useConfirm } from '@/shared/components/Confirm';
 import { useDues, useDueMutations, useTreasuries, usePaymentMutations } from '../hooks/useFinance';
 import { DUE_STATUS_LABELS } from '../types/finance.types';
 import { FinanceLayout } from '../components/FinanceLayout';
+import { usePermissions } from '@/shared/hooks/usePermissions';
 import type { MonthlyDue, DueStatus } from '../types/finance.types';
 
 const getCurrentMonth = () => new Date().toISOString().slice(0, 7);
 
 export default function DuesPage() {
+  const { hasPermission } = usePermissions();
+  const canManage = hasPermission('finance.manage');
+  const canCollect = hasPermission('finance.collect');
   const [month, setMonth] = useState(getCurrentMonth());
   const [statusFilter, setStatusFilter] = useState<DueStatus | ''>('');
   const [search, setSearch] = useState('');
@@ -15,6 +21,8 @@ export default function DuesPage() {
   const [payForm, setPayForm] = useState({ treasuryId: '', amount: '', paymentMethod: 'cash', notes: '' });
 
   const { data, isLoading } = useDues({ month, status: statusFilter || undefined, limit: 100 });
+  const toast = useToast();
+  const confirm = useConfirm();
   const { generate, waive } = useDueMutations();
   const { create: createPayment } = usePaymentMutations();
   const { data: treasuries = [] } = useTreasuries();
@@ -28,11 +36,11 @@ export default function DuesPage() {
   const totalPaid = allDues.reduce((s, d) => s + d.paidAmount, 0);
 
   const handleGenerate = async () => {
-    if (!confirm(`توليد فواتير شهر ${month}؟`)) return;
+    if (!(await confirm(`توليد فواتير شهر ${month}؟`))) return;
     try {
       const r = await generate.mutateAsync(month);
-      alert(`تم توليد ${r.created} فاتورة — ${r.skipped} مكررة`);
-    } catch (err: any) { alert(err?.response?.data?.error?.message || 'حدث خطأ'); }
+      toast.success(`تم توليد ${r.created} فاتورة — ${r.skipped} مكررة`);
+    } catch (err: any) { toast.error(err?.response?.data?.error?.message || 'حدث خطأ'); }
   };
 
   const handlePay = (due: MonthlyDue) => {
@@ -47,7 +55,7 @@ export default function DuesPage() {
     try {
       await createPayment.mutateAsync({ monthlyDueId: selectedDue.id, treasuryId: payForm.treasuryId, amount: Number(payForm.amount), paymentMethod: payForm.paymentMethod, notes: payForm.notes || undefined });
       setShowPayModal(false);
-    } catch (err: any) { alert(err?.response?.data?.error?.message || 'حدث خطأ'); }
+    } catch (err: any) { toast.error(err?.response?.data?.error?.message || 'حدث خطأ'); }
   };
 
   return (
@@ -81,10 +89,12 @@ export default function DuesPage() {
               <option value="">كل الحالات</option>
               {Object.entries(DUE_STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
             </select>
-            <button onClick={handleGenerate} disabled={generate.isPending}
-              className="mr-auto bg-[#0E3B2E] text-white rounded-xl px-4 py-2 text-sm font-medium disabled:opacity-60">
-              {generate.isPending ? '...' : 'توليد الفواتير'}
-            </button>
+            {canManage && (
+              <button onClick={handleGenerate} disabled={generate.isPending}
+                className="mr-auto bg-[#0E3B2E] text-white rounded-xl px-4 py-2 text-sm font-medium disabled:opacity-60">
+                {generate.isPending ? '...' : 'توليد الفواتير'}
+              </button>
+            )}
           </div>
         </div>
 
@@ -128,16 +138,20 @@ export default function DuesPage() {
                       )}
                     </div>
                   </div>
-                  {isOpen && (
+                  {isOpen && (canCollect || canManage) && (
                     <div className="flex gap-2 mt-3 pt-3 border-t border-gray-50">
-                      <button onClick={() => handlePay(due)}
-                        className="flex-1 bg-[#0E3B2E] text-white rounded-xl py-2 text-xs font-bold hover:bg-[#1a5c44] transition-colors">
-                        💰 تسجيل دفعة
-                      </button>
-                      <button onClick={async () => { if (confirm('إعفاء هذه الفاتورة؟')) { try { await waive.mutateAsync({ id: due.id }); } catch(e: any) { alert(e?.response?.data?.error?.message || 'خطأ'); } } }}
-                        className="px-3 border border-gray-200 rounded-xl py-2 text-xs text-gray-500 hover:bg-gray-50">
-                        إعفاء
-                      </button>
+                      {canCollect && (
+                        <button onClick={() => handlePay(due)}
+                          className="flex-1 bg-[#0E3B2E] text-white rounded-xl py-2 text-xs font-bold hover:bg-[#1a5c44] transition-colors">
+                          💰 تسجيل دفعة
+                        </button>
+                      )}
+                      {canManage && (
+                        <button onClick={async () => { if (await confirm('إعفاء هذه الفاتورة؟')) { try { await waive.mutateAsync({ id: due.id }); } catch(e: any) { toast.error(e?.response?.data?.error?.message || 'خطأ'); } } }}
+                          className="px-3 border border-gray-200 rounded-xl py-2 text-xs text-gray-500 hover:bg-gray-50">
+                          إعفاء
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>

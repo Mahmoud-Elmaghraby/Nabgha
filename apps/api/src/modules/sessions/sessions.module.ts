@@ -4,11 +4,13 @@ import { SessionUseCase } from './application/use-cases/session.usecase';
 import { SessionRepository } from './infrastructure/session.repository';
 import { DatabaseModule } from '../../shared/infrastructure/database/database.module';
 import { WhatsAppModule } from '../whatsapp/whatsapp.module';
+import { SettingsModule } from '../settings/settings.module';
+import { StorageService } from '../../shared/infrastructure/storage/storage.service';
 
 @Module({
-  imports: [DatabaseModule, WhatsAppModule],
+  imports: [DatabaseModule, WhatsAppModule, SettingsModule],
   controllers: [SessionController],
-  providers: [SessionUseCase, SessionRepository],
+  providers: [SessionUseCase, SessionRepository, StorageService],
   exports: [SessionUseCase],
 })
 export class SessionsModule {}

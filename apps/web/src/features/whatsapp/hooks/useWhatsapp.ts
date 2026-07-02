@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { whatsappApi } from '../api/whatsapp.api';
-import type { UpdateSettingsPayload, WaTemplateKey } from '../types/whatsapp.types';
+import type { UpdateSettingsPayload, WaTemplateKey, ResolveAudienceParams } from '../types/whatsapp.types';
 
 const KEYS = {
   status: ['wa', 'status'],
@@ -57,6 +57,21 @@ export function useWaBulkProgress(jobId: string | null) {
       if (!data) return 2000;
       return data.status === 'running' || data.status === 'pending' ? 2000 : false;
     },
+  });
+}
+
+export function useResolveAudience(params: ResolveAudienceParams | null) {
+  const isReady = !!params && (
+    params.type === 'all' ||
+    (params.type === 'group' && !!params.groupId) ||
+    (params.type === 'subjectGrade' && !!params.subjectGradeId) ||
+    (params.type === 'grade' && !!params.grade) ||
+    (params.type === 'teacher' && !!params.teacherId)
+  );
+  return useQuery({
+    queryKey: ['wa', 'audience', params],
+    queryFn: () => whatsappApi.resolveAudience(params!).then(r => r.data.data),
+    enabled: isReady,
   });
 }
 

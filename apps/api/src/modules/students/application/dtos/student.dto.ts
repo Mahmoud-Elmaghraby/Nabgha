@@ -1,20 +1,26 @@
 import { z } from 'zod';
 
 export const CreateStudentSchema = z.object({
-  fullName: z.string().min(2, 'الاسم يجب أن يكون حرفين على الأقل').max(255),
-  parentPhone: z.string().min(7, 'رقم الهاتف غير صحيح').max(20),
-  studentPhone: z.string().max(20).optional().nullable(),
+  fullName: z.string().trim().min(2, 'الاسم يجب أن يكون حرفين على الأقل').max(255),
+  parentPhone: z.string().trim().min(7, 'رقم هاتف ولي الأمر غير صحيح').max(20),
+  studentPhone: z.string().trim().min(7, 'رقم هاتف الطالب غير صحيح').max(20),
   dateOfBirth: z.string().optional().nullable(),
-  grade: z.string().max(100).optional().nullable(),
+  grade: z.string().min(1, 'المرحلة الدراسية مطلوبة').max(100),
+  address: z.string().trim().max(1000).optional().nullable(),
+  school: z.string().trim().max(255).optional().nullable(),
+  parentOccupation: z.string().trim().max(255).optional().nullable(),
   notes: z.string().optional().nullable(),
 });
 
 export const UpdateStudentSchema = z.object({
-  fullName: z.string().min(2).max(255).optional(),
-  parentPhone: z.string().min(7).max(20).optional(),
-  studentPhone: z.string().max(20).optional().nullable(),
+  fullName: z.string().trim().min(2).max(255).optional(),
+  parentPhone: z.string().trim().min(7).max(20).optional(),
+  studentPhone: z.string().trim().min(7).max(20).optional(),
   dateOfBirth: z.string().optional().nullable(),
-  grade: z.string().max(100).optional().nullable(),
+  grade: z.string().min(1).max(100).optional(),
+  address: z.string().trim().max(1000).optional().nullable(),
+  school: z.string().trim().max(255).optional().nullable(),
+  parentOccupation: z.string().trim().max(255).optional().nullable(),
   notes: z.string().optional().nullable(),
   isActive: z.boolean().optional(),
 });
