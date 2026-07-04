@@ -24,7 +24,7 @@ export default function StudentProfilePage() {
   const toast = useToast();
   const confirm = useConfirm();
   const { addStudent, removeStudent } = useGroupMutations();
-  const { data: allGroups } = useGroups();
+  const { data: allGroups } = useGroups({ limit: 100 });
   const { data: subjects = [] } = useSubjects();
 
   const [editing, setEditing] = useState(false);
