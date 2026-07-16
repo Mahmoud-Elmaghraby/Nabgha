@@ -43,6 +43,13 @@ export class StudentController {
     return { success: true, data };
   }
 
+  @Get(':id/attendance')
+  @RequirePermission('students.view')
+  async getAttendance(@Request() req: any, @Param('id') id: string) {
+    const data = await this.useCase.getAttendance(req.user.tenantId, id);
+    return { success: true, data };
+  }
+
   @Get(':id/qr')
   @RequirePermission('students.view')
   async getQr(@Request() req: any, @Param('id') id: string, @Res() res: Response) {

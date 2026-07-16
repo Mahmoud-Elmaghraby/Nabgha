@@ -2,6 +2,7 @@ import { apiClient } from '@/shared/lib/api/client';
 import type {
   StudentDto,
   StudentGroupDto,
+  StudentAttendanceDto,
   CreateStudentPayload,
   UpdateStudentPayload,
   PaginatedStudents,
@@ -21,6 +22,11 @@ export const studentsApi = {
 
   getGroups: async (id: string): Promise<StudentGroupDto[]> => {
     const res = await apiClient.get(`/students/${id}/groups`);
+    return res.data.data;
+  },
+
+  getAttendance: async (id: string): Promise<StudentAttendanceDto[]> => {
+    const res = await apiClient.get(`/students/${id}/attendance`);
     return res.data.data;
   },
 

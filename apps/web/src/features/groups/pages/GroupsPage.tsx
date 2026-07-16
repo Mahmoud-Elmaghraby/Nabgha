@@ -16,7 +16,7 @@ export default function GroupsPage() {
   const [isCreating, setIsCreating] = useState(false);
   const [studentsGroup, setStudentsGroup] = useState<GroupDto | null>(null);
 
-  const { data, isLoading } = useGroups({ search: debouncedSearch || undefined });
+  const { data, isLoading } = useGroups({ search: debouncedSearch || undefined, limit: 1000 });
 
   const handleClose = () => { setEditingGroup(null); setIsCreating(false); };
 

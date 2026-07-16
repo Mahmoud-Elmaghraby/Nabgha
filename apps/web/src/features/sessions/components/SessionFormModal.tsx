@@ -16,7 +16,7 @@ const TYPES_NEED_GRADES: SessionType[] = ['lesson_revision', 'lesson_exam', 'exa
 
 export function SessionFormModal({ open, onClose }: Props) {
   const { create } = useSessionMutations();
-  const { data: groupsData } = useGroups({ limit: 100 });
+  const { data: groupsData } = useGroups({ limit: 1000 });
   const { data: subjects = [] } = useSubjects();
 
   const [type, setType] = useState<SessionType>('lesson');

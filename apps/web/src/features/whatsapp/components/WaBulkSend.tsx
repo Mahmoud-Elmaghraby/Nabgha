@@ -33,7 +33,7 @@ export function WaBulkSend() {
   const [jobId, setJobId] = useState<string | null>(null);
   const [error, setError] = useState('');
 
-  const { data: groupsData } = useGroups({ limit: 100 });
+  const { data: groupsData } = useGroups({ limit: 1000 });
   const { data: subjects = [] } = useSubjects();
   const { data: teachersData } = useTeachers();
 

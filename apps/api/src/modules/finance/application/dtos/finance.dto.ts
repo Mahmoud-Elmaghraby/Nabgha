@@ -14,6 +14,16 @@ export const UpdateTreasurySchema = z.object({
   isActive: z.boolean().optional(),
 });
 
+export const TransferBetweenTreasuriesSchema = z.object({
+  fromTreasuryId: z.string().uuid('خزينة المصدر غير صحيحة'),
+  toTreasuryId: z.string().uuid('خزينة الوجهة غير صحيحة'),
+  amount: z.number().positive('المبلغ يجب أن يكون أكبر من صفر'),
+  notes: z.string().optional(),
+}).refine(data => data.fromTreasuryId !== data.toTreasuryId, {
+  message: 'لا يمكن التحويل لنفس الخزينة',
+  path: ['toTreasuryId'],
+});
+
 // ─── Monthly Due DTOs ─────────────────────────────────────
 export const GenerateDuesSchema = z.object({
   month: z.string().regex(/^\d{4}-\d{2}$/, 'صيغة الشهر غير صحيحة (YYYY-MM)'),
@@ -33,7 +43,10 @@ export const ListDuesSchema = z.object({
   month: z.string().regex(/^\d{4}-\d{2}$/).optional(),
   studentId: z.string().uuid().optional(),
   subjectGradeId: z.string().uuid().optional(),
-  status: z.enum(['unpaid', 'partial', 'paid', 'waived']).optional(),
+  status: z.enum(['unpaid', 'partial', 'paid', 'waived', 'cancelled']).optional(),
+  search: z.string().optional(),
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(20),
 });
@@ -44,6 +57,7 @@ export const CreateManualDueSchema = z.object({
   subjectGradeId: z.string().uuid('مادة غير صحيحة'),
   month: z.string().regex(/^\d{4}-\d{2}$/, 'صيغة الشهر غير صحيحة (YYYY-MM)'),
   dueAmount: z.number().min(0, 'المبلغ لا يمكن أن يكون سالباً'),
+  discountApplied: z.number().min(0).optional(),
   notes: z.string().optional(),
 });
 
@@ -116,6 +130,7 @@ export const ListExpensesSchema = z.object({
 export type CreateManualDueDto     = z.infer<typeof CreateManualDueSchema>;
 export type CreateTreasuryDto     = z.infer<typeof CreateTreasurySchema>;
 export type UpdateTreasuryDto     = z.infer<typeof UpdateTreasurySchema>;
+export type TransferBetweenTreasuriesDto = z.infer<typeof TransferBetweenTreasuriesSchema>;
 export type GenerateDuesDto       = z.infer<typeof GenerateDuesSchema>;
 export type UpdateDueDto          = z.infer<typeof UpdateDueSchema>;
 export type ListDuesDto           = z.infer<typeof ListDuesSchema>;

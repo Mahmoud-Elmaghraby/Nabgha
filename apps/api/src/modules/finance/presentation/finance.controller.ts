@@ -10,7 +10,7 @@ import { FinanceUseCase } from '../application/use-cases/finance.usecase';
 import { RequirePermission } from '../../../shared/infrastructure/guards/permission.decorator';
 import { ZodValidationPipe } from '../../../shared/infrastructure/pipes/zod-validation.pipe';
 import {
-  CreateTreasurySchema, UpdateTreasurySchema,
+  CreateTreasurySchema, UpdateTreasurySchema, TransferBetweenTreasuriesSchema,
   GenerateDuesSchema, UpdateDueSchema, WaiveDueSchema, ListDuesSchema, CreateManualDueSchema,
   CreatePaymentSchema, CancelPaymentSchema, RefundPaymentSchema, ListPaymentsSchema,
   CreateExpenseSchema, UpdateExpenseSchema, ListExpensesSchema, CollectMultiSchema,
@@ -62,6 +62,23 @@ export class FinanceController {
   @HttpCode(204)
   async deleteTreasury(@Request() req: any, @Param('id') id: string) {
     await this.useCase.deleteTreasury(req.user.tenantId, id);
+  }
+
+  @Get('treasuries/:id/detail')
+  @RequirePermission('finance.view')
+  async getTreasuryDetail(@Request() req: any, @Param('id') id: string) {
+    const data = await this.useCase.getTreasuryDetail(req.user.tenantId, id);
+    return { success: true, data };
+  }
+
+  @Post('treasuries/transfer')
+  @RequirePermission('finance.manage')
+  async transferBetweenTreasuries(
+    @Request() req: any,
+    @Body(new ZodValidationPipe(TransferBetweenTreasuriesSchema)) body: any,
+  ) {
+    const data = await this.useCase.transferBetweenTreasuries(req.user.tenantId, body, req.user.sub);
+    return { success: true, data };
   }
 
   // ─── Monthly Dues ─────────────────────────────────────────
@@ -120,6 +137,13 @@ export class FinanceController {
   ) {
     const data = await this.useCase.waiveDue(req.user.tenantId, id, body.notes);
     return { success: true, data };
+  }
+
+  @Delete('dues/:id')
+  @RequirePermission('finance.manage')
+  @HttpCode(204)
+  async deleteDue(@Request() req: any, @Param('id') id: string) {
+    await this.useCase.deleteDue(req.user.tenantId, id);
   }
 
   // ─── Payments ─────────────────────────────────────────────

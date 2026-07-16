@@ -324,6 +324,7 @@ export interface PaymentTransactionsTable {
   balance_after: number;
   notes: string | null;
   created_by: string | null;
+  related_treasury_id: string | null;
   created_at: Generated<Date>;
 }
 

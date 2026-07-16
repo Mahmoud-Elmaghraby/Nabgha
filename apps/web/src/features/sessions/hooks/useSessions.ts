@@ -29,6 +29,10 @@ export function usePreviousAbsent(sessionId: string) {
     queryKey: ['sessions', sessionId, 'previous-absent'],
     queryFn: () => sessionsApi.getPreviousAbsent(sessionId),
     enabled: !!sessionId,
+    // تحديث دوري في الخلفية بس — مش هيتسأل من جديد مع كل سكان،
+    // بس لو الشاشة فاضلة مفتوحة فترة طويلة الداتا تفضل حديثة
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
   });
 }
 
@@ -37,6 +41,8 @@ export function useUnpaidStudents(sessionId: string) {
     queryKey: ['sessions', sessionId, 'unpaid'],
     queryFn: () => sessionsApi.getUnpaidStudents(sessionId),
     enabled: !!sessionId,
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
   });
 }
 

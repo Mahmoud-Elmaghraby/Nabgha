@@ -9,10 +9,9 @@ export type BrandingMode = 'center' | 'teacher';
 export interface BrandingInfo {
   name: string;
   phone: string | null;
+  phone2: string | null;
   address: string | null;
   logoUrl: string | null;
-  // القيمة الفعلية اللي اتحسبت بيها (ممكن ترجع 'center' حتى لو الإعداد على 'teacher'
-  // في حالة مفيش مدرس واضح مرتبط بالسياق — fallback آمن)
   source: BrandingMode;
 }
 
@@ -32,7 +31,7 @@ export class BrandingService {
     private readonly kysely: KyselyService,
     private readonly centerSettings: CenterSettingsUseCase,
     private readonly moduleSettings: ModuleSettingsRepository,
-  ) {}
+  ) { }
 
   async getMode(tenantId: string): Promise<BrandingMode> {
     const raw = await this.moduleSettings.get(tenantId, BRANDING_SETTING_KEY);
@@ -48,6 +47,7 @@ export class BrandingService {
     const centerInfo: BrandingInfo = {
       name: center.centerName,
       phone: center.centerPhone,
+      phone2: (center as any).centerPhone2 ?? null,
       address: center.centerAddress,
       logoUrl: center.centerLogoUrl,
       source: 'center',
@@ -57,22 +57,23 @@ export class BrandingService {
     if (mode !== 'teacher') return centerInfo;
 
     const teacherId = await this.resolveTeacherId(tenantId, context);
-    if (!teacherId) return centerInfo; // مفيش سياق مدرس واضح → بيانات المركز
+    if (!teacherId) return centerInfo;
 
     const db = this.kysely.getTenantDb(tenantId);
     const teacher = await db
       .selectFrom('teachers')
-      .select(['name', 'phone'])
+      .select(['name', 'phone', 'phone_2'])
       .where('id', '=', sql<string>`${teacherId}::uuid`)
       .where('deleted_at', 'is', null)
       .where('is_active', '=', true)
       .executeTakeFirst();
 
-    if (!teacher) return centerInfo; // المدرس محذوف/معطل → fallback آمن
+    if (!teacher) return centerInfo;
 
     return {
       name: teacher.name,
       phone: teacher.phone,
+      phone2: (teacher as any).phone_2 ?? null,
       address: null,
       logoUrl: null,
       source: 'teacher',
@@ -84,7 +85,6 @@ export class BrandingService {
 
     const db = this.kysely.getTenantDb(tenantId);
 
-    // فاتورة (monthly_due) — نجيب الطالب والمادة منها ونكمل نفس منطق الحل تحت
     if (context.monthlyDueId) {
       const due = await db
         .selectFrom('monthly_dues')

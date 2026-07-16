@@ -50,6 +50,9 @@ export class StudentUseCase {
     if (!student) throw new AppError('NOT_FOUND', 'الطالب غير موجود', 404);
     student.update({
       ...data,
+      studentPhone: data.studentPhone !== undefined
+        ? (data.studentPhone || null)
+        : undefined,
       dateOfBirth: data.dateOfBirth !== undefined
         ? (data.dateOfBirth ? new Date(data.dateOfBirth) : null)
         : undefined,
@@ -90,6 +93,11 @@ export class StudentUseCase {
   async getGroups(tenantId: string, studentId: string): Promise<any[]> {
     await this.getById(tenantId, studentId);
     return this.repo.findGroups(tenantId, studentId);
+  }
+
+  async getAttendance(tenantId: string, studentId: string): Promise<any[]> {
+    await this.getById(tenantId, studentId);
+    return this.repo.findAttendanceHistory(tenantId, studentId);
   }
 
   async getQrCode(tenantId: string, id: string): Promise<string> {

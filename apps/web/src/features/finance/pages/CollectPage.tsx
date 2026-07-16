@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useTreasuries, usePaymentMutations, useDueMutations } from '../hooks/useFinance';
 import { useSubjects } from '@/features/subjects/hooks/useSubjects';
+import { useStudentGroups } from '@/features/students/hooks/useStudents';
 import { usePermissions } from '@/shared/hooks/usePermissions';
 import { DUE_STATUS_LABELS } from '../types/finance.types';
 import { FinanceLayout } from '../components/FinanceLayout';
@@ -56,10 +57,24 @@ export default function CollectPage() {
   const [manualStartDay, setManualStartDay] = useState(new Date().getDate());
   const [manualError, setManualError] = useState<string | null>(null);
 
-  const gradeOptions = subjects.flatMap(item =>
-    item.grades.map(g => ({ value: g.id, label: `${item.subject.name} — ${g.grade}`, fee: Number(g.fee) }))
+  // المجموعات اللي الطالب المختار مشترك فيها فعلاً — عشان الفاتورة اليدوية
+  // تعرض بس المواد اللي هو منضم لها، مش كل مواد السنتر
+  const { data: studentGroups = [] } = useStudentGroups(selectedStudent?.studentId ?? '');
+  const enrolledSubjectGradeIds = new Set(
+    studentGroups.filter(g => g.isActive).map(g => g.subjectGradeId).filter(Boolean)
   );
+  const discountBySubjectGradeId = new Map(
+    studentGroups.filter(g => g.isActive && g.subjectGradeId).map(g => [g.subjectGradeId as string, g.discount])
+  );
+
+  const gradeOptions = subjects
+    .flatMap(item =>
+      item.grades.map(g => ({ value: g.id, label: `${item.subject.name} — ${g.grade}`, fee: Number(g.fee) }))
+    )
+    .filter(o => enrolledSubjectGradeIds.has(o.value))
+    .map(o => ({ ...o, discount: discountBySubjectGradeId.get(o.value) ?? 0 }));
   const selectedGradeOption = gradeOptions.find(g => g.value === manualSubjectGradeId);
+  const [manualDiscount, setManualDiscount] = useState(0);
 
   const daysInMonth = (monthStr: string) => {
     const [y, m] = monthStr.split('-').map(Number);
@@ -70,11 +85,14 @@ export default function CollectPage() {
     if (!selectedGradeOption) return;
     if (!manualProrate) {
       setManualAmount(String(selectedGradeOption.fee));
+      setManualDiscount(selectedGradeOption.discount);
     } else {
       const total = daysInMonth(manualMonth);
       const remaining = Math.max(1, total - manualStartDay + 1);
       const prorated = Math.round((selectedGradeOption.fee / total) * remaining);
+      const proratedDiscount = Math.round((selectedGradeOption.discount / total) * remaining);
       setManualAmount(String(prorated));
+      setManualDiscount(proratedDiscount);
     }
   }, [selectedGradeOption, manualProrate, manualStartDay, manualMonth]);
 
@@ -97,6 +115,7 @@ export default function CollectPage() {
         subjectGradeId: manualSubjectGradeId,
         month: manualMonth,
         dueAmount: Number(manualAmount),
+        discountApplied: manualDiscount,
       });
       setShowManualDue(false);
       // إعادة تحميل فواتير الطالب عشان الفاتورة الجديدة تظهر على طول
@@ -496,6 +515,11 @@ export default function CollectPage() {
               </label>
               <input type="number" value={manualAmount} onChange={e => setManualAmount(e.target.value)}
                 className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0E3B2E]/20" />
+              {manualDiscount > 0 && (
+                <p className="text-xs text-amber-600 mt-1">
+                  هيتطبق خصم {manualDiscount.toLocaleString('ar-EG')} ج.م المسجل للطالب — الصافي المطلوب: {Math.max(0, Number(manualAmount || 0) - manualDiscount).toLocaleString('ar-EG')} ج.م
+                </p>
+              )}
             </div>
 
             {manualError && <p className="text-sm text-red-500">{manualError}</p>}

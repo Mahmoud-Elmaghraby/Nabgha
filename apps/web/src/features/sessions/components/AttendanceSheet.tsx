@@ -8,9 +8,21 @@ import { SESSION_KEYS } from '../hooks/useSessions';
 import { useStudents } from '@/features/students/hooks/useStudents';
 import { useDebounce } from '@/shared/hooks/useDebounce';
 import { usePermissions } from '@/shared/hooks/usePermissions';
+import { normaliseScannerInput } from '@/shared/lib/normaliseScannerInput';
 import { ATTENDANCE_STATUS_LABELS } from '../types/session.types';
 import { sessionHasImage } from '../types/session.types';
 import type { Session, AttendanceStatus } from '../types/session.types';
+import {
+  checkAttendanceWarnings, buildAttendanceMessage, buildWarningSuffix, playAttendanceWarningAlarm,
+} from '../lib/attendanceAlerts';
+import type { AttendanceAlertMessage, AttendanceWarnings } from '../lib/attendanceAlerts';
+
+interface CheckInResult {
+  studentId: string;
+  studentName: string;
+  isUnpaid: boolean;
+  wasPrevAbsent: boolean;
+}
 
 interface Props {
   session: Session;
@@ -29,7 +41,7 @@ export function AttendanceSheet({ session, onClose }: Props) {
   const qc = useQueryClient();
   const [scanInput, setScanInput] = useState('');
   const [searchFilter, setSearchFilter] = useState('');
-  const [scanMsg, setScanMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [scanMsg, setScanMsg] = useState<AttendanceAlertMessage | null>(null);
   const [showCamera, setShowCamera] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -64,61 +76,89 @@ export function AttendanceSheet({ session, onClose }: Props) {
     }
   };
 
-  const showExternalResultMsg = (result: { excusedAbsence: boolean; creditCreated: boolean }, name: string) => {
-    if (result.excusedAbsence) {
-      setScanMsg({ text: `✅ ${name} — تم تسجيل حضوره وإعفاء غياب سابق تلقائياً`, ok: true });
-    } else if (result.creditCreated) {
-      setScanMsg({ text: `✅ ${name} — تم تسجيل حضوره (رصيد تعويض متاح لو غاب لاحقاً بنفس المادة)`, ok: true });
+  // نتيجة تسكين ناجح (سكانر/كاميرا/بديل) — رسالة + صوت الإنذار لو الطالب
+  // عليه فلوس أو كان غايب المرة اللي فاتت. الرسالة تفضل ظاهرة لحد التسكين
+  // اللي بعده لو كانت تحذير؛ الرسائل العادية بترجع تختفي بالتايمر القديم.
+  const showCheckInResult = (studentName: string, warnings: AttendanceWarnings) => {
+    const msg = buildAttendanceMessage(studentName, warnings);
+    setScanMsg(msg);
+    if (msg.level === 'warning') {
+      playAttendanceWarningAlarm();
     } else {
-      setScanMsg({ text: `✅ ${name} — تم تسجيل حضوره`, ok: true });
+      setTimeout(() => setScanMsg(null), 3000);
     }
-    setTimeout(() => setScanMsg(null), 4000);
+  };
+
+  const showExternalResultMsg = (
+    result: { excusedAbsence: boolean; creditCreated: boolean },
+    name: string,
+    warnings: AttendanceWarnings,
+  ) => {
+    let baseText: string;
+    if (result.excusedAbsence) {
+      baseText = `✅ ${name} — تم تسجيل حضوره وإعفاء غياب سابق تلقائياً`;
+    } else if (result.creditCreated) {
+      baseText = `✅ ${name} — تم تسجيل حضوره (رصيد تعويض متاح لو غاب لاحقاً بنفس المادة)`;
+    } else {
+      baseText = `✅ ${name} — تم تسجيل حضوره`;
+    }
+    const warningSuffix = buildWarningSuffix(warnings);
+    if (warningSuffix) {
+      setScanMsg({ text: `${baseText} — ⚠️ ${warningSuffix}`, level: 'warning' });
+      playAttendanceWarningAlarm();
+    } else {
+      setScanMsg({ text: baseText, level: 'success' });
+      setTimeout(() => setScanMsg(null), 4000);
+    }
   };
 
   const handleAddExternal = async (studentId: string, studentName: string) => {
     try {
       const result = await addExternal.mutateAsync({ studentId });
-      showExternalResultMsg(result, studentName);
+      const warnings = checkAttendanceWarnings(result.attendance.studentId, previousAbsent, unpaidStudents);
+      showExternalResultMsg(result, studentName, warnings);
       setExternalSearch('');
       setShowExternal(false);
     } catch (err: any) {
       const msg = err?.response?.data?.error?.message || 'فشل تسجيل الحضور';
-      setScanMsg({ text: `❌ ${msg}`, ok: false });
+      setScanMsg({ text: `❌ ${msg}`, level: 'error' });
       setTimeout(() => setScanMsg(null), 3000);
     }
   };
 
-  const handleScan = async (qrCode: string): Promise<{ studentId?: string } | void> => {
+  const handleScan = async (qrCode: string): Promise<CheckInResult | void> => {
     if (!qrCode.trim()) return;
+    const normalised = normaliseScannerInput(qrCode.trim());
     try {
-      const record = await scanQr.mutateAsync(qrCode.trim());
-      setScanMsg({ text: `✅ ${record.studentName} — حاضر`, ok: true });
-      setTimeout(() => setScanMsg(null), 3000);
+      const record = await scanQr.mutateAsync(normalised);
+      const warnings = checkAttendanceWarnings(record.studentId, previousAbsent, unpaidStudents);
+      showCheckInResult(record.studentName, warnings);
       scanRef.current?.focus();
       setScanInput('');
       setSearchFilter('');
-      return { studentId: record.studentId };
+      return { studentId: record.studentId, studentName: record.studentName, ...warnings };
     } catch (err: any) {
       const code = err?.response?.data?.error?.code;
       // الطالب مش من روستر الحصة دي — نحاول نتعرف عليه من كود الباركود (الباركود يحمل الكود الظاهري بس)
       // ونضيفه كـ"بديل"؛ الـ Backend هو اللي بيترجم الكود لمعرف داخلي
       if (code === 'NOT_FOUND') {
         try {
-          let studentCode = qrCode.trim();
+          let studentCode = normalised;
           try {
-            const parsed = JSON.parse(qrCode.trim());
+            const parsed = JSON.parse(normalised);
             if (parsed.code) studentCode = parsed.code;
           } catch { /* مش JSON — نستخدم النص كما هو كـ كود مباشرة */ }
 
           const result = await addExternal.mutateAsync({ studentCode });
-          showExternalResultMsg(result, result.attendance.studentName);
+          const warnings = checkAttendanceWarnings(result.attendance.studentId, previousAbsent, unpaidStudents);
+          showExternalResultMsg(result, result.attendance.studentName, warnings);
           scanRef.current?.focus();
           setScanInput('');
-          return { studentId: result.attendance.studentId };
+          return { studentId: result.attendance.studentId, studentName: result.attendance.studentName, ...warnings };
         } catch { /* فشلت الإضافة برضو — نعرض الخطأ العادي تحت */ }
       }
       const msg = err?.response?.data?.error?.message || 'QR غير صحيح';
-      setScanMsg({ text: `❌ ${msg}`, ok: false });
+      setScanMsg({ text: `❌ ${msg}`, level: 'error' });
       setTimeout(() => setScanMsg(null), 3000);
       scanRef.current?.focus();
     }
@@ -126,7 +166,12 @@ export function AttendanceSheet({ session, onClose }: Props) {
   };
 
   const handleStatusChange = async (studentId: string, status: AttendanceStatus) => {
-    await updateOne.mutateAsync({ studentId, payload: { status } });
+    const record = await updateOne.mutateAsync({ studentId, payload: { status } });
+    // التنبيه يخص الطالب اللي بيتسجل حاضر/متأخر فعليًا — مش وقت تعليمه غايب
+    if (status === 'present' || status === 'late') {
+      const warnings = checkAttendanceWarnings(studentId, previousAbsent, unpaidStudents);
+      showCheckInResult(record.studentName, warnings);
+    }
   };
 
   const filteredAttendance = searchFilter
@@ -226,9 +271,15 @@ export function AttendanceSheet({ session, onClose }: Props) {
               </button>
             </div>
             {scanMsg && (
-              <p className={`text-sm px-1 ${scanMsg.ok ? 'text-emerald-600' : 'text-red-500'}`}>
-                {scanMsg.text}
-              </p>
+              scanMsg.level === 'warning' ? (
+                <p className="text-sm px-2 py-1.5 rounded-lg bg-amber-50 text-amber-700 border border-amber-300 font-semibold">
+                  {scanMsg.text}
+                </p>
+              ) : (
+                <p className={`text-sm px-1 ${scanMsg.level === 'success' ? 'text-emerald-600' : 'text-red-500'}`}>
+                  {scanMsg.text}
+                </p>
+              )
             )}
 
             {/* طالب من مجموعة تانية */}
@@ -348,8 +399,7 @@ export function AttendanceSheet({ session, onClose }: Props) {
 
       {showCamera && canMark && (
         <QrCameraScanner
-          onScan={async (qr) => { await handleScan(qr); }}
-          previousAbsent={previousAbsent}
+          onScan={handleScan}
           onClose={() => setShowCamera(false)}
         />
       )}

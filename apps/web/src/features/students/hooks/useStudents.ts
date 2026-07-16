@@ -12,6 +12,7 @@ export const STUDENT_KEYS = {
   list: (params?: ListStudentsParams) => ['students', 'list', params] as const,
   detail: (id: string) => ['students', id] as const,
   groups: (id: string) => ['students', id, 'groups'] as const,
+  attendance: (id: string) => ['students', id, 'attendance'] as const,
 };
 
 export function useStudents(params?: ListStudentsParams) {
@@ -34,6 +35,14 @@ export function useStudentGroups(id: string) {
     queryKey: STUDENT_KEYS.groups(id),
     queryFn: () => studentsApi.getGroups(id),
     enabled: !!id,
+  });
+}
+
+export function useStudentAttendance(id: string, enabled = true) {
+  return useQuery({
+    queryKey: STUDENT_KEYS.attendance(id),
+    queryFn: () => studentsApi.getAttendance(id),
+    enabled: !!id && enabled,
   });
 }
 

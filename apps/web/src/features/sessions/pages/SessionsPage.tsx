@@ -53,7 +53,7 @@ export default function SessionsPage() {
   const toast = useToast();
   const confirm = useConfirm();
   const { start, complete, cancel, remove } = useSessionMutations();
-  const { data: groupsData } = useGroups({ limit: 100 });
+  const { data: groupsData } = useGroups({ limit: 1000 });
   const groups = groupsData?.data || [];
 
   const sessions = data?.data || [];

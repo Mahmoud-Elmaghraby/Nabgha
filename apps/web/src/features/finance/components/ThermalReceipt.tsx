@@ -13,7 +13,6 @@ interface ReceiptData {
   treasuryName?: string;
   paidAt: string;
   notes?: string;
-  // لتحديد هوية المركز/المدرس اللي هتظهر على الإيصال — لو موجودة، الإيصال بيجيب البراندنج بناءً عليها
   monthlyDueId?: string;
 }
 
@@ -38,11 +37,12 @@ function useBrandingInfo(monthlyDueId?: string) {
       return res.data.data as {
         name: string;
         phone: string | null;
+        phone2: string | null;
         address: string | null;
         source: 'center' | 'teacher';
       };
     },
-    staleTime: 1000 * 30, // مش طويلة زي إعدادات المركز، لأنها بتختلف حسب الفاتورة
+    staleTime: 1000 * 30,
   });
 }
 
@@ -58,16 +58,16 @@ export function ThermalReceipt({ receipt, onClose, autoPrint = false }: ThermalR
   const handlePrint = () => window.print();
 
   const d = new Date(receipt.paidAt);
-  const date = `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+  const date = `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
+  const time = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
 
-  // لو الإعداد على "مدرس" وفيه سياق واضح، هيظهر اسم ورقم المدرس بدل المركز تلقائياً
   const centerName = branding?.name || 'نبغة';
   const centerPhone = branding?.phone || '';
+  const centerPhone2 = branding?.phone2 || '';
   const centerAddress = branding?.address || '';
 
   return (
     <>
-      {/* Print CSS */}
       <style>{`
         @media print {
           body * { visibility: hidden; }
@@ -78,52 +78,110 @@ export function ThermalReceipt({ receipt, onClose, autoPrint = false }: ThermalR
             left: 0;
             display: block !important;
           }
-          @page { size: 58mm auto; margin: 0; }
+          @page { size: 80mm auto; margin: 0; }
         }
         #thermal-receipt-print {
           display: none;
-          width: 58mm;
-          font-family: 'Courier New', monospace;
-          font-size: 10px;
+          width: 76mm;
+          font-family: 'Arial', sans-serif;
+          font-size: 12px;
           direction: rtl;
           padding: 4mm 3mm;
           color: #000;
+          line-height: 1.6;
         }
-        #thermal-receipt-print .c { text-align: center; }
-        #thermal-receipt-print .b { font-weight: bold; }
-        #thermal-receipt-print .lg { font-size: 13px; }
-        #thermal-receipt-print .sm { font-size: 8px; }
-        #thermal-receipt-print .div { border-top: 1px dashed #000; margin: 2mm 0; }
-        #thermal-receipt-print .row { display: flex; justify-content: space-between; margin: 0.8mm 0; }
-        #thermal-receipt-print .amt { font-size: 15px; font-weight: bold; text-align: center; margin: 2mm 0; }
+        #thermal-receipt-print .center { text-align: center; }
+        #thermal-receipt-print .bold { font-weight: bold; }
+        #thermal-receipt-print .name { font-size: 18px; font-weight: bold; text-align: center; letter-spacing: 1px; margin-bottom: 1mm; }
+        #thermal-receipt-print .subtitle { font-size: 10px; text-align: center; margin-bottom: 2mm; }
+        #thermal-receipt-print .line-solid { border-top: 1px solid #000; margin: 2mm 0; }
+        #thermal-receipt-print .line-dashed { border-top: 1px dashed #000; margin: 2mm 0; }
+        #thermal-receipt-print .line-double { border-top: 3px double #000; margin: 2mm 0; }
+        #thermal-receipt-print .row { display: flex; justify-content: space-between; align-items: center; margin: 1.5mm 0; font-size: 12px; }
+        #thermal-receipt-print .label { color: #333; }
+        #thermal-receipt-print .value { font-weight: bold; }
+        #thermal-receipt-print .amount-box { text-align: center; margin: 3mm 0; padding: 2mm 0; border-top: 2px solid #000; border-bottom: 2px solid #000; }
+        #thermal-receipt-print .amount-num { font-size: 22px; font-weight: bold; }
+        #thermal-receipt-print .amount-label { font-size: 10px; margin-bottom: 1mm; }
+        #thermal-receipt-print .receipt-num { font-size: 10px; text-align: center; color: #555; }
+        #thermal-receipt-print .footer { text-align: center; font-size: 10px; margin-top: 2mm; }
+        #thermal-receipt-print .footer-phone { font-size: 11px; font-weight: bold; }
       `}</style>
 
       {/* Printable Content */}
       <div id="thermal-receipt-print">
-        <div className="c b lg">{centerName}</div>
-        <div className="div"/>
-        <div className="c b">إيصال دفع #{receipt.receiptNumber}</div>
-        <div className="c sm">{date}</div>
-        <div className="div"/>
-        <div className="row"><span>الطالب:</span><span>{receipt.studentName}</span></div>
-        <div className="row"><span>الكود:</span><span>{receipt.studentCode}</span></div>
-        {receipt.subjectName && <div className="row"><span>المادة:</span><span>{receipt.subjectName}</span></div>}
-        {receipt.month && <div className="row"><span>الشهر:</span><span>{receipt.month}</span></div>}
-        <div className="div"/>
-        <div className="amt">{receipt.amount.toLocaleString('ar-EG')} جنيه</div>
-        <div className="row"><span>طريقة الدفع:</span><span>{PAYMENT_METHOD_AR[receipt.paymentMethod] || receipt.paymentMethod}</span></div>
-        {receipt.treasuryName && <div className="row"><span>الخزينة:</span><span>{receipt.treasuryName}</span></div>}
-        {receipt.notes && <div className="row"><span>ملاحظات:</span><span>{receipt.notes}</span></div>}
-        <div className="div"/>
-        <div className="c sm">شكراً لثقتكم 🎓</div>
-        {centerAddress && <div className="c sm">{centerAddress}</div>}
-        {centerPhone && <div className="c sm">📞 {centerPhone}</div>}
+
+        {/* Header */}
+        <div className="name">{centerName}</div>
+        {centerAddress && <div className="subtitle">{centerAddress}</div>}
+        <div className="line-double"/>
+
+        {/* Receipt Info */}
+        
+        <div className="row">
+          <span className="label">التاريخ:</span>
+          <span className="value">{date}</span>
+        </div>
+        <div className="row">
+          <span className="label">الوقت:</span>
+          <span className="value">{time}</span>
+        </div>
+        <div className="line-dashed"/>
+
+        {/* Student Info */}
+        <div className="row">
+          <span className="label">الطالب:</span>
+          <span className="value">{receipt.studentName}</span>
+        </div>
+        <div className="row">
+          <span className="label">الكود:</span>
+          <span className="value">{receipt.studentCode}</span>
+        </div>
+        {receipt.subjectName && (
+          <div className="row">
+            <span className="label">المادة:</span>
+            <span className="value">{receipt.subjectName}</span>
+          </div>
+        )}
+        {receipt.month && (
+          <div className="row">
+            <span className="label">الشهر:</span>
+            <span className="value">{receipt.month}</span>
+          </div>
+        )}
+        <div className="line-dashed"/>
+
+        {/* Amount */}
+        <div className="amount-box">
+          <div className="amount-label">المبلغ المدفوع</div>
+          <div className="amount-num">{receipt.amount.toLocaleString('ar-EG')} جنيه</div>
+        </div>
+
+        {/* Payment Method */}
+        <div className="row">
+          <span className="label">طريقة الدفع:</span>
+          <span className="value">{PAYMENT_METHOD_AR[receipt.paymentMethod] || receipt.paymentMethod}</span>
+        </div>
+        {receipt.notes && (
+          <div className="row">
+            <span className="label">ملاحظات:</span>
+            <span className="value">{receipt.notes}</span>
+          </div>
+        )}
+        <div className="line-double"/>
+
+        {/* Footer */}
+        <div className="footer">
+          <div style={{ fontSize: '13px', fontWeight: 'bold', marginBottom: '1mm' }}>شكراً لثقتكم 🎓</div>
+          {centerPhone && <div className="footer-phone">📞 {centerPhone}</div>}
+          {centerPhone2 && <div className="footer-phone">📞 {centerPhone2}</div>}
+        </div>
+
       </div>
 
       {/* Modal Preview */}
       <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" dir="rtl">
         <div className="bg-white rounded-2xl shadow-xl w-full max-w-xs overflow-hidden">
-          {/* Header */}
           <div className="bg-[#0E3B2E] px-4 py-3 flex items-center justify-between">
             <h3 className="text-white font-bold text-sm">إيصال #{receipt.receiptNumber}</h3>
             <button onClick={onClose} className="text-white/70 hover:text-white">
@@ -133,29 +191,45 @@ export function ThermalReceipt({ receipt, onClose, autoPrint = false }: ThermalR
             </button>
           </div>
 
-          {/* Preview */}
-          <div className="p-4 font-mono text-xs space-y-1.5 bg-gray-50 max-h-96 overflow-y-auto" dir="rtl">
-            <p className="text-center font-bold text-sm">{centerName}</p>
-            <div className="border-t border-dashed border-gray-300 my-2"/>
-            <p className="text-center font-bold">إيصال #{receipt.receiptNumber}</p>
-            <p className="text-center text-gray-400 text-xs">{date}</p>
-            <div className="border-t border-dashed border-gray-300 my-2"/>
-            <div className="flex justify-between"><span className="text-gray-500">الطالب:</span><span className="font-medium">{receipt.studentName}</span></div>
-            <div className="flex justify-between"><span className="text-gray-500">الكود:</span><span className="font-mono">{receipt.studentCode}</span></div>
-            {receipt.subjectName && <div className="flex justify-between"><span className="text-gray-500">المادة:</span><span>{receipt.subjectName}</span></div>}
-            {receipt.month && <div className="flex justify-between"><span className="text-gray-500">الشهر:</span><span>{receipt.month}</span></div>}
-            <div className="border-t border-dashed border-gray-300 my-2"/>
-            <p className="text-center text-2xl font-bold text-[#0E3B2E]">{receipt.amount.toLocaleString('ar-EG')} ج</p>
-            <div className="flex justify-between"><span className="text-gray-500">طريقة الدفع:</span><span>{PAYMENT_METHOD_AR[receipt.paymentMethod] || receipt.paymentMethod}</span></div>
-            {receipt.treasuryName && <div className="flex justify-between"><span className="text-gray-500">الخزينة:</span><span>{receipt.treasuryName}</span></div>}
-            {receipt.notes && <div className="flex justify-between"><span className="text-gray-500">ملاحظات:</span><span>{receipt.notes}</span></div>}
-            <div className="border-t border-dashed border-gray-300 my-2"/>
-            <p className="text-center text-gray-400">شكراً لثقتكم 🎓</p>
+          <div className="p-4 space-y-2 bg-gray-50 max-h-96 overflow-y-auto" dir="rtl">
+            {/* Header Preview */}
+            <p className="text-center font-bold text-base">{centerName}</p>
             {centerAddress && <p className="text-center text-gray-400 text-xs">{centerAddress}</p>}
-            {centerPhone && <p className="text-center text-gray-400 text-xs">📞 {centerPhone}</p>}
+            <div className="border-t-2 border-double border-gray-400 my-2"/>
+
+            {/* Receipt num + date */}
+            <p className="text-center text-gray-400 text-xs">إيصال رقم: {receipt.receiptNumber}</p>
+            <div className="flex justify-between text-xs">
+              <span className="text-gray-500">التاريخ:</span><span className="font-bold">{date}</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-gray-500">الوقت:</span><span className="font-bold">{time}</span>
+            </div>
+            <div className="border-t border-dashed border-gray-300 my-2"/>
+
+            {/* Student */}
+            <div className="flex justify-between text-xs"><span className="text-gray-500">الطالب:</span><span className="font-bold">{receipt.studentName}</span></div>
+            <div className="flex justify-between text-xs"><span className="text-gray-500">الكود:</span><span className="font-mono">{receipt.studentCode}</span></div>
+            {receipt.subjectName && <div className="flex justify-between text-xs"><span className="text-gray-500">المادة:</span><span className="font-bold">{receipt.subjectName}</span></div>}
+            {receipt.month && <div className="flex justify-between text-xs"><span className="text-gray-500">الشهر:</span><span className="font-bold">{receipt.month}</span></div>}
+            <div className="border-t border-dashed border-gray-300 my-2"/>
+
+            {/* Amount */}
+            <div className="text-center border-y-2 border-gray-400 py-2 my-2">
+              <p className="text-xs text-gray-500">المبلغ المدفوع</p>
+              <p className="text-2xl font-bold text-[#0E3B2E]">{receipt.amount.toLocaleString('ar-EG')} ج</p>
+            </div>
+
+            <div className="flex justify-between text-xs"><span className="text-gray-500">طريقة الدفع:</span><span className="font-bold">{PAYMENT_METHOD_AR[receipt.paymentMethod] || receipt.paymentMethod}</span></div>
+            {receipt.notes && <div className="flex justify-between text-xs"><span className="text-gray-500">ملاحظات:</span><span>{receipt.notes}</span></div>}
+            <div className="border-t-2 border-double border-gray-400 my-2"/>
+
+            {/* Footer */}
+            <p className="text-center text-sm font-bold">شكراً لثقتكم 🎓</p>
+            {centerPhone && <p className="text-center text-gray-500 text-xs font-bold">📞 {centerPhone}</p>}
+            {centerPhone2 && <p className="text-center text-gray-500 text-xs font-bold">📞 {centerPhone2}</p>}
           </div>
 
-          {/* Actions */}
           <div className="p-4 flex gap-2">
             <button onClick={onClose}
               className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50 transition-colors">

@@ -4,13 +4,15 @@ import { apiClient } from '@/shared/lib/api/client';
 import { generateLabelsPDF, generateCardsPDF } from '@/shared/services/pdf/pdf.service';
 import { useToast } from '@/shared/components/Toast';
 import { LabelsPreviewModal } from './LabelsPreviewModal';
+import { useSubjects } from '@/features/subjects/hooks/useSubjects';
+import { DAY_LABELS } from '@/features/groups/types/group.types';
 import type { StudentQRData } from '@/shared/services/pdf/pdf.service';
 
 function useGroups() {
   return useQuery({
     queryKey: ['barcodes-groups'],
     queryFn: async () => {
-      const res = await apiClient.get('/groups', { params: { limit: 100 } });
+      const res = await apiClient.get('/groups', { params: { limit: 1000 } });
       return res.data.data?.data ?? [];
     },
   });
@@ -64,6 +66,28 @@ export default function BarcodesPage() {
   const { data: searchResults = [] } = useStudentsSearch(searchQ);
   const { data: cardSettings } = useCardDesignerSettings();
   const { data: centerSettings } = useCenterSettings();
+  const { data: subjects = [] } = useSubjects();
+
+  const getGroupLabel = (g: any) => {
+    let subjectPart = '';
+    if (g.subjectGradeId) {
+      for (const item of subjects) {
+        const grade = item.grades.find((x: any) => x.id === g.subjectGradeId);
+        if (grade) {
+          subjectPart = `${item.subject.name} - ${grade.grade}`;
+          break;
+        }
+      }
+    }
+
+    let schedulePart = '';
+    if (g.schedule && g.schedule.length > 0) {
+      const times = g.schedule.map((s: any) => `${DAY_LABELS[s.day as keyof typeof DAY_LABELS]} ${s.startTime}`).join('، ');
+      schedulePart = times;
+    }
+
+    return [subjectPart, schedulePart].filter(Boolean).join(' | ');
+  };
 
   const centerName = centerSettings?.centerName || 'نبغة';
 
@@ -200,15 +224,23 @@ export default function BarcodesPage() {
           {groups.length === 0 ? (
             <p className="text-sm text-gray-400">لا توجد مجموعات</p>
           ) : (
-            <div className="flex flex-wrap gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
               {groups.map((g: any) => (
                 <button key={g.id} onClick={() => toggleGroup(g.id)}
-                  className={`px-3 py-1.5 rounded-xl text-sm border transition-all ${
+                  className={`px-3 py-2 rounded-xl text-sm border transition-all text-right flex flex-col items-start gap-1 w-full ${
                     selectedGroups.includes(g.id)
                       ? 'bg-[#0E3B2E] text-white border-[#0E3B2E]'
                       : 'bg-white text-gray-700 border-gray-200 hover:border-[#0E3B2E]/30'
                   }`}>
-                  {g.name} {selectedGroups.includes(g.id) && '✓'}
+                  <div className="font-bold flex w-full justify-between items-center">
+                    <span>{g.name}</span>
+                    {selectedGroups.includes(g.id) && <span>✓</span>}
+                  </div>
+                  {getGroupLabel(g) && (
+                    <div className={`text-[11px] font-medium ${selectedGroups.includes(g.id) ? 'text-emerald-100' : 'text-gray-500'}`}>
+                      {getGroupLabel(g)}
+                    </div>
+                  )}
                 </button>
               ))}
             </div>

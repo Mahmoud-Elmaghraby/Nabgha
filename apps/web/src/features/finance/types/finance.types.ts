@@ -6,6 +6,36 @@ export interface Treasury {
   id: string; name: string; type: TreasuryType; balance: number;
   isActive: boolean; notes: string | null; createdAt: string; updatedAt: string;
 }
+export type TransactionType = 'income' | 'cancellation' | 'refund' | 'expense' | 'transfer_in' | 'transfer_out';
+export const TRANSACTION_TYPE_LABELS: Record<TransactionType, { label: string; class: string }> = {
+  income:        { label: 'إيراد',          class: 'bg-emerald-50 text-emerald-600 border-emerald-200' },
+  expense:       { label: 'مصروف',          class: 'bg-red-50 text-red-600 border-red-200' },
+  cancellation:  { label: 'إلغاء إيصال',    class: 'bg-gray-50 text-gray-500 border-gray-200' },
+  refund:        { label: 'استرجاع',        class: 'bg-orange-50 text-orange-600 border-orange-200' },
+  transfer_in:   { label: 'تحويل وارد',     class: 'bg-blue-50 text-blue-600 border-blue-200' },
+  transfer_out:  { label: 'تحويل صادر',     class: 'bg-purple-50 text-purple-600 border-purple-200' },
+};
+export interface TreasuryTransaction {
+  id: string; paymentId: string | null; treasuryId: string; type: TransactionType;
+  amount: number; balanceBefore: number; balanceAfter: number;
+  notes: string | null; createdAt: string;
+  relatedTreasuryId: string | null;
+  treasuryName?: string; relatedTreasuryName?: string;
+}
+export interface TreasurySummary {
+  totalIncome: number; totalExpenses: number; totalTransfersIn: number; totalTransfersOut: number;
+}
+export interface TreasuryDetail {
+  treasury: Treasury;
+  transactions: TreasuryTransaction[];
+  summary: TreasurySummary;
+}
+export interface TransferBetweenTreasuriesPayload {
+  fromTreasuryId: string;
+  toTreasuryId: string;
+  amount: number;
+  notes?: string;
+}
 export type DueStatus = 'unpaid' | 'partial' | 'paid' | 'waived';
 export const DUE_STATUS_LABELS: Record<DueStatus, { label: string; class: string }> = {
   unpaid:  { label: 'غير مدفوع', class: 'bg-red-50 text-red-600 border-red-200' },
@@ -57,9 +87,10 @@ export interface CreateManualDuePayload {
   subjectGradeId: string;
   month: string;
   dueAmount: number;
+  discountApplied?: number;
   notes?: string;
 }
 
-export interface ListDuesParams { month?: string; studentId?: string; status?: DueStatus; page?: number; limit?: number; }
+export interface ListDuesParams { month?: string; studentId?: string; status?: DueStatus; search?: string; from?: string; to?: string; page?: number; limit?: number; }
 export interface ListPaymentsParams { studentId?: string; treasuryId?: string; status?: PaymentStatus; from?: string; to?: string; page?: number; limit?: number; }
 export interface ListExpensesParams { treasuryId?: string; category?: ExpenseCategory; from?: string; to?: string; page?: number; limit?: number; }

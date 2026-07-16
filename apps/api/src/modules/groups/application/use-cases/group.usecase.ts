@@ -5,6 +5,7 @@ import { AppError } from '../../../../core/errors/app.error';
 import { SendNotificationUseCase } from '../../../whatsapp/application/use-cases/send-notification.usecase';
 import { KyselyService } from '../../../../shared/infrastructure/database/kysely.service';
 import { BrandingService } from '../../../settings/application/services/branding.service';
+import { FinanceUseCase } from '../../../finance/application/use-cases/finance.usecase';
 import { sql } from 'kysely';
 import type { CreateGroupDto, UpdateGroupDto, ListGroupsDto } from '../dtos/group.dto';
 
@@ -17,6 +18,7 @@ export class GroupUseCase {
     private readonly sendNotification: SendNotificationUseCase,
     private readonly kysely: KyselyService,
     private readonly branding: BrandingService,
+    private readonly financeUseCase: FinanceUseCase,
   ) {}
 
   async list(
@@ -96,10 +98,16 @@ export class GroupUseCase {
     studentId: string,
     discount: number,
   ): Promise<void> {
-    await this.getById(tenantId, groupId);
+    const group = await this.getById(tenantId, groupId);
     const inGroup = await this.repo.isStudentInGroup(tenantId, groupId, studentId);
     if (!inGroup) throw new AppError('NOT_FOUND', 'الطالب غير مسجل في هذه المجموعة', 404);
     await this.repo.updateStudentDiscount(tenantId, groupId, studentId, discount);
+
+    // مزامنة الخصم الجديد مع فاتورة الشهر الحالي لو موجودة ولسه مش مقفولة
+    // عشان "المتبقي" يعكس الخصم فورًا من غير ما ننتظر توليد فاتورة جديدة الشهر الجاي
+    if (group.subjectGradeId) {
+      await this.financeUseCase.syncDiscountForCurrentMonth(tenantId, studentId, group.subjectGradeId, discount);
+    }
   }
 
   async removeStudent(tenantId: string, groupId: string, studentId: string): Promise<void> {

@@ -82,14 +82,14 @@ export function GroupStudentsDrawer({ group, onClose }: Props) {
   const { data: allStudents } = useStudents({
     search: debouncedSearch || undefined,
     grade: groupGrade || undefined,
-    limit: 20,
+    limit: 1000,
   });
 
   const enrolledIds = new Set(enrolled.map(s => s.studentId));
 
   // الطلاب المسجلين في مجموعات تانية بنفس المادة والصف (لمنع تسجيل الطالب مرتين في نفس المادة)
   const { data: siblingGroups } = useGroups(
-    group?.subjectGradeId ? { subjectGradeId: group.subjectGradeId, limit: 100 } : undefined
+    group?.subjectGradeId ? { subjectGradeId: group.subjectGradeId, limit: 1000 } : undefined
   );
   const siblingGroupIds: string[] = (siblingGroups?.data || [])
     .filter((g) => g.id !== group?.id)

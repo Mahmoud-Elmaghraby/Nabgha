@@ -10,6 +10,7 @@ import type {
   CreateTreasuryDto, UpdateTreasuryDto, GenerateDuesDto, UpdateDueDto,
   CreatePaymentDto, CancelPaymentDto, RefundPaymentDto, CreateManualDueDto,
   ListDuesDto, ListPaymentsDto, CreateExpenseDto, UpdateExpenseDto, ListExpensesDto,
+  TransferBetweenTreasuriesDto,
 } from '../dtos/finance.dto';
 
 @Injectable()
@@ -53,6 +54,58 @@ export class FinanceUseCase {
     await this.repo.saveTreasury(tenantId, treasury);
   }
 
+  async getTreasuryDetail(tenantId: string, id: string) {
+    const treasury = await this.getTreasury(tenantId, id);
+    const [transactions, summary] = await Promise.all([
+      this.repo.findTransactionsByTreasury(tenantId, id),
+      this.repo.getTreasurySummary(tenantId, id),
+    ]);
+    return { treasury, transactions, summary };
+  }
+
+  async transferBetweenTreasuries(tenantId: string, data: TransferBetweenTreasuriesDto, userId: string) {
+    const fromTreasury = await this.getTreasury(tenantId, data.fromTreasuryId);
+    const toTreasury = await this.getTreasury(tenantId, data.toTreasuryId);
+
+    if (data.amount > fromTreasury.balance) {
+      throw new AppError('INSUFFICIENT_BALANCE', `رصيد الخزينة الحالي (${fromTreasury.balance} جنيه) أقل من مبلغ التحويل`, 400);
+    }
+
+    const fromBalanceBefore = fromTreasury.balance;
+    fromTreasury.debit(data.amount);
+    const toBalanceBefore = toTreasury.balance;
+    toTreasury.credit(data.amount);
+
+    await Promise.all([
+      this.repo.saveTreasury(tenantId, fromTreasury),
+      this.repo.saveTreasury(tenantId, toTreasury),
+      this.repo.createTransaction(tenantId, {
+        treasuryId: fromTreasury.id,
+        type: 'transfer_out',
+        amount: data.amount,
+        balanceBefore: fromBalanceBefore,
+        balanceAfter: fromTreasury.balance,
+        notes: data.notes,
+        createdBy: userId,
+        relatedTreasuryId: toTreasury.id,
+      }),
+      this.repo.createTransaction(tenantId, {
+        treasuryId: toTreasury.id,
+        type: 'transfer_in',
+        amount: data.amount,
+        balanceBefore: toBalanceBefore,
+        balanceAfter: toTreasury.balance,
+        notes: data.notes,
+        createdBy: userId,
+        relatedTreasuryId: fromTreasury.id,
+      }),
+    ]);
+
+    this.logger.log(`Transfer: ${data.amount} from treasury ${fromTreasury.id} to ${toTreasury.id}`);
+
+    return { fromTreasury, toTreasury };
+  }
+
   // ─── Monthly Dues ─────────────────────────────────────────
   async listDues(tenantId: string, params: ListDuesDto) {
     return this.repo.findDues(tenantId, params);
@@ -94,6 +147,19 @@ export class FinanceUseCase {
     return { created, skipped };
   }
 
+  // بيتنادى لما الخصم يتغير في group_students عشان يعكس على فاتورة الشهر الحالي
+  // لو موجودة بالفعل — عشان "متبقي الشهر" يعكس الخصم فورًا من غير ما نستنى شهر جديد
+  async syncDiscountForCurrentMonth(
+    tenantId: string, studentId: string, subjectGradeId: string, discount: number,
+  ): Promise<void> {
+    const now = new Date();
+    const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const due = await this.repo.findDueByStudentSubjectGradeMonth(tenantId, studentId, subjectGradeId, month);
+    if (!due || due.status === 'paid' || due.status === 'waived') return;
+    due.updateAmount(due.dueAmount, discount);
+    await this.repo.saveDue(tenantId, due);
+  }
+
   async updateDue(tenantId: string, id: string, data: UpdateDueDto) {
     const due = await this.getDue(tenantId, id);
     if (due.status === 'paid') throw new AppError('INVALID_STATUS', 'لا يمكن تعديل فاتورة مدفوعة', 400);
@@ -120,7 +186,7 @@ export class FinanceUseCase {
       subjectGradeId: data.subjectGradeId,
       month: data.month,
       dueAmount: data.dueAmount,
-      discountApplied: 0,
+      discountApplied: data.discountApplied ?? 0,
       notes: data.notes,
       createdBy: userId,
     });
@@ -131,13 +197,33 @@ export class FinanceUseCase {
   async waiveDue(tenantId: string, id: string, notes?: string) {
     const due = await this.getDue(tenantId, id);
     if (due.status === 'paid') throw new AppError('INVALID_STATUS', 'الفاتورة مدفوعة بالفعل', 400);
-    if (due.paidAmount > 0) {
-      throw new AppError('INVALID_STATUS', 'لا يمكن إعفاء فاتورة تم تحصيل مبلغ منها بالفعل — استخدم استرجاع الدفعة بدلاً من ذلك', 400);
-    }
+    // إعفاء فاتورة متحصل منها جزء بيسامح بس في المتبقي — الجزء المدفوع فعلاً فضل في الخزينة وميترجعش
     due.waive();
     if (notes) due.notes = notes;
     await this.repo.saveDue(tenantId, due);
     return due;
+  }
+
+  async deleteDue(tenantId: string, id: string) {
+    const due = await this.getDue(tenantId, id);
+
+    // الحذف مسموح فقط للفواتير غير المدفوعة
+    // لو فيها سداد (partial أو paid) لازم يلغي السداد الأول
+    if (due.status !== 'unpaid') {
+      throw new AppError(
+        'INVALID_STATUS',
+        due.status === 'paid'
+          ? 'لا يمكن حذف فاتورة مدفوعة — ألغِ السداد أولاً ثم أعد المحاولة'
+          : due.status === 'partial'
+          ? 'لا يمكن حذف فاتورة بها سداد جزئي — ألغِ السداد أولاً ثم أعد المحاولة'
+          : 'لا يمكن حذف هذه الفاتورة',
+        400,
+      );
+    }
+
+    due.softDelete();
+    await this.repo.saveDue(tenantId, due);
+    this.logger.log(`Due deleted (soft): ${id}`);
   }
 
   // ─── Payments ─────────────────────────────────────────────
@@ -236,8 +322,20 @@ export class FinanceUseCase {
   async refundPayment(tenantId: string, id: string, data: RefundPaymentDto, userId: string) {
     const payment = await this.getPayment(tenantId, id);
     if (payment.status === 'cancelled') throw new AppError('INVALID_STATUS', 'الإيصال ملغي', 400);
-    if (payment.status === 'refunded') throw new AppError('INVALID_STATUS', 'تم الاسترجاع بالفعل', 400);
-    if (data.amount > payment.amount) throw new AppError('AMOUNT_EXCEEDED', 'مبلغ الاسترجاع يتجاوز مبلغ الإيصال', 400);
+    if (payment.status === 'refunded') throw new AppError('INVALID_STATUS', 'تم الاسترجاع بالكامل بالفعل', 400);
+
+    // ─── Fix: منع تجاوز المبلغ المسترجع الفعلي في حالة partial_refund ───
+    // الإيصال ممكن يكون partial_refund من استرجاع سابق —
+    // لازم نحسب المتبقي القابل للاسترجاع بدل المقارنة بـ payment.amount كامل
+    const alreadyRefunded = payment.refundAmount ?? 0;
+    const maxRefundable = payment.amount - alreadyRefunded;
+    if (data.amount > maxRefundable) {
+      throw new AppError(
+        'AMOUNT_EXCEEDED',
+        `مبلغ الاسترجاع يتجاوز المتبقي القابل للاسترجاع (${maxRefundable} جنيه)`,
+        400,
+      );
+    }
 
     const due = await this.getDue(tenantId, payment.monthlyDueId);
     const treasury = await this.getTreasury(tenantId, payment.treasuryId);
@@ -249,7 +347,10 @@ export class FinanceUseCase {
     const balanceBefore = treasury.balance;
     treasury.debit(data.amount);
     due.reversePayment(data.amount);
-    payment.refund(data.amount);
+
+    // نحدّث الـ refundAmount التراكمي وليس بس الأخير
+    const totalRefunded = alreadyRefunded + data.amount;
+    payment.refund(totalRefunded);
 
     await Promise.all([
       this.repo.savePayment(tenantId, payment),

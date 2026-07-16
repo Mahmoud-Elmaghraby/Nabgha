@@ -26,7 +26,8 @@ export class RestoreSessionsUseCase implements OnModuleInit {
       });
 
       for (const tenant of tenants) {
-        const sessionDir = path.join(process.cwd(), 'wa-sessions', tenant.id);
+        const baseDir = path.join(process.env.APPDATA ?? process.cwd(), 'Nabgha', 'wa-sessions');
+        const sessionDir = path.join(baseDir, tenant.id);
         if (fs.existsSync(sessionDir)) {
           const files = fs.readdirSync(sessionDir);
           if (files.length > 0) {

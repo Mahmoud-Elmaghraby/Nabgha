@@ -22,6 +22,7 @@ export class StudentRepository {
     if (params.search) {
       base = base.where(eb => eb.or([
         eb('full_name', 'ilike', `%${params.search}%`),
+        eb('student_code', 'ilike', `%${params.search}%`),
         eb('parent_phone', 'ilike', `%${params.search}%`),
         eb('student_phone', 'ilike', `%${params.search}%`),
       ]));
@@ -62,7 +63,7 @@ export class StudentRepository {
       .values({
         full_name: data.fullName,
         parent_phone: data.parentPhone,
-        student_phone: data.studentPhone,
+        student_phone: data.studentPhone || null,
         date_of_birth: data.dateOfBirth ? new Date(data.dateOfBirth) : null,
         grade: data.grade,
         address: data.address ?? null,
@@ -162,6 +163,41 @@ export class StudentRepository {
       .orderBy('g.name', 'asc')
       .execute()
       .then(rows => rows.map(r => ({ ...r, discount: Number(r.discount) })));
+  }
+
+  async findAttendanceHistory(tenantId: string, studentId: string): Promise<any[]> {
+    const db = this.kysely.getTenantDb(tenantId);
+    const rows = await db
+      .selectFrom('attendance')
+      .innerJoin('sessions', 'sessions.id', 'attendance.session_id')
+      .leftJoin('groups', 'groups.id', 'sessions.group_id')
+      .leftJoin('subjects', 'subjects.id', 'sessions.subject_id')
+      .select([
+        'attendance.id', 'attendance.session_id', 'attendance.status',
+        'attendance.degree', 'attendance.scanned_at', 'attendance.notes',
+        'sessions.title as session_title', 'sessions.type as session_type',
+        'sessions.start_date', 'sessions.out_of',
+        'groups.name as group_name', 'subjects.name as subject_name',
+      ])
+      .where('attendance.student_id', '=', sql<string>`${studentId}::uuid`)
+      .where('sessions.deleted_at', 'is', null)
+      .orderBy('sessions.start_date', 'desc')
+      .execute();
+
+    return rows.map(r => ({
+      id: r.id as string,
+      sessionId: r.session_id as string,
+      status: r.status as string,
+      degree: r.degree !== null ? Number(r.degree) : null,
+      outOf: r.out_of !== null ? Number(r.out_of) : null,
+      scannedAt: r.scanned_at,
+      notes: r.notes as string | null,
+      sessionTitle: r.session_title as string,
+      sessionType: r.session_type as string,
+      startDate: r.start_date,
+      groupName: r.group_name as string | null,
+      subjectName: r.subject_name as string | null,
+    }));
   }
 
   private toEntity(row: any): StudentEntity {

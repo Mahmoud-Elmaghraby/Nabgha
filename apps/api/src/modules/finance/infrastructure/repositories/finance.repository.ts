@@ -53,6 +53,8 @@ export class FinanceRepository implements IFinanceRepository {
       r.type as TransactionType, Number(r.amount),
       Number(r.balance_before), Number(r.balance_after),
       r.notes ?? null, r.created_by ?? null, r.created_at,
+      r.related_treasury_id ?? null,
+      r.treasury_name ?? undefined, r.related_treasury_name ?? undefined,
     );
   }
 
@@ -126,34 +128,69 @@ export class FinanceRepository implements IFinanceRepository {
   }
 
   // ─── Monthly Dues ─────────────────────────────────────────
-  async findDues(tenantId: string, params: ListDuesDto): Promise<{ data: MonthlyDueEntity[]; total: number }> {
+  async findDues(tenantId: string, params: ListDuesDto): Promise<{
+    data: MonthlyDueEntity[]; total: number;
+    totalDueAmount: number; totalDiscountApplied: number; totalPaidAmount: number;
+  }> {
     const db = this.kysely.getTenantDb(tenantId);
     const offset = (params.page - 1) * params.limit;
+
+    const applyFilters = <Q extends { where: any }>(q: Q): Q => {
+      let result = q;
+      if (params.month)          result = result.where('monthly_dues.month', '=', params.month);
+      if (params.from)           result = result.where('monthly_dues.created_at', '>=', new Date(params.from) as any);
+      if (params.to)             result = result.where('monthly_dues.created_at', '<=', new Date(`${params.to}T23:59:59.999Z`) as any);
+      if (params.studentId)      result = result.where('monthly_dues.student_id', '=', sql<string>`${params.studentId}::uuid`);
+      if (params.subjectGradeId) result = result.where('monthly_dues.subject_grade_id', '=', sql<string>`${params.subjectGradeId}::uuid`);
+      if (params.status) {
+        result = result.where('monthly_dues.status', '=', params.status);
+      } else {
+        // إخفاء الفواتير الملغاة تلقائياً ما لم يُطلب فيلتر status صريح
+        result = result.where('monthly_dues.status', '!=', 'cancelled' as any);
+      }
+      if (params.search) {
+        result = result.where((eb: any) => eb.or([
+          eb('students.full_name', 'ilike', `%${params.search}%`),
+          eb('students.student_code', 'ilike', `%${params.search}%`),
+          eb('subjects.name', 'ilike', `%${params.search}%`),
+        ]));
+      }
+      return result;
+    };
 
     let query = db.selectFrom('monthly_dues')
       .leftJoin('students', 'students.id', 'monthly_dues.student_id')
       .leftJoin('subject_grades', 'subject_grades.id', 'monthly_dues.subject_grade_id')
       .leftJoin('subjects', 'subjects.id', 'subject_grades.subject_id')
       .select(this.dueSelect());
+    query = applyFilters(query);
 
-    if (params.month)          query = query.where('monthly_dues.month', '=', params.month);
-    if (params.studentId)      query = query.where('monthly_dues.student_id', '=', sql<string>`${params.studentId}::uuid`);
-    if (params.subjectGradeId) query = query.where('monthly_dues.subject_grade_id', '=', sql<string>`${params.subjectGradeId}::uuid`);
-    if (params.status)         query = query.where('monthly_dues.status', '=', params.status);
+    let aggQuery = db.selectFrom('monthly_dues')
+      .leftJoin('students', 'students.id', 'monthly_dues.student_id')
+      .leftJoin('subject_grades', 'subject_grades.id', 'monthly_dues.subject_grade_id')
+      .leftJoin('subjects', 'subjects.id', 'subject_grades.subject_id')
+      .select([
+        db.fn.countAll<string>().as('count'),
+        sql<string>`COALESCE(SUM(monthly_dues.due_amount), 0)`.as('total_due_amount'),
+        sql<string>`COALESCE(SUM(monthly_dues.discount_applied), 0)`.as('total_discount_applied'),
+        sql<string>`COALESCE(SUM(monthly_dues.paid_amount), 0)`.as('total_paid_amount'),
+      ]);
+    aggQuery = applyFilters(aggQuery);
 
-    let countQuery = db.selectFrom('monthly_dues').select(db.fn.countAll<string>().as('count'));
-    if (params.month)     countQuery = countQuery.where('month', '=', params.month);
-    if (params.studentId) countQuery = countQuery.where('student_id', '=', sql<string>`${params.studentId}::uuid`);
-    if (params.status)    countQuery = countQuery.where('status', '=', params.status);
-
-    const [rows, countResult] = await Promise.all([
+    const [rows, aggResult] = await Promise.all([
       query.orderBy('monthly_dues.month', 'desc')
         .orderBy('students.full_name', 'asc')
         .limit(params.limit).offset(offset).execute(),
-      countQuery.executeTakeFirst(),
+      aggQuery.executeTakeFirst(),
     ]);
 
-    return { data: rows.map(r => this.toMonthlyDue(r)), total: Number(countResult?.count ?? 0) };
+    return {
+      data: rows.map(r => this.toMonthlyDue(r)),
+      total: Number(aggResult?.count ?? 0),
+      totalDueAmount: Number(aggResult?.total_due_amount ?? 0),
+      totalDiscountApplied: Number(aggResult?.total_discount_applied ?? 0),
+      totalPaidAmount: Number(aggResult?.total_paid_amount ?? 0),
+    };
   }
 
   async findDueById(tenantId: string, id: string): Promise<MonthlyDueEntity | null> {
@@ -164,6 +201,22 @@ export class FinanceRepository implements IFinanceRepository {
       .leftJoin('subjects', 'subjects.id', 'subject_grades.subject_id')
       .select(this.dueSelect())
       .where('monthly_dues.id', '=', sql<string>`${id}::uuid`)
+      .executeTakeFirst();
+    return row ? this.toMonthlyDue(row) : null;
+  }
+
+  async findDueByStudentSubjectGradeMonth(
+    tenantId: string, studentId: string, subjectGradeId: string, month: string,
+  ): Promise<MonthlyDueEntity | null> {
+    const db = this.kysely.getTenantDb(tenantId);
+    const row = await db.selectFrom('monthly_dues')
+      .leftJoin('students', 'students.id', 'monthly_dues.student_id')
+      .leftJoin('subject_grades', 'subject_grades.id', 'monthly_dues.subject_grade_id')
+      .leftJoin('subjects', 'subjects.id', 'subject_grades.subject_id')
+      .select(this.dueSelect())
+      .where('monthly_dues.student_id', '=', sql<string>`${studentId}::uuid`)
+      .where('monthly_dues.subject_grade_id', '=', sql<string>`${subjectGradeId}::uuid`)
+      .where('monthly_dues.month', '=', month)
       .executeTakeFirst();
     return row ? this.toMonthlyDue(row) : null;
   }
@@ -193,12 +246,22 @@ export class FinanceRepository implements IFinanceRepository {
     } as any).where('id', '=', sql<string>`${due.id}::uuid`).execute();
   }
 
+  async deleteDue(tenantId: string, id: string): Promise<void> {
+    const db = this.kysely.getTenantDb(tenantId);
+    // soft delete — بنحوّل الـ status لـ cancelled ومبنمسحش السجل فعلياً من DB
+    await db.updateTable('monthly_dues').set({
+      status: 'cancelled',
+      updated_at: new Date() as any,
+    } as any).where('id', '=', sql<string>`${id}::uuid`).execute();
+  }
+
   async dueExists(tenantId: string, studentId: string, subjectGradeId: string, month: string): Promise<boolean> {
     const db = this.kysely.getTenantDb(tenantId);
     const row = await db.selectFrom('monthly_dues').select('id')
       .where('student_id', '=', sql<string>`${studentId}::uuid`)
       .where('subject_grade_id', '=', sql<string>`${subjectGradeId}::uuid`)
       .where('month', '=', month)
+      .where('status', '!=', 'cancelled' as any)  // الملغاة مش موجودة — يسمح بإعادة الإنشاء
       .executeTakeFirst();
     return !!row;
   }
@@ -247,7 +310,7 @@ export class FinanceRepository implements IFinanceRepository {
     if (params.treasuryId) query = query.where('payments.treasury_id', '=', sql<string>`${params.treasuryId}::uuid`);
     if (params.status)     query = query.where('payments.status', '=', params.status);
     if (params.from)       query = query.where('payments.paid_at', '>=', new Date(params.from) as any);
-    if (params.to)         query = query.where('payments.paid_at', '<=', new Date(params.to) as any);
+    if (params.to)         query = query.where('payments.paid_at', '<=', new Date(`${params.to}T23:59:59.999Z`) as any);
 
     let countQuery = db.selectFrom('payments').select(db.fn.countAll<string>().as('count'));
     if (params.studentId) countQuery = countQuery.where('student_id', '=', sql<string>`${params.studentId}::uuid`);
@@ -319,7 +382,7 @@ export class FinanceRepository implements IFinanceRepository {
   async createTransaction(tenantId: string, data: {
     paymentId?: string; treasuryId: string; type: TransactionType;
     amount: number; balanceBefore: number; balanceAfter: number;
-    notes?: string; createdBy?: string;
+    notes?: string; createdBy?: string; relatedTreasuryId?: string;
   }): Promise<void> {
     const db = this.kysely.getTenantDb(tenantId);
     await db.insertInto('payment_transactions').values({
@@ -329,16 +392,47 @@ export class FinanceRepository implements IFinanceRepository {
       balance_before: data.balanceBefore, balance_after: data.balanceAfter,
       notes: data.notes ?? null,
       created_by: data.createdBy ? sql<string>`${data.createdBy}::uuid` : null,
+      related_treasury_id: data.relatedTreasuryId ? sql<string>`${data.relatedTreasuryId}::uuid` : null,
     } as any).execute();
   }
 
   async findTransactionsByTreasury(tenantId: string, treasuryId: string): Promise<PaymentTransactionEntity[]> {
     const db = this.kysely.getTenantDb(tenantId);
-    const rows = await db.selectFrom('payment_transactions').selectAll()
-      .where('treasury_id', '=', sql<string>`${treasuryId}::uuid`)
-      .orderBy('created_at', 'desc')
+    const rows = await db.selectFrom('payment_transactions as pt')
+      .leftJoin('treasuries as t', 't.id', 'pt.treasury_id')
+      .leftJoin('treasuries as rt', 'rt.id', 'pt.related_treasury_id')
+      .select([
+        'pt.id', 'pt.payment_id', 'pt.treasury_id', 'pt.type', 'pt.amount',
+        'pt.balance_before', 'pt.balance_after', 'pt.notes', 'pt.created_by',
+        'pt.related_treasury_id', 'pt.created_at',
+        't.name as treasury_name', 'rt.name as related_treasury_name',
+      ] as any[])
+      .where('pt.treasury_id', '=', sql<string>`${treasuryId}::uuid`)
+      .orderBy('pt.created_at', 'desc')
       .execute();
     return rows.map(r => this.toTransaction(r));
+  }
+
+  async getTreasurySummary(tenantId: string, treasuryId: string): Promise<{
+    totalIncome: number; totalExpenses: number; totalTransfersIn: number; totalTransfersOut: number;
+  }> {
+    const db = this.kysely.getTenantDb(tenantId);
+    const rows = await db.selectFrom('payment_transactions')
+      .select(['type', sql<string>`COALESCE(SUM(amount), 0)`.as('total')])
+      .where('treasury_id', '=', sql<string>`${treasuryId}::uuid`)
+      .where('type', 'in', ['income', 'expense', 'transfer_in', 'transfer_out'])
+      .groupBy('type')
+      .execute();
+
+    const totals: Record<string, number> = {};
+    for (const r of rows) totals[r.type as string] = Number((r as any).total);
+
+    return {
+      totalIncome: totals['income'] ?? 0,
+      totalExpenses: totals['expense'] ?? 0,
+      totalTransfersIn: totals['transfer_in'] ?? 0,
+      totalTransfersOut: totals['transfer_out'] ?? 0,
+    };
   }
 
   // ─── Expenses ─────────────────────────────────────────────
@@ -423,7 +517,7 @@ export class FinanceRepository implements IFinanceRepository {
     const [dues, expenses, paidCount] = await Promise.all([
       db.selectFrom('monthly_dues')
         .select([
-          db.fn.sum<string>('due_amount').as('total_dues'),
+          sql<string>`SUM(GREATEST(due_amount - discount_applied, 0))`.as('total_dues'),
           db.fn.sum<string>('paid_amount').as('total_collected'),
           db.fn.countAll<string>().as('dues_count'),
         ])

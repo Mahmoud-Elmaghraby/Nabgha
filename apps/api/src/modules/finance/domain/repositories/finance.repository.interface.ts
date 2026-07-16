@@ -21,13 +21,20 @@ export interface IFinanceRepository {
   saveTreasury(tenantId: string, treasury: TreasuryEntity): Promise<void>;
 
   // ─── Monthly Dues ────────────────────────────────────────
-  findDues(tenantId: string, params: ListDuesDto): Promise<{ data: MonthlyDueEntity[]; total: number }>;
+  findDues(tenantId: string, params: ListDuesDto): Promise<{
+    data: MonthlyDueEntity[]; total: number;
+    totalDueAmount: number; totalDiscountApplied: number; totalPaidAmount: number;
+  }>;
   findDueById(tenantId: string, id: string): Promise<MonthlyDueEntity | null>;
+  findDueByStudentSubjectGradeMonth(
+    tenantId: string, studentId: string, subjectGradeId: string, month: string,
+  ): Promise<MonthlyDueEntity | null>;
   createDue(tenantId: string, data: {
     studentId: string; subjectGradeId: string; month: string;
     dueAmount: number; discountApplied: number; notes?: string; createdBy?: string;
   }): Promise<MonthlyDueEntity>;
   saveDue(tenantId: string, due: MonthlyDueEntity): Promise<void>;
+  deleteDue(tenantId: string, id: string): Promise<void>;
   dueExists(tenantId: string, studentId: string, subjectGradeId: string, month: string): Promise<boolean>;
   getActiveEnrollments(tenantId: string): Promise<{
     studentId: string; subjectGradeId: string; fee: number; discount: number;
@@ -47,9 +54,14 @@ export interface IFinanceRepository {
   createTransaction(tenantId: string, data: {
     paymentId?: string; treasuryId: string; type: TransactionType;
     amount: number; balanceBefore: number; balanceAfter: number;
-    notes?: string; createdBy?: string;
+    notes?: string; createdBy?: string; relatedTreasuryId?: string;
   }): Promise<void>;
   findTransactionsByTreasury(tenantId: string, treasuryId: string): Promise<PaymentTransactionEntity[]>;
+
+  // ─── Treasury Summary ──────────────────────────────────────
+  getTreasurySummary(tenantId: string, treasuryId: string): Promise<{
+    totalIncome: number; totalExpenses: number; totalTransfersIn: number; totalTransfersOut: number;
+  }>;
 
   // ─── Expenses ─────────────────────────────────────────────
   findExpenses(tenantId: string, params: ListExpensesDto): Promise<{ data: ExpenseEntity[]; total: number }>;

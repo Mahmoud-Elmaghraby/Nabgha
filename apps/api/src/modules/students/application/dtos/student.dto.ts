@@ -3,7 +3,7 @@ import { z } from 'zod';
 export const CreateStudentSchema = z.object({
   fullName: z.string().trim().min(2, 'الاسم يجب أن يكون حرفين على الأقل').max(255),
   parentPhone: z.string().trim().min(7, 'رقم هاتف ولي الأمر غير صحيح').max(20),
-  studentPhone: z.string().trim().min(7, 'رقم هاتف الطالب غير صحيح').max(20),
+  studentPhone: z.string().trim().min(7, 'رقم هاتف الطالب غير صحيح').max(20).optional().nullable().or(z.literal('')),
   dateOfBirth: z.string().optional().nullable(),
   grade: z.string().min(1, 'المرحلة الدراسية مطلوبة').max(100),
   address: z.string().trim().max(1000).optional().nullable(),
@@ -15,7 +15,7 @@ export const CreateStudentSchema = z.object({
 export const UpdateStudentSchema = z.object({
   fullName: z.string().trim().min(2).max(255).optional(),
   parentPhone: z.string().trim().min(7).max(20).optional(),
-  studentPhone: z.string().trim().min(7).max(20).optional(),
+  studentPhone: z.string().trim().min(7).max(20).optional().nullable().or(z.literal('')),
   dateOfBirth: z.string().optional().nullable(),
   grade: z.string().min(1).max(100).optional(),
   address: z.string().trim().max(1000).optional().nullable(),

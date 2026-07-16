@@ -10,7 +10,7 @@ import type { StudentDto } from '../types/student.types';
 const FormSchema = z.object({
   fullName: z.string().min(2, 'الاسم يجب أن يكون حرفين على الأقل'),
   parentPhone: z.string().min(7, 'رقم هاتف ولي الأمر غير صحيح'),
-  studentPhone: z.string().min(7, 'رقم هاتف الطالب غير صحيح'),
+  studentPhone: z.string().min(7, 'رقم هاتف الطالب غير صحيح').optional().or(z.literal('')),
   dateOfBirth: z.string().optional().or(z.literal('')),
   grade: z.string().min(1, 'المرحلة الدراسية مطلوبة'),
   address: z.string().optional().or(z.literal('')),
@@ -62,7 +62,7 @@ export function StudentFormModal({ open, onClose, student }: Props) {
     const payload = {
       fullName: data.fullName,
       parentPhone: data.parentPhone,
-      studentPhone: data.studentPhone,
+      studentPhone: data.studentPhone || null,
       dateOfBirth: data.dateOfBirth || null,
       grade: data.grade,
       address: data.address || null,
@@ -102,7 +102,9 @@ export function StudentFormModal({ open, onClose, student }: Props) {
               {errors.parentPhone && <p className="text-red-500 text-xs mt-1">{errors.parentPhone.message}</p>}
             </div>
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1.5">هاتف الطالب *</label>
+              <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                هاتف الطالب <span className="text-gray-400 font-normal">(اختياري)</span>
+              </label>
               <input {...register('studentPhone')} className={inputClass} placeholder="01234567890" dir="ltr" />
               {errors.studentPhone && <p className="text-red-500 text-xs mt-1">{errors.studentPhone.message}</p>}
             </div>

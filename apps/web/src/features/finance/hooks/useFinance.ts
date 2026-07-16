@@ -4,6 +4,7 @@ import type { ListDuesParams, ListPaymentsParams, ListExpensesParams } from '../
 
 const KEYS = {
   treasuries: ['finance', 'treasuries'] as const,
+  treasuryDetail: (id: string) => ['finance', 'treasuries', id, 'detail'] as const,
   dues: (p: ListDuesParams) => ['finance', 'dues', p] as const,
   payments: (p: ListPaymentsParams) => ['finance', 'payments', p] as const,
   expenses: (p: ListExpensesParams) => ['finance', 'expenses', p] as const,
@@ -26,6 +27,24 @@ export function useTreasuryMutations() {
   return { create, update, remove };
 }
 
+export function useTreasuryDetail(id: string) {
+  return useQuery({
+    queryKey: KEYS.treasuryDetail(id),
+    queryFn: () => financeApi.getTreasuryDetail(id),
+    enabled: !!id,
+  });
+}
+
+export function useTransferBetweenTreasuries() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: financeApi.transferBetweenTreasuries,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['finance', 'treasuries'] });
+    },
+  });
+}
+
 export function useDues(params: ListDuesParams) {
   return useQuery({ queryKey: KEYS.dues(params), queryFn: () => financeApi.getDues(params) });
 }
@@ -45,8 +64,9 @@ export function useDueMutations() {
     mutationFn: ({ id, notes }: { id: string; notes?: string }) => financeApi.waiveDue(id, notes),
     onSuccess: invalidate,
   });
+  const remove = useMutation({ mutationFn: financeApi.deleteDue, onSuccess: invalidate });
   const createManual = useMutation({ mutationFn: financeApi.createManualDue, onSuccess: invalidate });
-  return { generate, update, waive, createManual };
+  return { generate, update, waive, remove, createManual };
 }
 
 export function usePayments(params: ListPaymentsParams) {

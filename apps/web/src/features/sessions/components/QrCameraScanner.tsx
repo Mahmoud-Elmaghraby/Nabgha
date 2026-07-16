@@ -1,17 +1,25 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
+import { buildAttendanceMessage, playAttendanceWarningAlarm } from '../lib/attendanceAlerts';
+import type { AttendanceAlertMessage } from '../lib/attendanceAlerts';
 
-interface Props {
-  onScan: (qrCode: string) => Promise<{ studentId?: string } | void>;
-  onClose: () => void;
-  previousAbsent?: string[];
+interface ScanResult {
+  studentId: string;
+  studentName: string;
+  isUnpaid: boolean;
+  wasPrevAbsent: boolean;
 }
 
-export function QrCameraScanner({ onScan, onClose, previousAbsent = [] }: Props) {
+interface Props {
+  onScan: (qrCode: string) => Promise<ScanResult | void>;
+  onClose: () => void;
+}
+
+export function QrCameraScanner({ onScan, onClose }: Props) {
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isStarting, setIsStarting] = useState(true);
-  const [scanMsg, setScanMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [scanMsg, setScanMsg] = useState<AttendanceAlertMessage | null>(null);
   const cooldownRef = useRef(false);
   const containerId = 'qr-camera-container';
 
@@ -27,33 +35,25 @@ export function QrCameraScanner({ onScan, onClose, previousAbsent = [] }: Props)
         cooldownRef.current = true;
         try {
           const result = await onScan(decodedText);
-          const studentId = (result as any)?.studentId;
-          const wasPrevAbsent = studentId && previousAbsent.includes(studentId);
-          if (wasPrevAbsent) {
-            // صوت إنذار مختلف — تون منخفض
-            try {
-              const ctx = new AudioContext();
-              const osc = ctx.createOscillator();
-              osc.connect(ctx.destination);
-              osc.frequency.value = 440;
-              osc.start();
-              osc.stop(ctx.currentTime + 0.3);
-              setTimeout(() => {
-                const osc2 = ctx.createOscillator();
-                osc2.connect(ctx.destination);
-                osc2.frequency.value = 330;
-                osc2.start();
-                osc2.stop(ctx.currentTime + 0.3);
-              }, 350);
-            } catch {}
-            setScanMsg({ text: '⚠️ حاضر — كان غايب الحصة السابقة', ok: true });
+          if (result?.studentId) {
+            const msg = buildAttendanceMessage(result.studentName, {
+              isUnpaid: result.isUnpaid, wasPrevAbsent: result.wasPrevAbsent,
+            });
+            setScanMsg(msg);
+            if (msg.level === 'warning') {
+              // صوت إنذار مختلف — تفضل الرسالة ظاهرة لحد السكان اللي بعده (مفيش تايمر إخفاء)
+              playAttendanceWarningAlarm();
+            } else {
+              setTimeout(() => setScanMsg(null), 2500);
+            }
           } else {
-            setScanMsg({ text: '✅ تم تسجيل الحضور', ok: true });
+            setScanMsg({ text: '❌ QR غير صحيح أو غير مسجل', level: 'error' });
+            setTimeout(() => setScanMsg(null), 2500);
           }
         } catch {
-          setScanMsg({ text: '❌ QR غير صحيح أو غير مسجل', ok: false });
+          setScanMsg({ text: '❌ QR غير صحيح أو غير مسجل', level: 'error' });
+          setTimeout(() => setScanMsg(null), 2500);
         }
-        setTimeout(() => setScanMsg(null), 2500);
         // beep
         try {
           const ctx = new AudioContext();
@@ -110,7 +110,9 @@ export function QrCameraScanner({ onScan, onClose, previousAbsent = [] }: Props)
               </div>
             </div>
             {scanMsg && (
-              <div className={`px-6 py-3 rounded-2xl text-sm font-bold text-white ${scanMsg.ok ? 'bg-emerald-500' : 'bg-red-500'}`}>
+              <div className={`px-6 py-3 rounded-2xl text-sm font-bold text-white ${
+                scanMsg.level === 'warning' ? 'bg-amber-500' : scanMsg.level === 'error' ? 'bg-red-500' : 'bg-emerald-500'
+              }`}>
                 {scanMsg.text}
               </div>
             )}

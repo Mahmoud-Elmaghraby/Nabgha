@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useStudents } from '../hooks/useStudents';
 import { StudentsList } from '../components/StudentsList';
 import { StudentFormModal } from '../components/StudentFormModal';
@@ -9,19 +9,29 @@ import { useDebounce } from '@/shared/hooks/useDebounce';
 import { usePermissions } from '@/shared/hooks/usePermissions';
 import { GRADE_OPTIONS } from '@nabgha/types';
 
+const PAGE_SIZE = 30;
+
 export default function StudentsPage() {
   const { hasPermission } = usePermissions();
   const [search, setSearch] = useState('');
   const [gradeFilter, setGradeFilter] = useState('');
   const debouncedSearch = useDebounce(search, 300);
+  const [page, setPage] = useState(1);
   const [editingStudent, setEditingStudent] = useState<StudentDto | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [qrStudent, setQrStudent] = useState<StudentDto | null>(null);
 
+  // Reset page when search or filter changes
+  useEffect(() => { setPage(1); }, [debouncedSearch, gradeFilter]);
+
   const { data, isLoading } = useStudents({
     search: debouncedSearch || undefined,
     grade: gradeFilter || undefined,
+    page,
+    limit: PAGE_SIZE,
   });
+
+  const totalPages = data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1;
 
   const handleClose = () => { setEditingStudent(null); setIsCreating(false); };
 
@@ -74,8 +84,31 @@ export default function StudentsPage() {
           isLoading={isLoading}
         />
         {data && data.total > 0 && (
-          <div className="px-5 py-3 border-t border-gray-50 text-sm text-gray-400">
-            إجمالي {data.total} طالب
+          <div className="px-5 py-4 border-t border-gray-50 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <span className="text-sm text-gray-400">
+              إجمالي {data.total} طالب
+            </span>
+            {totalPages > 1 && (
+              <div className="flex items-center gap-3">
+                <button 
+                  onClick={() => setPage(p => Math.max(1, p - 1))} 
+                  disabled={page <= 1}
+                  className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg disabled:opacity-40 hover:bg-gray-50 transition-colors"
+                >
+                  السابق
+                </button>
+                <span className="text-sm text-gray-500 font-medium">
+                  {page} / {totalPages}
+                </span>
+                <button 
+                  onClick={() => setPage(p => Math.min(totalPages, p + 1))} 
+                  disabled={page >= totalPages}
+                  className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg disabled:opacity-40 hover:bg-gray-50 transition-colors"
+                >
+                  التالي
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

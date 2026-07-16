@@ -1,13 +1,16 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/shared/components/Toast';
 import { useConfirm } from '@/shared/components/Confirm';
 import { useTreasuries, useTreasuryMutations } from '../hooks/useFinance';
 import { TREASURY_TYPE_LABELS } from '../types/finance.types';
 import { FinanceLayout } from '../components/FinanceLayout';
+import { TransferTreasuryModal } from '../components/TransferTreasuryModal';
 import { usePermissions } from '@/shared/hooks/usePermissions';
 import type { Treasury, TreasuryType } from '../types/finance.types';
 
 export default function TreasuriesPage() {
+  const navigate = useNavigate();
   const { hasPermission } = usePermissions();
   const canManage = hasPermission('finance.manage');
   const { data: treasuries = [], isLoading } = useTreasuries();
@@ -15,6 +18,7 @@ export default function TreasuriesPage() {
   const confirm = useConfirm();
   const { create, update, remove } = useTreasuryMutations();
   const [showForm, setShowForm] = useState(false);
+  const [showTransfer, setShowTransfer] = useState(false);
   const [editing, setEditing] = useState<Treasury | null>(null);
   const [form, setForm] = useState({ name: '', type: 'cash' as TreasuryType, notes: '' });
 
@@ -56,7 +60,8 @@ export default function TreasuriesPage() {
         ) : (
           <div className="grid gap-3 sm:grid-cols-2">
             {treasuries.map(t => (
-              <div key={t.id} className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
+              <div key={t.id} onClick={() => navigate(`/finance/treasuries/${t.id}`)}
+                className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm cursor-pointer hover:border-[#0E3B2E]/30 transition-colors">
                 <div className="flex items-start justify-between">
                   <div>
                     <p className="font-bold text-gray-900">{t.name}</p>
@@ -64,10 +69,10 @@ export default function TreasuriesPage() {
                   </div>
                   {canManage && (
                     <div className="flex gap-1">
-                      <button onClick={() => handleEdit(t)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-500 transition-colors">
+                      <button onClick={(e) => { e.stopPropagation(); handleEdit(t); }} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-500 transition-colors">
                         <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                       </button>
-                      <button onClick={() => handleDelete(t.id)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-red-50 text-red-400 transition-colors">
+                      <button onClick={(e) => { e.stopPropagation(); handleDelete(t.id); }} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-red-50 text-red-400 transition-colors">
                         <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>
                       </button>
                     </div>
@@ -83,12 +88,18 @@ export default function TreasuriesPage() {
           </div>
         )}
 
-        {/* Add */}
+        {/* Add + Transfer */}
         {canManage && (
-          <button onClick={() => { setEditing(null); setForm({ name: '', type: 'cash', notes: '' }); setShowForm(true); }}
-            className="w-full py-3 border-2 border-dashed border-gray-200 rounded-2xl text-gray-400 hover:border-[#0E3B2E] hover:text-[#0E3B2E] transition-colors text-sm font-medium">
-            + إضافة خزينة جديدة
-          </button>
+          <div className="grid grid-cols-2 gap-3">
+            <button onClick={() => { setEditing(null); setForm({ name: '', type: 'cash', notes: '' }); setShowForm(true); }}
+              className="py-3 border-2 border-dashed border-gray-200 rounded-2xl text-gray-400 hover:border-[#0E3B2E] hover:text-[#0E3B2E] transition-colors text-sm font-medium">
+              + إضافة خزينة جديدة
+            </button>
+            <button onClick={() => setShowTransfer(true)} disabled={treasuries.length < 2}
+              className="py-3 border-2 border-dashed border-gray-200 rounded-2xl text-gray-400 hover:border-[#0E3B2E] hover:text-[#0E3B2E] transition-colors text-sm font-medium disabled:opacity-50 disabled:hover:border-gray-200 disabled:hover:text-gray-400">
+              ⇄ تحويل بين الخزائن
+            </button>
+          </div>
         )}
 
         {/* Form Modal */}
@@ -123,6 +134,12 @@ export default function TreasuriesPage() {
             </div>
           </div>
         )}
+
+        <TransferTreasuryModal
+          open={showTransfer}
+          onClose={() => setShowTransfer(false)}
+          treasuries={treasuries}
+        />
       </div>
     </FinanceLayout>
   );

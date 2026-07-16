@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useToast } from '@/shared/components/Toast';
 import { usePayments, usePaymentMutations } from '../hooks/useFinance';
 import { PAYMENT_METHOD_LABELS, PAYMENT_STATUS_LABELS } from '../types/finance.types';
@@ -7,11 +7,18 @@ import { ThermalReceipt } from '../components/ThermalReceipt';
 import { usePermissions } from '@/shared/hooks/usePermissions';
 import type { Payment, PaymentStatus } from '../types/finance.types';
 
+const PAGE_SIZE = 30;
+
 export default function PaymentsPage() {
   const { hasPermission } = usePermissions();
   const canManage = hasPermission('finance.manage');
   const [statusFilter, setStatusFilter] = useState<PaymentStatus | ''>('');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+
+  useEffect(() => { setPage(1); }, [statusFilter, search, fromDate, toDate]);
   const [cancelModal, setCancelModal] = useState<Payment | null>(null);
   const [refundModal, setRefundModal] = useState<Payment | null>(null);
   const [printReceipt, setPrintReceipt] = useState<Payment | null>(null);
@@ -19,11 +26,18 @@ export default function PaymentsPage() {
   const [refundAmount, setRefundAmount] = useState('');
   const [refundNotes, setRefundNotes] = useState('');
 
-  const { data, isLoading } = usePayments({ status: statusFilter || undefined, limit: 100 });
+  const { data, isLoading } = usePayments({
+    status: statusFilter || undefined,
+    from: fromDate || undefined,
+    to: toDate || undefined,
+    page, limit: PAGE_SIZE,
+  });
   const toast = useToast();
   const { cancel, refund } = usePaymentMutations();
 
   const allPayments = data?.data ?? [];
+  const total = data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const payments = search
     ? allPayments.filter(p => p.studentName?.includes(search) || p.studentCode?.includes(search) || String(p.receiptNumber).includes(search))
     : allPayments;
@@ -59,11 +73,17 @@ export default function PaymentsPage() {
         <div className="bg-white rounded-2xl p-3 border border-gray-100 space-y-2">
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="بحث برقم الإيصال أو اسم الطالب..."
             className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0E3B2E]/20" />
-          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as PaymentStatus | '')}
-            className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0E3B2E]/20">
-            <option value="">كل الإيصالات</option>
-            {Object.entries(PAYMENT_STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-          </select>
+          <div className="flex gap-2 flex-wrap items-center">
+            <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)}
+              className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0E3B2E]/20" title="من تاريخ" />
+            <input type="date" value={toDate} onChange={e => setToDate(e.target.value)}
+              className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0E3B2E]/20" title="إلى تاريخ" />
+            <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as PaymentStatus | '')}
+              className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0E3B2E]/20">
+              <option value="">كل الإيصالات</option>
+              {Object.entries(PAYMENT_STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+            </select>
+          </div>
         </div>
 
         {/* List */}
@@ -122,6 +142,21 @@ export default function PaymentsPage() {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Pagination */}
+        {!isLoading && totalPages > 1 && (
+          <div className="flex items-center justify-center gap-3 pt-2">
+            <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}
+              className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg disabled:opacity-40 hover:bg-gray-50">
+              السابق
+            </button>
+            <span className="text-xs text-gray-500">صفحة {page} من {totalPages}</span>
+            <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages}
+              className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg disabled:opacity-40 hover:bg-gray-50">
+              التالي
+            </button>
           </div>
         )}
       </div>

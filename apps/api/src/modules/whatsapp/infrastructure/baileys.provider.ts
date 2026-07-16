@@ -26,7 +26,8 @@ export class BaileysProvider implements IWaProvider, OnModuleDestroy {
   constructor(@Inject('REDIS_CLIENT') private readonly redis: Redis) {}
 
   private getSessionDir(tenantId: string): string {
-    const dir = path.join(process.cwd(), 'wa-sessions', tenantId);
+    const baseDir = path.join(process.env.APPDATA ?? process.cwd(), 'Nabgha', 'wa-sessions');
+    const dir = path.join(baseDir, tenantId);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     return dir;
   }

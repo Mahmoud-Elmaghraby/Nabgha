@@ -37,7 +37,7 @@ export class TreasuryEntity {
 }
 
 // ─── Monthly Due ──────────────────────────────────────────
-export type DueStatus = 'unpaid' | 'partial' | 'paid' | 'waived';
+export type DueStatus = 'unpaid' | 'partial' | 'paid' | 'waived' | 'cancelled';
 
 export class MonthlyDueEntity {
   constructor(
@@ -108,6 +108,15 @@ export class MonthlyDueEntity {
     }
     this.updatedAt = new Date();
   }
+
+  softDelete(): void {
+    // لا يجوز حذف فاتورة بها سداد — الحذف مسموح فقط لـ unpaid
+    if (this.status !== 'unpaid') {
+      throw new Error('لا يمكن حذف فاتورة إلا إذا كانت غير مدفوعة — ألغِ السداد أولاً ثم احذف الفاتورة');
+    }
+    this.status = 'cancelled';
+    this.updatedAt = new Date();
+  }
 }
 
 // ─── Payment ──────────────────────────────────────────────
@@ -153,7 +162,7 @@ export class PaymentEntity {
 }
 
 // ─── Payment Transaction ──────────────────────────────────
-export type TransactionType = 'income' | 'cancellation' | 'refund' | 'expense';
+export type TransactionType = 'income' | 'cancellation' | 'refund' | 'expense' | 'transfer_in' | 'transfer_out';
 
 export class PaymentTransactionEntity {
   constructor(
@@ -167,6 +176,10 @@ export class PaymentTransactionEntity {
     public readonly notes: string | null,
     public readonly createdBy: string | null,
     public readonly createdAt: Date,
+    public readonly relatedTreasuryId?: string | null,
+    // joined
+    public readonly treasuryName?: string,
+    public readonly relatedTreasuryName?: string,
   ) {}
 }
 

@@ -1,5 +1,5 @@
 import { apiClient } from '../../../shared/lib/api/client';
-import type { Treasury, MonthlyDue, Payment, Expense, FinanceStats, ListDuesParams, ListPaymentsParams, ListExpensesParams, CreateManualDuePayload } from '../types/finance.types';
+import type { Treasury, MonthlyDue, Payment, Expense, FinanceStats, ListDuesParams, ListPaymentsParams, ListExpensesParams, CreateManualDuePayload, TreasuryDetail, TransferBetweenTreasuriesPayload } from '../types/finance.types';
 
 export interface StudentFinancialProfile {
   studentId: string;
@@ -28,9 +28,24 @@ export const financeApi = {
   deleteTreasury: async (id: string): Promise<void> => {
     await apiClient.delete(`/finance/treasuries/${id}`);
   },
-  getDues: async (params: ListDuesParams): Promise<{ data: MonthlyDue[]; total: number }> => {
+  getTreasuryDetail: async (id: string): Promise<TreasuryDetail> => {
+    const res = await apiClient.get(`/finance/treasuries/${id}/detail`);
+    return res.data.data;
+  },
+  transferBetweenTreasuries: async (data: TransferBetweenTreasuriesPayload): Promise<void> => {
+    await apiClient.post('/finance/treasuries/transfer', data);
+  },
+  getDues: async (params: ListDuesParams): Promise<{
+    data: MonthlyDue[]; total: number;
+    totalDueAmount: number; totalDiscountApplied: number; totalPaidAmount: number;
+  }> => {
     const res = await apiClient.get('/finance/dues', { params });
-    return { data: res.data.data, total: res.data.total };
+    return {
+      data: res.data.data, total: res.data.total,
+      totalDueAmount: res.data.totalDueAmount,
+      totalDiscountApplied: res.data.totalDiscountApplied,
+      totalPaidAmount: res.data.totalPaidAmount,
+    };
   },
   getDue: async (id: string): Promise<MonthlyDue> => {
     const res = await apiClient.get(`/finance/dues/${id}`);
@@ -51,6 +66,9 @@ export const financeApi = {
   waiveDue: async (id: string, notes?: string): Promise<MonthlyDue> => {
     const res = await apiClient.patch(`/finance/dues/${id}/waive`, { notes });
     return res.data.data;
+  },
+  deleteDue: async (id: string): Promise<void> => {
+    await apiClient.delete(`/finance/dues/${id}`);
   },
   getPayments: async (params: ListPaymentsParams): Promise<{ data: Payment[]; total: number }> => {
     const res = await apiClient.get('/finance/payments', { params });

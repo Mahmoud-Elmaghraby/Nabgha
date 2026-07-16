@@ -21,7 +21,7 @@ export interface StudentDto {
 export interface CreateStudentPayload {
   fullName: string;
   parentPhone: string;
-  studentPhone: string;
+  studentPhone?: string | null;
   dateOfBirth?: string | null;
   grade: string;
   address?: string | null;
@@ -33,7 +33,7 @@ export interface CreateStudentPayload {
 export interface UpdateStudentPayload {
   fullName?: string;
   parentPhone?: string;
-  studentPhone?: string;
+  studentPhone?: string | null;
   dateOfBirth?: string | null;
   grade?: string;
   address?: string | null;
@@ -56,6 +56,21 @@ export interface ListStudentsParams {
   isActive?: boolean;
   page?: number;
   limit?: number;
+}
+
+export interface StudentAttendanceDto {
+  id: string;
+  sessionId: string;
+  status: 'present' | 'absent' | 'late' | 'excused';
+  degree: number | null;
+  outOf: number | null;
+  scannedAt: string | null;
+  notes: string | null;
+  sessionTitle: string;
+  sessionType: string;
+  startDate: string;
+  groupName: string | null;
+  subjectName: string | null;
 }
 
 export interface StudentGroupDto {

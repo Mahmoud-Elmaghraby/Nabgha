@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Tray, Menu, nativeImage, clipboard } from 'electron';
+import { app, BrowserWindow, Tray, Menu, nativeImage, clipboard, ipcMain, shell } from 'electron';
 import * as path from 'path';
 import * as http from 'http';
 import * as os from 'os';
@@ -14,7 +14,6 @@ const API_PORT = 3001;
 const IS_PACKAGED = app.isPackaged;
 const RESOURCES = IS_PACKAGED ? process.resourcesPath : path.join(__dirname, '..', '..');
 
-// ── Paths ─────────────────────────────────────────────────────
 const API_ENTRY   = IS_PACKAGED
   ? path.join(RESOURCES, 'api', 'dist', 'main.js')
   : path.join(__dirname, '..', '..', 'api', 'dist', 'main.js');
@@ -23,16 +22,12 @@ const STATIC_PATH = IS_PACKAGED
   ? path.join(RESOURCES, 'web', 'dist')
   : path.join(__dirname, '..', '..', 'web', 'dist');
 
-const STORAGE_PATH = path.join(
-  app.getPath('userData'),
-  'storage'
-);
+const STORAGE_PATH = path.join(app.getPath('userData'), 'storage');
 
 const DB_PATH = IS_PACKAGED
   ? path.join(RESOURCES, 'db')
   : path.join(__dirname, '..', '..', '..', 'packages', 'db');
 
-// ── Helpers ───────────────────────────────────────────────────
 function getLanIP(): string {
   const interfaces = os.networkInterfaces();
   for (const name of Object.keys(interfaces)) {
@@ -59,7 +54,6 @@ function waitForAPI(retries = 60): Promise<void> {
   });
 }
 
-// ── Start NestJS API ──────────────────────────────────────────
 function startAPI(): Promise<void> {
   return new Promise((resolve, reject) => {
     let nodePath: string;
@@ -74,21 +68,21 @@ function startAPI(): Promise<void> {
     const dbUrl = process.env.DATABASE_URL ?? 'postgresql://nabgha:nabgha123@127.0.0.1:5432/nabgha';
     const staticPath = process.env.STATIC_PATH ?? STATIC_PATH;
 
-const env = {
-  ...process.env,
-  PORT: String(API_PORT),
-  DEPLOY_MODE: 'desktop',
-  STATIC_PATH: staticPath,
-  STORAGE_LOCAL_PATH: STORAGE_PATH,
-  STORAGE_PROVIDER: 'local',
-  ALLOW_NETWORK: 'true',
-  MULTI_TENANT: 'true',
-  JWT_SECRET: 'nabgha-desktop-jwt-2026',
-  PLATFORM_JWT_SECRET: 'nabgha-platform-jwt-2026',
-  DATABASE_URL: dbUrl,
-  DOTENV_DISABLED: 'true',
-  DB_MIGRATIONS_PATH: path.join(DB_PATH, 'src', 'migrations'),
-};
+    const env = {
+      ...process.env,
+      PORT: String(API_PORT),
+      DEPLOY_MODE: 'desktop',
+      STATIC_PATH: staticPath,
+      STORAGE_LOCAL_PATH: STORAGE_PATH,
+      STORAGE_PROVIDER: 'local',
+      ALLOW_NETWORK: 'true',
+      MULTI_TENANT: 'true',
+      JWT_SECRET: 'nabgha-desktop-jwt-2026',
+      PLATFORM_JWT_SECRET: 'nabgha-platform-jwt-2026',
+      DATABASE_URL: dbUrl,
+      DOTENV_DISABLED: 'true',
+      DB_MIGRATIONS_PATH: path.join(DB_PATH, 'src', 'migrations'),
+    };
 
     apiProcess = spawn(nodePath, [API_ENTRY], {
       env,
@@ -108,21 +102,15 @@ const env = {
     apiProcess.on('exit', (code) => {
       console.log(`[API] exited with code ${code}`);
       if (!isQuitting) {
-        // Auto-restart لو وقف بشكل غير متوقع
         setTimeout(() => startAPI(), 3000);
       }
     });
 
-    apiProcess.on('error', (err) => {
-      reject(err);
-    });
-
-    // نستنى شوية وبعدين نتحقق
+    apiProcess.on('error', (err) => { reject(err); });
     setTimeout(() => resolve(), 1000);
   });
 }
 
-// ── Run Migrations ────────────────────────────────────────────
 function runMigrations(): Promise<void> {
   return new Promise((resolve, reject) => {
     const migrateScript = IS_PACKAGED
@@ -134,7 +122,7 @@ function runMigrations(): Promise<void> {
       return resolve();
     }
 
-  const { execSync: execSyncM } = require('child_process');
+    const { execSync: execSyncM } = require('child_process');
     let nodePath: string;
     try {
       const cmd = process.platform === 'win32' ? 'where node' : 'which node';
@@ -142,12 +130,9 @@ function runMigrations(): Promise<void> {
     } catch {
       nodePath = process.execPath.replace('electron.exe', 'node.exe').replace('electron', 'node');
     }
+
     const dbUrl = process.env.DATABASE_URL ?? 'postgresql://nabgha:nabgha123@127.0.0.1:5432/nabgha';
-    const env = {
-      ...process.env,
-      DATABASE_URL: dbUrl,
-      DOTENV_DISABLED: 'true',
-    };
+    const env = { ...process.env, DATABASE_URL: dbUrl, DOTENV_DISABLED: 'true' };
 
     const proc = spawn(nodePath, [migrateScript], {
       env,
@@ -162,7 +147,6 @@ function runMigrations(): Promise<void> {
   });
 }
 
-// ── Tray ──────────────────────────────────────────────────────
 function createTray() {
   const iconPath = IS_PACKAGED
     ? path.join(RESOURCES, 'assets', 'icon.png')
@@ -197,7 +181,6 @@ function createTray() {
   tray.on('double-click', () => mainWindow?.show());
 }
 
-// ── Splash ────────────────────────────────────────────────────
 function createSplashWindow(status = 'جاري التشغيل...'): BrowserWindow {
   const splash = new BrowserWindow({
     width: 400, height: 300,
@@ -243,14 +226,21 @@ function createSplashWindow(status = 'جاري التشغيل...'): BrowserWindo
   return splash;
 }
 
-// ── Main Window ───────────────────────────────────────────────
 function createMainWindow() {
+  const PRELOAD_PATH = IS_PACKAGED
+    ? path.join(RESOURCES, 'app.asar', 'dist', 'preload.js')
+    : path.join(__dirname, 'preload.js');
+
   mainWindow = new BrowserWindow({
     width: 1280, height: 800,
     show: true,
     title: 'نبغة',
     autoHideMenuBar: true,
-    webPreferences: { nodeIntegration: false },
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: PRELOAD_PATH,
+    },
   });
 
   mainWindow.loadURL(`http://localhost:${API_PORT}`);
@@ -263,6 +253,188 @@ function createMainWindow() {
   });
 }
 
+// ── IPC: Get Printers ─────────────────────────────────────────
+ipcMain.handle('get-printers', async () => {
+  const { execSync } = require('child_process');
+  try {
+    const output = execSync('wmic printer get name,default /format:list')
+      .toString()
+      .trim();
+    
+    const printers: any[] = [];
+    const blocks = output.split('\r\n\r\n').filter((b: string) => b.trim());
+    
+    for (const block of blocks) {
+      const lines = block.split('\r\n');
+      const nameLine = lines.find((l: string) => l.startsWith('Name='));
+      const defaultLine = lines.find((l: string) => l.startsWith('Default='));
+      if (nameLine) {
+        const name = nameLine.replace('Name=', '').trim();
+        const isDefault = (defaultLine || '').replace('Default=', '').trim().toLowerCase() === 'true';
+        if (name) printers.push({ name, displayName: name, isDefault });
+      }
+    }
+    return printers;
+  } catch {
+    return [];
+  }
+});
+// ── IPC: Print Labels ─────────────────────────────────────────
+// الطريقة الأساسية: توليد PDF بمقاس اللاصقة وفتحه للطباعة
+ipcMain.handle(
+  'print-labels',
+  async (
+    _event,
+    options: { deviceName?: string; images?: string[]; labelWidthMm?: number; labelHeightMm?: number; silent?: boolean } = {}
+  ) => {
+    const { deviceName = '', images = [], labelWidthMm = 38, labelHeightMm = 25, silent = false } = options;
+    console.log(`[Print] Received ${images.length} images, printer: "${deviceName}", size: ${labelWidthMm}x${labelHeightMm}mm, silent: ${silent}`);
+
+    if (images.length === 0) {
+      console.log('[Print] No images — aborting');
+      return { success: false, errorType: 'no-images' };
+    }
+
+    // Build HTML: one label per page
+    const labelsHtml = images
+      .map(
+        (src) =>
+          `<div class="label"><img src="${src}" /></div>`
+      )
+      .join('\n');
+
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  @page {
+    size: ${labelWidthMm}mm ${labelHeightMm}mm;
+    margin: 0;
+  }
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: ${labelWidthMm}mm;
+    background: white;
+  }
+  .label {
+    width: ${labelWidthMm}mm;
+    height: ${labelHeightMm}mm;
+    page-break-after: always;
+    page-break-inside: avoid;
+    overflow: hidden;
+    position: relative;
+  }
+  .label:last-child {
+    page-break-after: auto;
+  }
+  .label img {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: ${labelWidthMm}mm;
+    height: ${labelHeightMm}mm;
+    object-fit: fill;
+  }
+</style>
+</head>
+<body>${labelsHtml}</body>
+</html>`;
+
+    // Write HTML to temp file
+    const tmpDir = app.getPath('temp');
+    const tmpHtml = path.join(tmpDir, `nabgha-labels-${Date.now()}.html`);
+    fs.writeFileSync(tmpHtml, html, 'utf-8');
+
+    // Create a hidden window to render the HTML
+    const pxPerMm = 96 / 25.4;
+    const printWin = new BrowserWindow({
+      show: false,
+      width: Math.ceil(labelWidthMm * pxPerMm) + 20,
+      height: Math.ceil(labelHeightMm * pxPerMm) + 20,
+      webPreferences: { nodeIntegration: false, contextIsolation: true },
+    });
+
+    await printWin.loadFile(tmpHtml);
+    console.log('[Print] Loaded HTML in hidden window');
+
+    // Wait for all images to render
+    await printWin.webContents.executeJavaScript(`
+      new Promise(resolve => {
+        const imgs = document.querySelectorAll('img');
+        let loaded = 0;
+        if (imgs.length === 0) return resolve();
+        imgs.forEach(img => {
+          if (img.complete) { loaded++; if (loaded === imgs.length) resolve(); }
+          else { img.onload = () => { loaded++; if (loaded === imgs.length) resolve(); }; }
+        });
+        setTimeout(resolve, 3000); // fallback timeout
+      })
+    `);
+    console.log('[Print] All images loaded');
+
+    // Convert mm to microns (1mm = 1000 microns)
+    const widthMicrons = labelWidthMm * 1000;
+    const heightMicrons = labelHeightMm * 1000;
+
+    if (silent && deviceName) {
+      // محاولة طباعة صامتة مباشرة
+      return new Promise((resolve) => {
+        console.log(`[Print] Silent print to "${deviceName}"...`);
+        printWin.webContents.print(
+          {
+            silent: true,
+            printBackground: true,
+            deviceName,
+            pageSize: { width: widthMicrons, height: heightMicrons },
+            margins: { marginType: 'none' },
+            scaleFactor: 100,
+          },
+          (success, errorType) => {
+            console.log(`[Print] Silent result: success=${success}, error=${errorType || 'none'}`);
+            printWin.close();
+            try { fs.unlinkSync(tmpHtml); } catch {}
+            resolve({ success, errorType });
+          }
+        );
+      });
+    }
+
+    // الطريقة الأساسية: توليد PDF وفتحه
+    try {
+      const pdfData = await printWin.webContents.printToPDF({
+        landscape: false,
+        printBackground: true,
+        pageSize: { width: widthMicrons, height: heightMicrons },
+        margins: { top: 0, bottom: 0, left: 0, right: 0 },
+      });
+
+      const pdfPath = path.join(tmpDir, `nabgha-labels-${Date.now()}.pdf`);
+      fs.writeFileSync(pdfPath, pdfData);
+      console.log(`[Print] PDF saved: ${pdfPath} (${pdfData.length} bytes)`);
+
+      printWin.close();
+      try { fs.unlinkSync(tmpHtml); } catch {}
+
+      // فتح الـ PDF — المستخدم يطبع منه مباشرة
+      // shell مستوردة من فوق
+      await shell.openPath(pdfPath);
+      console.log('[Print] PDF opened for printing');
+
+      return { success: true, pdfPath };
+    } catch (err: any) {
+      console.error('[Print] PDF generation failed:', err);
+      printWin.close();
+      try { fs.unlinkSync(tmpHtml); } catch {}
+      return { success: false, errorType: err?.message || 'pdf-error' };
+    }
+  }
+);
+
+
+
 // ── App Ready ─────────────────────────────────────────────────
 app.whenReady().then(async () => {
   app.setAppUserModelId('com.nabgha.desktop');
@@ -271,24 +443,20 @@ app.whenReady().then(async () => {
   createTray();
 
   try {
-    // 1. تشغيل الـ migrations
     await runMigrations();
 
-    // 2. تشغيل الـ API
     splash.webContents.executeJavaScript(
       `document.querySelector('.status').textContent = 'جاري تشغيل الخادم...'`
     ).catch(() => {});
 
     await startAPI();
 
-    // 3. انتظار الـ API
     splash.webContents.executeJavaScript(
       `document.querySelector('.status').textContent = 'جاري الاتصال...'`
     ).catch(() => {});
 
     await waitForAPI();
 
-    // 4. فتح النافذة الرئيسية
     splash.close();
     createMainWindow();
 

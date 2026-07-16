@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useToast } from '@/shared/components/Toast';
 import { useConfirm } from '@/shared/components/Confirm';
+import { useDebounce } from '@/shared/hooks/useDebounce';
 import { useDues, useDueMutations, useTreasuries, usePaymentMutations } from '../hooks/useFinance';
 import { DUE_STATUS_LABELS } from '../types/finance.types';
 import { FinanceLayout } from '../components/FinanceLayout';
@@ -8,37 +9,51 @@ import { usePermissions } from '@/shared/hooks/usePermissions';
 import type { MonthlyDue, DueStatus } from '../types/finance.types';
 
 const getCurrentMonth = () => new Date().toISOString().slice(0, 7);
+const PAGE_SIZE = 30;
 
 export default function DuesPage() {
   const { hasPermission } = usePermissions();
   const canManage = hasPermission('finance.manage');
   const canCollect = hasPermission('finance.collect');
-  const [month, setMonth] = useState(getCurrentMonth());
+  // فاضي = كل الشهور (مش بس الشهر الحالي)
+  const [month, setMonth] = useState('');
   const [statusFilter, setStatusFilter] = useState<DueStatus | ''>('');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search, 300);
+  const [page, setPage] = useState(1);
   const [showPayModal, setShowPayModal] = useState(false);
   const [selectedDue, setSelectedDue] = useState<MonthlyDue | null>(null);
   const [payForm, setPayForm] = useState({ treasuryId: '', amount: '', paymentMethod: 'cash', notes: '' });
 
-  const { data, isLoading } = useDues({ month, status: statusFilter || undefined, limit: 100 });
+  useEffect(() => { setPage(1); }, [month, statusFilter, debouncedSearch, fromDate, toDate]);
+
+  const { data, isLoading } = useDues({
+    month: month || undefined,
+    status: statusFilter || undefined,
+    search: debouncedSearch || undefined,
+    from: fromDate || undefined,
+    to: toDate || undefined,
+    page, limit: PAGE_SIZE,
+  });
   const toast = useToast();
   const confirm = useConfirm();
-  const { generate, waive } = useDueMutations();
+  const { generate, waive, remove } = useDueMutations();
   const { create: createPayment } = usePaymentMutations();
   const { data: treasuries = [] } = useTreasuries();
 
-  const allDues = data?.data ?? [];
-  const dues = search
-    ? allDues.filter(d => d.studentName?.includes(search) || d.studentCode?.includes(search) || d.subjectName?.includes(search))
-    : allDues;
-
-  const totalDues = allDues.reduce((s, d) => s + d.dueAmount - d.discountApplied, 0);
-  const totalPaid = allDues.reduce((s, d) => s + d.paidAmount, 0);
+  const dues = data?.data ?? [];
+  const total = data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const totalDues = (data?.totalDueAmount ?? 0) - (data?.totalDiscountApplied ?? 0);
+  const totalPaid = data?.totalPaidAmount ?? 0;
 
   const handleGenerate = async () => {
-    if (!(await confirm(`توليد فواتير شهر ${month}؟`))) return;
+    const genMonth = month || getCurrentMonth();
+    if (!(await confirm(`توليد فواتير شهر ${genMonth}؟`))) return;
     try {
-      const r = await generate.mutateAsync(month);
+      const r = await generate.mutateAsync(genMonth);
       toast.success(`تم توليد ${r.created} فاتورة — ${r.skipped} مكررة`);
     } catch (err: any) { toast.error(err?.response?.data?.error?.message || 'حدث خطأ'); }
   };
@@ -64,7 +79,7 @@ export default function DuesPage() {
         {/* Stats */}
         <div className="grid grid-cols-3 gap-3">
           <div className="bg-white rounded-2xl p-4 border border-gray-100 text-center">
-            <p className="text-xl font-bold text-gray-900">{allDues.length}</p>
+            <p className="text-xl font-bold text-gray-900">{total}</p>
             <p className="text-xs text-gray-400 mt-1">إجمالي</p>
           </div>
           <div className="bg-emerald-50 rounded-2xl p-4 border border-emerald-100 text-center">
@@ -81,9 +96,18 @@ export default function DuesPage() {
         <div className="bg-white rounded-2xl p-3 border border-gray-100 space-y-2">
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="بحث بالاسم أو الكود أو المادة..."
             className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0E3B2E]/20" />
-          <div className="flex gap-2 flex-wrap">
+          <div className="flex gap-2 flex-wrap items-center">
             <input type="month" value={month} onChange={e => setMonth(e.target.value)}
               className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0E3B2E]/20" />
+            {month && (
+              <button onClick={() => setMonth('')} className="text-xs text-gray-400 hover:text-gray-600 underline">
+                عرض كل الشهور
+              </button>
+            )}
+            <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)}
+              className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0E3B2E]/20" title="من تاريخ" />
+            <input type="date" value={toDate} onChange={e => setToDate(e.target.value)}
+              className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0E3B2E]/20" title="إلى تاريخ" />
             <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as DueStatus | '')}
               className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0E3B2E]/20">
               <option value="">كل الحالات</option>
@@ -123,7 +147,7 @@ export default function DuesPage() {
                           {DUE_STATUS_LABELS[due.status].label}
                         </span>
                       </div>
-                      <p className="text-xs text-gray-500 mt-1">{due.subjectName} — {due.gradeName}</p>
+                      <p className="text-xs text-gray-500 mt-1">{due.subjectName} — {due.gradeName} · {due.month}</p>
                       {due.discountApplied > 0 && (
                         <p className="text-xs text-amber-600 mt-0.5">خصم: {due.discountApplied.toLocaleString('ar-EG')} ج</p>
                       )}
@@ -147,16 +171,49 @@ export default function DuesPage() {
                         </button>
                       )}
                       {canManage && (
-                        <button onClick={async () => { if (await confirm('إعفاء هذه الفاتورة؟')) { try { await waive.mutateAsync({ id: due.id }); } catch(e: any) { toast.error(e?.response?.data?.error?.message || 'خطأ'); } } }}
-                          className="px-3 border border-gray-200 rounded-xl py-2 text-xs text-gray-500 hover:bg-gray-50">
-                          إعفاء
-                        </button>
+                        <>
+                          {due.status === 'unpaid' && (
+                            <button onClick={async () => {
+                              if (await confirm('هل أنت متأكد من حذف هذه الفاتورة؟ لا يمكن التراجع عن هذا الإجراء.')) {
+                                try { await remove.mutateAsync(due.id); }
+                                catch(e: any) { toast.error(e?.response?.data?.error?.message || 'خطأ أثناء الحذف'); }
+                              }
+                            }}
+                              className="px-3 border border-red-200 text-red-500 rounded-xl py-2 text-xs hover:bg-red-50">
+                              حذف
+                            </button>
+                          )}
+                          <button onClick={async () => {
+                            const confirmMsg = due.paidAmount > 0
+                              ? `الفاتورة متحصل منها ${due.paidAmount.toLocaleString('ar-EG')} ج بالفعل — الإعفاء هيسامح بس في المتبقي (${remaining.toLocaleString('ar-EG')} ج). تأكيد؟`
+                              : 'إعفاء هذه الفاتورة؟';
+                            if (await confirm(confirmMsg)) { try { await waive.mutateAsync({ id: due.id }); } catch(e: any) { toast.error(e?.response?.data?.error?.message || 'خطأ'); } }
+                          }}
+                            className="px-3 border border-gray-200 rounded-xl py-2 text-xs text-gray-500 hover:bg-gray-50">
+                            إعفاء
+                          </button>
+                        </>
                       )}
                     </div>
                   )}
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {/* Pagination */}
+        {!isLoading && totalPages > 1 && (
+          <div className="flex items-center justify-center gap-3 pt-2">
+            <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}
+              className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg disabled:opacity-40 hover:bg-gray-50">
+              السابق
+            </button>
+            <span className="text-xs text-gray-500">صفحة {page} من {totalPages}</span>
+            <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages}
+              className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg disabled:opacity-40 hover:bg-gray-50">
+              التالي
+            </button>
           </div>
         )}
       </div>

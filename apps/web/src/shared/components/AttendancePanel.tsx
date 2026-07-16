@@ -1,9 +1,12 @@
 import { useState, useRef } from 'react';
+import { normaliseScannerInput } from '@/shared/lib/normaliseScannerInput';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '../lib/api/client';
-import { useSessionAttendance, useAttendanceMutations } from '../../features/sessions/hooks/useSessions';
+import { useSessionAttendance, useAttendanceMutations, usePreviousAbsent, useUnpaidStudents } from '../../features/sessions/hooks/useSessions';
 import { ATTENDANCE_STATUS_LABELS } from '../../features/sessions/types/session.types';
 import { QrCameraScanner } from '../../features/sessions/components/QrCameraScanner';
+import { checkAttendanceWarnings, buildAttendanceMessage, playAttendanceWarningAlarm } from '../../features/sessions/lib/attendanceAlerts';
+import type { AttendanceAlertMessage } from '../../features/sessions/lib/attendanceAlerts';
 import type { Session, AttendanceStatus } from '../../features/sessions/types/session.types';
 
 interface Props {
@@ -12,30 +15,47 @@ interface Props {
 
 function SessionBlock({ session }: { session: Session }) {
   const [scanInput, setScanInput] = useState('');
-  const [scanMsg, setScanMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [scanMsg, setScanMsg] = useState<AttendanceAlertMessage | null>(null);
   const [showCamera, setShowCamera] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const scanRef = useRef<HTMLInputElement>(null);
 
   const { data: attendance = [] } = useSessionAttendance(session.id);
   const { updateOne, scanQr } = useAttendanceMutations(session.id);
+  const { data: previousAbsent = [] } = usePreviousAbsent(session.id);
+  const { data: unpaidStudents = [] } = useUnpaidStudents(session.id);
 
   const present = attendance.filter(a => a.status === 'present').length;
   const late = attendance.filter(a => a.status === 'late').length;
   const absent = attendance.filter(a => a.status === 'absent').length;
 
+  // نفس منطق التنبيه المستخدم في شاشة الحضور الرئيسية (AttendanceSheet) —
+  // رسالة تحذير تفضل ظاهرة لحد التسكين اللي بعده + صوت الإنذار لو الطالب
+  // عليه فلوس أو كان غايب المرة اللي فاتت
+  const showCheckInResult = (studentName: string, studentId: string) => {
+    const warnings = checkAttendanceWarnings(studentId, previousAbsent, unpaidStudents);
+    const msg = buildAttendanceMessage(studentName, warnings);
+    setScanMsg(msg);
+    if (msg.level === 'warning') {
+      playAttendanceWarningAlarm();
+    } else {
+      setTimeout(() => setScanMsg(null), 2500);
+    }
+  };
+
   const handleScan = async (qrCode: string) => {
     if (!qrCode.trim()) return;
-    let code = qrCode.trim();
+    const normalised = normaliseScannerInput(qrCode.trim());
+    let code = normalised;
     try { const p = JSON.parse(code); if (p.code) code = p.code; } catch {}
     try {
       const record = await scanQr.mutateAsync(code);
-      setScanMsg({ text: '✅ ' + record.studentName + ' — حاضر', ok: true });
+      showCheckInResult(record.studentName, record.studentId);
     } catch (err: any) {
-      setScanMsg({ text: '❌ ' + (err?.response?.data?.error?.message || 'غير موجود'), ok: false });
+      setScanMsg({ text: '❌ ' + (err?.response?.data?.error?.message || 'غير موجود'), level: 'error' });
+      setTimeout(() => setScanMsg(null), 2500);
     }
     setScanInput('');
-    setTimeout(() => setScanMsg(null), 2500);
     scanRef.current?.focus();
   };
 
@@ -119,9 +139,15 @@ function SessionBlock({ session }: { session: Session }) {
               </button>
             </div>
             {scanMsg && (
-              <p className={`text-xs mt-1.5 px-1 ${scanMsg.ok ? 'text-emerald-600' : 'text-red-500'}`}>
-                {scanMsg.text}
-              </p>
+              scanMsg.level === 'warning' ? (
+                <p className="text-xs mt-1.5 px-2 py-1 rounded-lg bg-amber-50 text-amber-700 border border-amber-300 font-semibold">
+                  {scanMsg.text}
+                </p>
+              ) : (
+                <p className={`text-xs mt-1.5 px-1 ${scanMsg.level === 'success' ? 'text-emerald-600' : 'text-red-500'}`}>
+                  {scanMsg.text}
+                </p>
+              )
             )}
           </div>
 
@@ -143,7 +169,10 @@ function SessionBlock({ session }: { session: Session }) {
                 <div className="flex gap-1 shrink-0">
                   {(['present', 'late', 'absent'] as AttendanceStatus[]).map(s => (
                     <button key={s}
-                      onClick={() => updateOne.mutateAsync({ studentId: record.studentId, payload: { status: s } })}
+                      onClick={async () => {
+                        const updated = await updateOne.mutateAsync({ studentId: record.studentId, payload: { status: s } });
+                        if (s === 'present' || s === 'late') showCheckInResult(updated.studentName, updated.studentId);
+                      }}
                       className={`text-xs px-1.5 py-1 rounded-lg border transition-all ${
                         record.status === s
                           ? ATTENDANCE_STATUS_LABELS[s].class + ' border-current font-bold'

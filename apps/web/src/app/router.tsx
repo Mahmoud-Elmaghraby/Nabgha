@@ -25,6 +25,7 @@ const FinanceDuesPage = lazy(() => import('../features/finance/pages/DuesPage'))
 const FinancePaymentsPage = lazy(() => import('../features/finance/pages/PaymentsPage'));
 const FinanceExpensesPage = lazy(() => import('../features/finance/pages/ExpensesPage'));
 const FinanceTreasuriesPage = lazy(() => import('../features/finance/pages/TreasuriesPage'));
+const FinanceTreasuryDetailPage = lazy(() => import('../features/finance/pages/TreasuryDetailPage'));
 const FinanceCollectPage = lazy(() => import('../features/finance/pages/CollectPage'));
 const NotFoundPage = lazy(() => import('./not-found'));
 
@@ -106,6 +107,7 @@ const router = createBrowserRouter([
   { path: '/finance/payments', element: protectedPage(<FinancePaymentsPage />) },
   { path: '/finance/expenses', element: protectedPage(<FinanceExpensesPage />) },
   { path: '/finance/treasuries', element: protectedPage(<FinanceTreasuriesPage />) },
+  { path: '/finance/treasuries/:id', element: protectedPage(<FinanceTreasuryDetailPage />) },
   { path: '/finance/collect', element: protectedPage(<FinanceCollectPage />) },
   { path: '/barcodes', element: protectedPage(<BarcodesPage />) },
   { path: '/reports', element: protectedPage(<ComingSoon title="التقارير" />) },
