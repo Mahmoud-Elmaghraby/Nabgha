@@ -17,5 +17,23 @@
   "packageManager": "pnpm@10.33.4",
   "engines": {
     "node": ">=20"
+  },
+  "pnpm": {
+    "overrides": {
+      "dotenv": "16.4.7",
+      "typescript": "5.9.2"
+    },
+    "onlyBuiltDependencies": [
+      "@prisma/client",
+      "@prisma/engines",
+      "@whiskeysockets/baileys",
+      "bcrypt",
+      "better-sqlite3",
+      "core-js",
+      "electron",
+      "prisma",
+      "protobufjs",
+      "puppeteer"
+    ]
   }
 }
