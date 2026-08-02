@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useGroups } from '@/features/groups/hooks/useGroups';
+import { getGroupSelectLabel } from '@/features/groups/utils/formatGroupLabel';
 import { useSubjects } from '@/features/subjects/hooks/useSubjects';
 import { GRADE_OPTIONS } from '@nabgha/types';
 import { useSessionMutations } from '../hooks/useSessions';
@@ -44,12 +45,13 @@ export function SessionFormModal({ open, onClose }: Props) {
     if (!title.trim()) return setError('العنوان مطلوب');
     if (isGradeExam && (!grade || !subjectId || !endDate)) return setError('المرحلة والمادة وتاريخ الانتهاء مطلوبة');
     if (needsGroup && !groupId) return setError('المجموعة مطلوبة');
+    if (needsGrades && (!outOf || Number(outOf) <= 0)) return setError('الدرجة القصوى (من كام) مطلوبة لهذا النوع من الحصص');
 
     const payload: CreateSessionPayload = {
       type, title: title.trim(),
       startDate,
       ...(isGradeExam ? { grade, subjectId, endDate } : { groupId }),
-      ...(needsGrades && outOf ? { outOf: Number(outOf) } : {}),
+      ...(needsGrades ? { outOf: Number(outOf) } : {}),
       ...(startTime ? { startTime } : {}),
       ...(endTime ? { endTime } : {}),
       ...(notes ? { notes } : {}),
@@ -110,7 +112,7 @@ export function SessionFormModal({ open, onClose }: Props) {
                 className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0E3B2E]/20">
                 <option value="">اختر مجموعة</option>
                 {groups.filter(g => g.isActive).map(g => (
-                  <option key={g.id} value={g.id}>{g.name}</option>
+                  <option key={g.id} value={g.id}>{getGroupSelectLabel(g)}</option>
                 ))}
               </select>
             </div>
@@ -141,7 +143,7 @@ export function SessionFormModal({ open, onClose }: Props) {
           {/* الدرجة القصوى */}
           {needsGrades && (
             <div>
-              <label className="text-xs text-gray-500 mb-1.5 block">الدرجة من</label>
+              <label className="text-xs text-gray-500 mb-1.5 block">الدرجة من *</label>
               <input type="number" min={1} value={outOf} onChange={e => setOutOf(e.target.value)}
                 placeholder="مثال: 100"
                 className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0E3B2E]/20" />

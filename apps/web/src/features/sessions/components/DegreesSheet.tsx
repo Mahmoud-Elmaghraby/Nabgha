@@ -2,6 +2,9 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { useVoiceSearch } from '@/shared/hooks/useVoiceSearch';
 import { usePermissions } from '@/shared/hooks/usePermissions';
 import { useSessionAttendance, useAttendanceMutations } from '../hooks/useSessions';
+import { useQuery } from '@tanstack/react-query';
+import { sessionsApi } from '../api/sessions.api';
+import { useToast } from '@/shared/components/Toast';
 import type { Session } from '../types/session.types';
 
 interface Props {
@@ -14,9 +17,12 @@ export function DegreesSheet({ session, onClose }: Props) {
   const canEdit = hasPermission('sessions.attendance');
   const { data: attendance = [], isLoading } = useSessionAttendance(session.id);
   const { updateOne } = useAttendanceMutations(session.id);
+  const toast = useToast();
   const [degrees, setDegrees] = useState<Record<string, string>>({});
   const [search, setSearch] = useState('');
   const [saving, setSaving] = useState<Record<string, boolean>>({});
+  const [notifying, setNotifying] = useState<Record<string, boolean>>({});
+  const [gradeJobId, setGradeJobId] = useState<string | null>(null);
 
   const handleVoiceResult = useCallback((text: string) => {
     setSearch(text.trim());
@@ -44,25 +50,70 @@ export function DegreesSheet({ session, onClose }: Props) {
     }
   }, [search, present.length]);
 
-  const handleDegreeBlur = async (studentId: string) => {
+  const handleDegreeBlur = async (studentId: string, currentStatus: 'present' | 'absent' | 'late') => {
     const val = degrees[studentId];
     if (val === undefined || val === '') return;
     const degree = Number(val);
-    if (isNaN(degree) || degree < 0) return;
-    if (session.outOf && degree > session.outOf) return;
+
+    if (isNaN(degree) || degree < 0) {
+      toast.error('الدرجة يجب أن تكون رقماً موجباً');
+      return;
+    }
+    if (session.outOf && degree > session.outOf) {
+      toast.error(`الدرجة لا تتجاوز ${session.outOf}`);
+      return;
+    }
 
     setSaving(prev => ({ ...prev, [studentId]: true }));
     try {
+      // لازم نبعت status الحالي للطالب — الـ endpoint الفردي بيطلبه إجباري
+      // (بيمثّل "تحديث حالة الحضور"، حتى لو إحنا بس عايزين نحدّث الدرجة بدون تغيير الحالة)
       await updateOne.mutateAsync({ studentId, payload: { degree } as any });
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error?.message || 'حدث خطأ أثناء حفظ الدرجة');
     } finally {
       setSaving(prev => ({ ...prev, [studentId]: false }));
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent, studentId: string, index: number) => {
+  const handleSendGrade = async (studentId: string) => {
+    // الإرسال دلوقتي fire-and-forget بالكامل بالباك إند — بيرجع فوراً من غير انتظار
+    // التأخير الأمني أو نتيجة الإرسال الحقيقية (اللي بتوصل بعدين في سجل الرسائل بصفحة واتساب)
+    try {
+      await sessionsApi.resendGradeNotification(session.id, studentId);
+      toast.success('تمت إضافة الدرجة لقائمة الإرسال — تابع سجل الرسائل بصفحة واتساب للتأكد من الوصول');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error?.message || 'فشل إضافة الدرجة لقائمة الإرسال');
+    }
+  };
+
+  const handleSendAll = async () => {
+    try {
+      const result = await sessionsApi.sendAllGradeNotifications(session.id);
+      setGradeJobId(result.jobId);
+      toast.success('بدأ إرسال الدرجات في الخلفية...');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error?.message || 'فشل بدء الإرسال الجماعي');
+    }
+  };
+
+  const { data: jobProgress } = useQuery({
+    queryKey: ['grade-notification-progress', session.id, gradeJobId],
+    queryFn: () => sessionsApi.getGradeNotificationProgress(session.id, gradeJobId!),
+    enabled: !!gradeJobId,
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      if (!data) return 1500;
+      return data.status === 'running' || data.status === 'pending' ? 1500 : false;
+    },
+  });
+
+  const isJobRunning = jobProgress?.status === 'running' || jobProgress?.status === 'pending';
+
+  const handleKeyDown = (e: React.KeyboardEvent, studentId: string, index: number, currentStatus: 'present' | 'absent' | 'late') => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      handleDegreeBlur(studentId);
+      handleDegreeBlur(studentId, currentStatus);
       // انتقل للطالب التالي
       const inputs = document.querySelectorAll<HTMLInputElement>('.degree-input');
       inputs[index + 1]?.focus();
@@ -86,12 +137,27 @@ export function DegreesSheet({ session, onClose }: Props) {
               {session.title} {session.outOf ? `— من ${session.outOf} درجة` : ''}
             </p>
           </div>
-          <button onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100">
-            <svg className="w-4 h-4 text-gray-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M18 6L6 18M6 6l12 12" strokeLinecap="round"/>
-            </svg>
-          </button>
+          <div className="flex items-center gap-2">
+            {isJobRunning && jobProgress ? (
+              <div className="flex items-center gap-2 text-xs text-gray-600">
+                <div className="w-16 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                  <div className="h-full bg-[#0E3B2E] transition-all" style={{ width: `${jobProgress.progress}%` }} />
+                </div>
+                <span className="whitespace-nowrap">{jobProgress.sent + jobProgress.failed} / {jobProgress.total}</span>
+              </div>
+            ) : (
+              <button onClick={handleSendAll}
+                className="text-xs px-3 py-1.5 bg-[#0E3B2E] text-white rounded-lg hover:bg-[#1F6B4E] whitespace-nowrap">
+                إرسال الكل
+              </button>
+            )}
+            <button onClick={onClose}
+              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100">
+              <svg className="w-4 h-4 text-gray-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M18 6L6 18M6 6l12 12" strokeLinecap="round"/>
+              </svg>
+            </button>
+          </div>
         </div>
 
         {/* Stats */}
@@ -214,9 +280,15 @@ export function DegreesSheet({ session, onClose }: Props) {
                       min={0}
                       max={session.outOf ?? undefined}
                       value={getDegreeValue(record.studentId, record.degree)}
-                      onChange={e => setDegrees(prev => ({ ...prev, [record.studentId]: e.target.value }))}
-                      onBlur={() => handleDegreeBlur(record.studentId)}
-                      onKeyDown={e => handleKeyDown(e, record.studentId, index)}
+                      onChange={e => {
+                        const raw = e.target.value;
+                        const num = Number(raw);
+                        // نمنع الكتابة نفسها لو تجاوزت الحد الأقصى — مش بس نرفضها بعد الخروج من الخانة
+                        if (raw !== '' && session.outOf && num > session.outOf) return;
+                        setDegrees(prev => ({ ...prev, [record.studentId]: raw }));
+                      }}
+                      onBlur={() => handleDegreeBlur(record.studentId, record.status)}
+                      onKeyDown={e => handleKeyDown(e, record.studentId, index, record.status)}
                       placeholder="—"
                       disabled={!canEdit}
                       className="degree-input w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center font-mono focus:outline-none focus:ring-2 focus:ring-[#0E3B2E]/20 focus:border-[#0E3B2E]/40 disabled:bg-gray-100 disabled:cursor-not-allowed"
@@ -231,6 +303,22 @@ export function DegreesSheet({ session, onClose }: Props) {
                       <svg className="w-3.5 h-3.5 text-emerald-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                         <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round"/>
                       </svg>
+                    )}
+                    {record.degree !== null && (
+                      <button
+                        onClick={() => handleSendGrade(record.studentId)}
+                        disabled={notifying[record.studentId]}
+                        title="إرسال الدرجة عبر واتساب"
+                        className="w-7 h-7 flex items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 disabled:opacity-50 shrink-0"
+                      >
+                        {notifying[record.studentId] ? (
+                          <div className="w-3 h-3 border border-emerald-600 border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        )}
+                      </button>
                     )}
                   </div>
                 </div>

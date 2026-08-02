@@ -121,6 +121,7 @@ export interface AttendanceTable {
   notes: string | null;
   created_at: Generated<Date>;
   updated_at: Generated<Date>;
+  grade_notified_at: Date | null;
 }
 
 export interface AttendanceCreditsTable {

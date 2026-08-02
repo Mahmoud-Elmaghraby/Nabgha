@@ -7,8 +7,8 @@ import { TenantDatabase } from '@nabgha/db';
 @Injectable()
 export class KyselyService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(KyselyService.name);
-  private pool: Pool;
-  private db: Kysely<TenantDatabase>;
+  private pool!: Pool;
+  private db!: Kysely<TenantDatabase>;
 
   constructor(private config: ConfigService) {}
 

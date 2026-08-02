@@ -96,4 +96,21 @@ export const sessionsApi = {
     });
     return res.data.data;
   },
+  removeImage: async (sessionId: string): Promise<Session> => {
+    const res = await apiClient.delete(`/sessions/${sessionId}/image`);
+    return res.data.data;
+  },
+  resendGradeNotification: async (sessionId: string, studentId: string): Promise<void> => {
+    await apiClient.post(`/sessions/${sessionId}/attendance/${studentId}/notify-grade`);
+  },
+  sendAllGradeNotifications: async (sessionId: string): Promise<{ jobId: string }> => {
+    const res = await apiClient.post(`/sessions/${sessionId}/attendance/notify-all-grades`);
+    return res.data.data;
+  },
+  getGradeNotificationProgress: async (sessionId: string, jobId: string): Promise<{
+    jobId: string; total: number; sent: number; failed: number; progress: number; status: string;
+  }> => {
+    const res = await apiClient.get(`/sessions/${sessionId}/attendance/notify-all-grades/${jobId}`);
+    return res.data.data;
+  },
 };

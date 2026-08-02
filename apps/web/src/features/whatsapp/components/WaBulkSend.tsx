@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { useWaMutations, useWaBulkProgress, useResolveAudience } from '../hooks/useWhatsapp';
 import { usePermissions } from '@/shared/hooks/usePermissions';
 import { useGroups } from '@/features/groups/hooks/useGroups';
+import { getGroupSelectLabel } from '@/features/groups/utils/formatGroupLabel';
 import { useSubjects } from '@/features/subjects/hooks/useSubjects';
 import { useTeachers } from '@/features/teachers/hooks/useTeachers';
 import { GRADE_OPTIONS } from '@nabgha/types';
@@ -155,7 +156,9 @@ export function WaBulkSend() {
                 <select value={groupId} onChange={e => setGroupId(e.target.value)}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white">
                   <option value="">اختر مجموعة</option>
-                  {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                  {groups.map(g => (
+                    <option key={g.id} value={g.id}>{getGroupSelectLabel(g)}</option>
+                  ))}
                 </select>
               )}
 

@@ -12,6 +12,8 @@ export interface SendNotificationInput {
   templateKey: WaTemplateKey;
   vars: Record<string, string>;
   bulkJobId?: string;
+  /** لو موجودة، بتتبعت كصورة مرفقة والنص بيبقى الـ caption بدل رسالة نصية عادية */
+  imageBuffer?: Buffer;
 }
 
 @Injectable()
@@ -27,7 +29,7 @@ export class SendNotificationUseCase {
   ) {}
 
   async execute(input: SendNotificationInput): Promise<{ success: boolean; messageId?: string; error?: string }> {
-    const { tenantId, phone, templateKey, vars, bulkJobId } = input;
+    const { tenantId, phone, templateKey, vars, bulkJobId, imageBuffer } = input;
 
     const settings = await this.settingsRepo.findByTenantId(tenantId);
     if (!settings?.waEnabled) {
@@ -111,7 +113,9 @@ export class SendNotificationUseCase {
     const delay = this.randomDelay(settings.delayMinSeconds, settings.delayMaxSeconds);
     await this.sleep(delay);
 
-    const result = await this.provider.sendMessage(tenantId, phone, body);
+    const result = imageBuffer
+      ? await this.provider.sendImage(tenantId, phone, imageBuffer, body)
+      : await this.provider.sendMessage(tenantId, phone, body);
 
     if (result.success) {
       message.markSent();

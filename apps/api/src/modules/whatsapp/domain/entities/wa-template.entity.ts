@@ -10,22 +10,24 @@ export const WA_TEMPLATE_KEYS = [
   'GROUP_ADDED',
   'GROUP_REMOVED',
   'ABSENCE_EXCUSED',
+  'GRADE_RECORDED',
 ] as const;
 
 export type WaTemplateKey = typeof WA_TEMPLATE_KEYS[number];
 
 export const WA_DEFAULT_TEMPLATES: Record<WaTemplateKey, string> = {
-  ABSENT:           'نبغة: {student_name} غاب عن حصة {subject} اليوم {date} 📚',
-  PRESENT:          'نبغة: {student_name} حضر حصة {subject} الساعة {time} ✅',
-  LATE:             'نبغة: {student_name} تأخر عن حصة {subject} اليوم {date} ⏰',
-  THREE_ABSENCES:   'تنبيه: {student_name} غاب {count} مرات متتالية في {subject} — يرجى التواصل مع المركز',
-  PAYMENT_CONFIRM:  'تم استلام {amount} جنيه من {student_name} بتاريخ {date} 🧾 شكراً لثقتكم في {center_name}',
-  PAYMENT_DUE:      'تذكير: موعد سداد {student_name} ({amount} جنيه) بعد {days} أيام — {center_name}',
-  PAYMENT_OVERDUE:  'تنبيه: تأخر سداد {student_name} بمبلغ {amount} جنيه منذ {days} أيام — يرجى التواصل',
-  NEW_STUDENT:      'مرحباً بكم! تم تسجيل {student_name} في {center_name} بنجاح 🎉',
-  GROUP_ADDED:      'تم إضافة {student_name} لمجموعة {group_name} مع {center_name} — أيام: {days} الساعة {time} 📅',
-  GROUP_REMOVED:    'تم إلغاء تسجيل {student_name} من مجموعة {group_name} — {center_name}',
-  ABSENCE_EXCUSED:  'نبغة: تم إعفاء {student_name} من غياب {subject} بتاريخ {date} — حضر حصة بديلة ✅',
+  ABSENT:           '{center_name}: نحيطكم علماً بغياب الطالب {student_name} عن حصة {subject} بتاريخ {date}',
+  PRESENT:          '{center_name}: تم تسجيل حضور الطالب {student_name} لحصة {subject} في تمام الساعة {time}',
+  LATE:             '{center_name}: تم تسجيل تأخر الطالب {student_name} عن حصة {subject} بتاريخ {date}',
+  THREE_ABSENCES:   '{center_name}: نلفت انتباهكم إلى غياب الطالب {student_name} {count} مرات متتالية في مادة {subject}. يُرجى التواصل مع إدارة المركز',
+  PAYMENT_CONFIRM:  '{center_name}: نفيدكم بأنه تم استلام مبلغ {amount} جنيه من الطالب {student_name} بتاريخ {date}. شكراً لتعاملكم معنا',
+  PAYMENT_DUE:      '{center_name}: نذكّركم بأن موعد استحقاق سداد الطالب {student_name} ({amount} جنيه) يحل بعد {days} يوم',
+  PAYMENT_OVERDUE:  '{center_name}: نحيطكم علماً بتأخر سداد مستحقات الطالب {student_name} البالغة {amount} جنيه منذ {days} يوم. يُرجى التواصل مع الإدارة',
+  NEW_STUDENT:      '{center_name}: تم تسجيل الطالب {student_name} بنجاح. نتمنى له تجربة تعليمية مثمرة',
+  GROUP_ADDED:      '{center_name}: تم إلحاق الطالب {student_name} بمجموعة {group_name} — الأيام: {days}، الساعة: {time}',
+  GROUP_REMOVED:    '{center_name}: تم إخراج الطالب {student_name} من مجموعة {group_name}',
+  ABSENCE_EXCUSED:  '{center_name}: تم اعتبار غياب الطالب {student_name} عن حصة {subject} بتاريخ {date} معذوراً نظراً لحضوره حصة بديلة',
+  GRADE_RECORDED:   '{center_name}: درجة الطالب {student_name} في {subject} بتاريخ {date}: {degree} من {out_of}',
 };
 
 export const WA_TEMPLATE_VARIABLES: Record<WaTemplateKey, string[]> = {
@@ -40,6 +42,7 @@ export const WA_TEMPLATE_VARIABLES: Record<WaTemplateKey, string[]> = {
   GROUP_ADDED:     ['{student_name}', '{group_name}', '{days}', '{time}', '{center_name}'],
   GROUP_REMOVED:   ['{student_name}', '{group_name}', '{center_name}'],
   ABSENCE_EXCUSED: ['{student_name}', '{subject}', '{date}'],
+  GRADE_RECORDED: ['{student_name}', '{subject}', '{date}', '{degree}', '{out_of}'],
 };
 
 export class WaTemplateEntity {
