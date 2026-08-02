@@ -9,6 +9,9 @@ import { RolesGuard } from '../../../shared/infrastructure/guards/roles.guard';
 import { PermissionGuard } from '../../../shared/infrastructure/guards/permission.guard';
 import { RequirePermission } from '../../../shared/infrastructure/guards/permission.decorator';
 import { StudentUseCase } from '../application/use-cases/student.usecase';
+import { ExcelExportService } from '../../../shared/infrastructure/export/excel-export.service';
+import { PdfExportService } from '../../../shared/infrastructure/export/pdf-export.service';
+import { STUDENT_EXPORT_COLUMNS } from './student-export.columns';
 import { AppError } from '../../../core/errors/app.error';
 import {
   CreateStudentSchema,
@@ -19,7 +22,11 @@ import {
 @Controller('students')
 @UseGuards(JwtAuthGuard, TenantGuard, RolesGuard, PermissionGuard)
 export class StudentController {
-  constructor(private readonly useCase: StudentUseCase) {}
+  constructor(
+    private readonly useCase: StudentUseCase,
+    private readonly excelExport: ExcelExportService,
+    private readonly pdfExport: PdfExportService,
+  ) {}
 
   @Get()
   @RequirePermission('students.view')
@@ -27,6 +34,50 @@ export class StudentController {
     const params = ListStudentsSchema.parse(query);
     const result = await this.useCase.list(req.user.tenantId, params);
     return { success: true, data: result };
+  }
+
+  @Get('export/columns')
+  @RequirePermission('students.view')
+  async getExportColumns() {
+    const data = STUDENT_EXPORT_COLUMNS.map(c => ({ key: c.key, header: c.header }));
+    return { success: true, data };
+  }
+
+  @Get('export')
+  @RequirePermission('students.view')
+  async export(@Request() req: any, @Query() query: any, @Res() res: Response) {
+    const { format, columns, ...filters } = query;
+    const parsed = ListStudentsSchema.parse(filters);
+    const { page, limit, ...exportFilters } = parsed;
+    const students = await this.useCase.listForExport(req.user.tenantId, exportFilters);
+
+    let selectedColumns = STUDENT_EXPORT_COLUMNS;
+    if (typeof columns === 'string' && columns.length > 0) {
+      const requestedKeys = new Set([...columns.split(','), 'fullName']);
+      selectedColumns = STUDENT_EXPORT_COLUMNS.filter(c => requestedKeys.has(c.key));
+    }
+
+    const filename = `students-${Date.now()}`;
+    if (format === 'xlsx') {
+      const buffer = await this.excelExport.generate(students, selectedColumns, {
+        title: 'قائمة الطلاب',
+      });
+      res.set({
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'Content-Disposition': `attachment; filename="${filename}.xlsx"`,
+      });
+      res.send(buffer);
+      return;
+    }
+
+    const buffer = await this.pdfExport.generate(students, selectedColumns, {
+      title: 'قائمة الطلاب',
+    });
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="${filename}.pdf"`,
+    });
+    res.send(buffer);
   }
 
   @Get(':id')

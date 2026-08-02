@@ -29,6 +29,7 @@ export const ListStudentsSchema = z.object({
   search: z.string().optional(),
   grade: z.string().optional(),
   isActive: z.string().transform((v) => v === 'true').optional(),
+  subjectId: z.string().optional(), // uuid لمادة، أو القيمة الخاصة 'none' لطلاب بدون مجموعة
   page: z.string().transform(Number).optional(),
   limit: z.string().transform(Number).optional(),
 });

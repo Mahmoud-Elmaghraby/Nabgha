@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useGroupMutations } from '../hooks/useGroups';
-import { useSubjects } from '@/features/subjects/hooks/useSubjects';
 import { usePermissions } from '@/shared/hooks/usePermissions';
 import { useConfirm } from '@/shared/components/Confirm';
 import type { GroupDto } from '../types/group.types';
@@ -19,17 +18,7 @@ export function GroupsList({ groups, onEdit, onViewStudents, isLoading }: Props)
   const { hasPermission } = usePermissions();
   const confirm = useConfirm();
   const { deleteGroup } = useGroupMutations();
-  const { data: subjects = [] } = useSubjects();
   const [deletingId, setDeletingId] = useState<string | null>(null);
-
-  const getGradeLabel = (subjectGradeId: string | null) => {
-    if (!subjectGradeId) return null;
-    for (const item of subjects) {
-      const grade = item.grades.find(g => g.id === subjectGradeId);
-      if (grade) return `${item.subject.name} — ${grade.grade}`;
-    }
-    return null;
-  };
 
   const handleDelete = async (id: string) => {
     if (!(await confirm('هل أنت متأكد من حذف هذه المجموعة؟', { danger: true }))) return;
@@ -44,9 +33,9 @@ export function GroupsList({ groups, onEdit, onViewStudents, isLoading }: Props)
       render: g => (
         <div>
           <div className="font-semibold text-gray-900 text-sm">{g.name}</div>
-          {g.subjectGradeId && (
+          {g.subjectGradeLabel && (
             <div className="text-gray-400 text-xs mt-0.5">
-              {getGradeLabel(g.subjectGradeId) || '—'}
+              {g.subjectGradeLabel}
             </div>
           )}
         </div>

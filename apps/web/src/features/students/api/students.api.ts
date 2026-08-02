@@ -43,4 +43,15 @@ export const studentsApi = {
   delete: async (id: string): Promise<void> => {
     await apiClient.delete(`/students/${id}`);
   },
+
+  export: async (
+    format: 'xlsx' | 'pdf',
+    params?: Omit<ListStudentsParams, 'page' | 'limit'>,
+  ): Promise<Blob> => {
+    const res = await apiClient.get('/students/export', {
+      params: { ...params, format },
+      responseType: 'blob',
+    });
+    return res.data;
+  },
 };

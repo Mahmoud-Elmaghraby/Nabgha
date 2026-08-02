@@ -15,4 +15,8 @@ export const settingsApi = {
     apiClient.get<BrandingSettingsDto>('/settings/branding'),
   updateBranding: (mode: BrandingMode) =>
     apiClient.put<BrandingSettingsDto>('/settings/branding', { mode }),
+  getVisibleColumns: (moduleName: string) =>
+    apiClient.get<{ success: boolean; data: string[] | null }>(`/settings/columns/${moduleName}`),
+  saveVisibleColumns: (moduleName: string, columns: string[]) =>
+    apiClient.put(`/settings/columns/${moduleName}`, { columns }),
 };

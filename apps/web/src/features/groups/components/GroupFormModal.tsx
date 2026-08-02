@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useGroupMutations } from '../hooks/useGroups';
+import { useToast } from '@/shared/components/Toast';
 import { useSubjects } from '@/features/subjects/hooks/useSubjects';
 import { useTeachers } from '@/features/teachers/hooks/useTeachers';
 import type { GroupDto, ScheduleItem, DayOfWeek } from '../types/group.types';
@@ -17,6 +18,7 @@ const inputClass = 'w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-
 export function GroupFormModal({ open, onClose, group }: Props) {
   const isEdit = !!group;
   const { createGroup, updateGroup } = useGroupMutations();
+  const toast = useToast();
   const { data: subjects = [] } = useSubjects();
   const { data: teachers = [] } = useTeachers();
 
@@ -74,12 +76,18 @@ export function GroupFormModal({ open, onClose, group }: Props) {
       maxStudents,
       schedule,
     };
-    if (isEdit && group) {
-      await updateGroup.mutateAsync({ id: group.id, data: payload });
-    } else {
-      await createGroup.mutateAsync(payload);
+    try {
+      if (isEdit && group) {
+        await updateGroup.mutateAsync({ id: group.id, data: payload });
+      } else {
+        await createGroup.mutateAsync(payload);
+      }
+      onClose();
+    } catch (err: any) {
+      const message = err?.response?.data?.error?.message
+        || (err?.response?.status === 403 ? 'ليس لديك صلاحية لتنفيذ هذا الإجراء' : 'حدث خطأ أثناء الحفظ');
+      toast.error(message);
     }
-    onClose();
   };
 
   const isPending = createGroup.isPending || updateGroup.isPending;

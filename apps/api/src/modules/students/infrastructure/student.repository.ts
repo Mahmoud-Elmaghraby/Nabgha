@@ -25,10 +25,40 @@ export class StudentRepository {
         eb('student_code', 'ilike', `%${params.search}%`),
         eb('parent_phone', 'ilike', `%${params.search}%`),
         eb('student_phone', 'ilike', `%${params.search}%`),
+        eb('grade', 'ilike', `%${params.search}%`),
+        eb.exists(
+          eb.selectFrom('group_students as gs2')
+            .innerJoin('groups as g2', 'g2.id', 'gs2.group_id')
+            .select('gs2.id')
+            .whereRef('gs2.student_id', '=', 'students.id')
+            .where('gs2.left_at', 'is', null)
+            .where('g2.deleted_at', 'is', null)
+            .where('g2.name', 'ilike', `%${params.search}%`)
+        ),
       ]));
     }
     if (params.grade) base = base.where('grade', '=', params.grade);
     if (params.isActive !== undefined) base = base.where('is_active', '=', params.isActive);
+
+    if (params.subjectId === 'none') {
+      base = base.where(eb => eb.not(eb.exists(
+        eb.selectFrom('group_students as gs3')
+          .select('gs3.id')
+          .whereRef('gs3.student_id', '=', 'students.id')
+          .where('gs3.left_at', 'is', null)
+      )));
+    } else if (params.subjectId) {
+      base = base.where(eb => eb.exists(
+        eb.selectFrom('group_students as gs3')
+          .innerJoin('groups as g3', 'g3.id', 'gs3.group_id')
+          .innerJoin('subject_grades as sg3', 'sg3.id', 'g3.subject_grade_id')
+          .select('gs3.id')
+          .whereRef('gs3.student_id', '=', 'students.id')
+          .where('gs3.left_at', 'is', null)
+          .where('g3.deleted_at', 'is', null)
+          .where('sg3.subject_id', '=', sql<string>`${params.subjectId}::uuid`)
+      ));
+    }
 
     const countResult = await base
       .select(db.fn.countAll<number>().as('count'))
@@ -42,7 +72,84 @@ export class StudentRepository {
       .offset(offset)
       .execute();
 
-    return { data: rows.map(r => this.toEntity(r)), total, page, limit };
+    const students = rows.map(r => this.toEntity(r));
+    const groupNamesMap = await this.findGroupNamesMap(tenantId, students.map(s => s.id));
+    const data = students.map(s => Object.assign(s, { groupNames: groupNamesMap[s.id] ?? '' }));
+
+    return { data, total, page, limit };
+  }
+
+  async findAllForExport(
+    tenantId: string,
+    params: Omit<ListStudentsDto, 'page' | 'limit'>,
+  ): Promise<StudentEntity[]> {
+    const db = this.kysely.getTenantDb(tenantId);
+    let base = db.selectFrom('students').where('deleted_at', 'is', null);
+
+    if (params.search) {
+      base = base.where(eb => eb.or([
+        eb('full_name', 'ilike', `%${params.search}%`),
+        eb('student_code', 'ilike', `%${params.search}%`),
+        eb('parent_phone', 'ilike', `%${params.search}%`),
+        eb('student_phone', 'ilike', `%${params.search}%`),
+        eb('grade', 'ilike', `%${params.search}%`),
+        eb.exists(
+          eb.selectFrom('group_students as gs2')
+            .innerJoin('groups as g2', 'g2.id', 'gs2.group_id')
+            .select('gs2.id')
+            .whereRef('gs2.student_id', '=', 'students.id')
+            .where('gs2.left_at', 'is', null)
+            .where('g2.deleted_at', 'is', null)
+            .where('g2.name', 'ilike', `%${params.search}%`)
+        ),
+      ]));
+    }
+    if (params.grade) base = base.where('grade', '=', params.grade);
+    if (params.isActive !== undefined) base = base.where('is_active', '=', params.isActive);
+
+    if (params.subjectId === 'none') {
+      base = base.where(eb => eb.not(eb.exists(
+        eb.selectFrom('group_students as gs3')
+          .select('gs3.id')
+          .whereRef('gs3.student_id', '=', 'students.id')
+          .where('gs3.left_at', 'is', null)
+      )));
+    } else if (params.subjectId) {
+      base = base.where(eb => eb.exists(
+        eb.selectFrom('group_students as gs3')
+          .innerJoin('groups as g3', 'g3.id', 'gs3.group_id')
+          .innerJoin('subject_grades as sg3', 'sg3.id', 'g3.subject_grade_id')
+          .select('gs3.id')
+          .whereRef('gs3.student_id', '=', 'students.id')
+          .where('gs3.left_at', 'is', null)
+          .where('g3.deleted_at', 'is', null)
+          .where('sg3.subject_id', '=', sql<string>`${params.subjectId}::uuid`)
+      ));
+    }
+
+    const rows = await base.selectAll().orderBy('full_name', 'asc').execute();
+    const students = rows.map(r => this.toEntity(r));
+
+    const groupNamesMap = await this.findGroupNamesMap(tenantId, students.map(s => s.id));
+    return students.map(s => Object.assign(s, { groupNames: groupNamesMap[s.id] ?? '' }));
+  }
+
+  private async findGroupNamesMap(tenantId: string, studentIds: string[]): Promise<Record<string, string>> {
+    if (studentIds.length === 0) return {};
+    const db = this.kysely.getTenantDb(tenantId);
+    const rows = await db
+      .selectFrom('group_students as gs')
+      .innerJoin('groups as g', 'g.id', 'gs.group_id')
+      .select(({ fn }) => [
+        'gs.student_id',
+        fn<string>('string_agg', ['g.name', sql.lit(', ')]).as('group_names'),
+      ])
+      .where('gs.student_id', 'in', studentIds.map(id => sql<string>`${id}::uuid`))
+      .where('gs.left_at', 'is', null)
+      .where('g.deleted_at', 'is', null)
+      .groupBy('gs.student_id')
+      .execute();
+    return Object.fromEntries(rows.map(r => [r.student_id as string, r.group_names as string]));
   }
 
   async findById(tenantId: string, id: string): Promise<StudentEntity | null> {
@@ -145,6 +252,8 @@ export class StudentRepository {
     return db
       .selectFrom('group_students as gs')
       .innerJoin('groups as g', 'g.id', 'gs.group_id')
+      .leftJoin('subject_grades as sg', 'sg.id', 'g.subject_grade_id')
+      .leftJoin('subjects as sub', 'sub.id', 'sg.subject_id')
       .select([
         'gs.id as enrollment_id',
         'gs.discount',
@@ -156,13 +265,19 @@ export class StudentRepository {
         'g.max_students',
         'g.schedule',
         'g.is_active',
+        'sub.name as subject_name',
+        'sg.grade as subject_grade_grade',
       ])
       .where('gs.student_id', '=', sql<string>`${studentId}::uuid`)
       .where('gs.left_at', 'is', null)
       .where('g.deleted_at', 'is', null)
       .orderBy('g.name', 'asc')
       .execute()
-      .then(rows => rows.map(r => ({ ...r, discount: Number(r.discount) })));
+      .then(rows => rows.map(r => ({
+        ...r,
+        discount: Number(r.discount),
+        subjectGradeLabel: r.subject_name ? `${r.subject_name} — ${r.subject_grade_grade}` : null,
+      })));
   }
 
   async findAttendanceHistory(tenantId: string, studentId: string): Promise<any[]> {

@@ -16,6 +16,7 @@ const StudentsPage = lazy(() => import('../features/students/pages/StudentsPage'
 const StudentProfilePage = lazy(() => import('../features/students/pages/StudentProfilePage'));
 const GroupsPage = lazy(() => import('../features/groups/pages/GroupsPage'));
 const BarcodesPage = lazy(() => import('../features/barcodes/BarcodesPage'));
+const SpinnerPage = lazy(() => import('../features/spinner/pages/SpinnerPage'));
 const SessionsPage = lazy(() => import('../features/sessions/pages/SessionsPage'));
 const MorePage = lazy(() => import('../features/more/MorePage'));
 const WhatsAppPage = lazy(() => import('../features/whatsapp/pages/WhatsAppPage'));
@@ -27,6 +28,25 @@ const FinanceExpensesPage = lazy(() => import('../features/finance/pages/Expense
 const FinanceTreasuriesPage = lazy(() => import('../features/finance/pages/TreasuriesPage'));
 const FinanceTreasuryDetailPage = lazy(() => import('../features/finance/pages/TreasuryDetailPage'));
 const FinanceCollectPage = lazy(() => import('../features/finance/pages/CollectPage'));
+const StudentsListReportPage = lazy(() => import('../features/reports/pages/StudentsListReportPage'));
+const StudentStatementReportPage = lazy(() => import('../features/reports/pages/StudentStatementReportPage'));
+const AbsenceReportPage = lazy(() => import('../features/reports/pages/AbsenceReportPage'));
+const StudentAttendanceReportPage = lazy(() => import('../features/reports/pages/StudentAttendanceReportPage'));
+const StudentGradesReportPage = lazy(() => import('../features/reports/pages/StudentGradesReportPage'));
+const MonthlyReportsPage = lazy(() => import('../features/reports/pages/MonthlyReportsPage'));
+const GroupAttendanceReportPage = lazy(() => import('../features/reports/pages/GroupAttendanceReportPage'));
+const SessionsListReportPage = lazy(() => import('../features/reports/pages/SessionsListReportPage'));
+const OverdueDuesReportPage = lazy(() => import('../features/reports/pages/OverdueDuesReportPage'));
+const MonthlyCollectionsReportPage = lazy(() => import('../features/reports/pages/MonthlyCollectionsReportPage'));
+const GroupGradesReportPage = lazy(() => import('../features/reports/pages/GroupGradesReportPage'));
+const ExamResultReportPage = lazy(() => import('../features/reports/pages/ExamResultReportPage'));
+const HonorBoardReportPage = lazy(() => import('../features/reports/pages/HonorBoardReportPage'));
+
+import { ReportsLayout } from '../features/reports/components/ReportsLayout';
+import { StudentsReportsLayout } from '../features/reports/components/StudentsReportsLayout';
+import { FinanceReportsLayout } from '../features/reports/components/FinanceReportsLayout';
+import { SessionsReportsLayout } from '../features/reports/components/SessionsReportsLayout';
+import { ExamsReportsLayout } from '../features/reports/components/ExamsReportsLayout';
 const NotFoundPage = lazy(() => import('./not-found'));
 
 // ===== Platform Pages =====
@@ -110,7 +130,55 @@ const router = createBrowserRouter([
   { path: '/finance/treasuries/:id', element: protectedPage(<FinanceTreasuryDetailPage />) },
   { path: '/finance/collect', element: protectedPage(<FinanceCollectPage />) },
   { path: '/barcodes', element: protectedPage(<BarcodesPage />) },
-  { path: '/reports', element: protectedPage(<ComingSoon title="التقارير" />) },
+  { path: '/spinner', element: protectedPage(<SpinnerPage />) },
+  {
+    path: '/reports',
+    element: protectedPage(<ReportsLayout />),
+    children: [
+      { index: true, element: <Navigate to="/reports/students/list" replace /> },
+      {
+        path: 'students',
+        element: <StudentsReportsLayout />,
+        children: [
+          { index: true, element: <Navigate to="/reports/students/list" replace /> },
+          { path: 'list', element: page(<StudentsListReportPage />) },
+          { path: 'statement', element: page(<StudentStatementReportPage />) },
+          { path: 'absence', element: page(<AbsenceReportPage />) },
+          { path: 'attendance', element: page(<StudentAttendanceReportPage />) },
+          { path: 'grades', element: page(<StudentGradesReportPage />) },
+          { path: 'monthly', element: page(<MonthlyReportsPage />) },
+        ],
+      },
+      {
+        path: 'finance',
+        element: <FinanceReportsLayout />,
+        children: [
+          { index: true, element: <Navigate to="/reports/finance/collections" replace /> },
+          { path: 'collections', element: page(<MonthlyCollectionsReportPage />) },
+          { path: 'overdue', element: page(<OverdueDuesReportPage />) },
+        ],
+      },
+      {
+        path: 'exams',
+        element: <ExamsReportsLayout />,
+        children: [
+          { index: true, element: <Navigate to="/reports/exams/group-grades" replace /> },
+          { path: 'group-grades', element: page(<GroupGradesReportPage />) },
+          { path: 'exam-result', element: page(<ExamResultReportPage />) },
+          { path: 'honor-board', element: page(<HonorBoardReportPage />) },
+        ],
+      },
+      {
+        path: 'sessions',
+        element: <SessionsReportsLayout />,
+        children: [
+          { index: true, element: <Navigate to="/reports/sessions/list" replace /> },
+          { path: 'list', element: page(<SessionsListReportPage />) },
+          { path: 'group-attendance', element: page(<GroupAttendanceReportPage />) },
+        ],
+      },
+    ],
+  },
   { path: '/settings', element: protectedPage(<SettingsPage />) },
   { path: '/whatsapp', element: protectedPage(<WhatsAppPage />) },
 
