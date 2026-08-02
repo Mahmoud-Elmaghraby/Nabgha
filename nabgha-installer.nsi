@@ -340,4 +340,4 @@ Section "Uninstall"
   Delete "$SMPROGRAMS\نبغة\نبغة.lnk"
   RMDir "$SMPROGRAMS\نبغة"
   DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Nabgha"
-SectionEndى 
+SectionEnd
