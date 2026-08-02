@@ -12,9 +12,10 @@ interface Props {
   onEdit: (student: StudentDto) => void;
   onViewQr: (student: StudentDto) => void;
   isLoading?: boolean;
+  visibleKeys?: Set<string>;
 }
 
-export function StudentsList({ students, onEdit, onViewQr, isLoading }: Props) {
+export function StudentsList({ students, onEdit, onViewQr, isLoading, visibleKeys }: Props) {
   const navigate = useNavigate();
   const { hasPermission } = usePermissions();
   const confirm = useConfirm();
@@ -48,7 +49,6 @@ export function StudentsList({ students, onEdit, onViewQr, isLoading }: Props) {
             <div className={`font-semibold text-sm truncate ${s.isActive ? 'text-gray-900' : 'text-gray-400'}`}>
               {s.fullName}
             </div>
-            {s.grade && <div className="text-gray-400 text-xs truncate">{s.grade}</div>}
           </div>
         </div>
       ),
@@ -63,6 +63,13 @@ export function StudentsList({ students, onEdit, onViewQr, isLoading }: Props) {
       ),
     },
     {
+      key: 'grade',
+      header: 'المرحلة الدراسية',
+      render: s => s.grade
+        ? <span className="text-sm text-gray-600">{s.grade}</span>
+        : <span className="text-gray-300 text-sm">—</span>,
+    },
+    {
       key: 'parentPhone',
       header: 'هاتف ولي الأمر',
       render: s => <span className="text-sm text-gray-600 font-mono">{s.parentPhone}</span>,
@@ -70,13 +77,65 @@ export function StudentsList({ students, onEdit, onViewQr, isLoading }: Props) {
     {
       key: 'studentPhone',
       header: 'هاتف الطالب',
-      hideOnMobile: true,
       render: s => s.studentPhone
         ? <span className="text-sm text-gray-600 font-mono">{s.studentPhone}</span>
         : <span className="text-gray-300 text-sm">—</span>,
     },
     {
-      key: 'status',
+      key: 'groupNames',
+      header: 'المجموعات',
+      render: s => {
+        const list = s.groupNames ? s.groupNames.split(', ').filter(Boolean) : [];
+        if (list.length === 0) return <span className="text-gray-300 text-sm">—</span>;
+        if (list.length === 1) return <span className="text-sm text-gray-600">{list[0]}</span>;
+        const label = list.length === 2 ? 'مجموعتين' : `${list.length} مجموعات`;
+        return (
+          <span
+            title={list.join('\n')}
+            className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 cursor-help"
+          >
+            {label}
+          </span>
+        );
+      },
+    },
+    {
+      key: 'school',
+      header: 'المدرسة',
+      render: s => s.school
+        ? <span className="text-sm text-gray-600">{s.school}</span>
+        : <span className="text-gray-300 text-sm">—</span>,
+    },
+    {
+      key: 'dateOfBirth',
+      header: 'تاريخ الميلاد',
+      render: s => s.dateOfBirth
+        ? <span className="text-sm text-gray-600">{new Date(s.dateOfBirth).toLocaleDateString('en-GB')}</span>
+        : <span className="text-gray-300 text-sm">—</span>,
+    },
+    {
+      key: 'address',
+      header: 'العنوان',
+      render: s => s.address
+        ? <span className="text-sm text-gray-600">{s.address}</span>
+        : <span className="text-gray-300 text-sm">—</span>,
+    },
+    {
+      key: 'parentOccupation',
+      header: 'وظيفة ولي الأمر',
+      render: s => s.parentOccupation
+        ? <span className="text-sm text-gray-600">{s.parentOccupation}</span>
+        : <span className="text-gray-300 text-sm">—</span>,
+    },
+    {
+      key: 'notes',
+      header: 'ملاحظات',
+      render: s => s.notes
+        ? <span className="text-sm text-gray-600 truncate max-w-[200px] block">{s.notes}</span>
+        : <span className="text-gray-300 text-sm">—</span>,
+    },
+    {
+      key: 'isActive',
       header: 'الحالة',
       render: s => (
         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${s.isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
@@ -151,6 +210,10 @@ export function StudentsList({ students, onEdit, onViewQr, isLoading }: Props) {
     },
   ];
 
+  const filteredColumns = visibleKeys
+    ? columns.filter(c => c.key === 'student' || c.key === 'actions' || visibleKeys.has(c.key))
+    : columns;
+
   return (
     <div>
       {deleteError && (
@@ -159,7 +222,7 @@ export function StudentsList({ students, onEdit, onViewQr, isLoading }: Props) {
         </div>
       )}
       <DataTable
-        columns={columns}
+        columns={filteredColumns}
         data={students}
         keyExtractor={s => s.id}
         isLoading={isLoading}

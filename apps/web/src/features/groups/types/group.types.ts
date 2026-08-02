@@ -15,6 +15,7 @@ export interface GroupDto {
   schedule: ScheduleItem[];
   isActive: boolean;
   studentCount: number;
+  subjectGradeLabel: string | null;
   createdAt: string;
   updatedAt: string;
 }

@@ -15,7 +15,12 @@ export const CreateSessionSchema = z.object({
 }).refine(data => {
   if (data.type === 'grade_exam') return !!data.grade && !!data.subjectId && !!data.endDate;
   return !!data.groupId;
-}, { message: 'بيانات ناقصة حسب نوع الحصة' });
+}, { message: 'بيانات ناقصة حسب نوع الحصة' })
+.refine(data => {
+  const GRADED_TYPES = ['lesson_revision', 'lesson_exam', 'exam', 'grade_exam'];
+  if (GRADED_TYPES.includes(data.type)) return !!data.outOf && data.outOf > 0;
+  return true;
+}, { message: 'يجب تحديد الدرجة القصوى (من كام) لهذا النوع من الحصص', path: ['outOf'] });
 
 export const UpdateSessionSchema = z.object({
   title: z.string().min(1).optional(),
@@ -28,9 +33,11 @@ export const UpdateSessionSchema = z.object({
 });
 
 export const UpdateAttendanceSchema = z.object({
-  status: z.enum(['present', 'absent', 'late']),
+  status: z.enum(['present', 'absent', 'late']).optional(),
   degree: z.number().min(0).optional(),
   notes: z.string().optional(),
+}).refine(data => data.status !== undefined || data.degree !== undefined || data.notes !== undefined, {
+  message: 'يجب إرسال حالة الحضور أو الدرجة أو ملاحظات على الأقل',
 });
 
 export const BulkUpdateAttendanceSchema = z.object({

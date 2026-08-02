@@ -123,8 +123,8 @@ export class SessionController {
   ) {
     const parsed = BulkUpdateAttendanceSchema.safeParse(body);
     if (!parsed.success) throw new AppError('VALIDATION_ERROR', parsed.error.message, 400);
-    await this.useCase.bulkUpdateAttendance(req.user.tenantId, id, parsed.data);
-    return { success: true };
+    const { failed } = await this.useCase.bulkUpdateAttendance(req.user.tenantId, id, parsed.data);
+    return { success: true, data: { failed } };
   }
 
   // ─── Previous Absent ──────────────────────────────────────
@@ -177,6 +177,41 @@ export class SessionController {
       file, `tenants/${req.user.tenantId}/sessions`, 5 * 1024 * 1024,
     );
     const data = await this.useCase.setImage(req.user.tenantId, id, url);
+    return { success: true, data };
+  }
+
+  @Delete(':id/image')
+  @RequirePermission('sessions.attendance')
+  async removeSessionImage(@Request() req: any, @Param('id') id: string) {
+    const data = await this.useCase.removeImage(req.user.tenantId, id);
+    return { success: true, data };
+  }
+
+  @Post(':id/attendance/:studentId/notify-grade')
+  @RequirePermission('sessions.attendance')
+  async resendGradeNotification(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Param('studentId') studentId: string,
+  ) {
+    await this.useCase.resendGradeNotification(req.user.tenantId, id, studentId);
+    return { success: true };
+  }
+
+  @Post(':id/attendance/notify-all-grades')
+  @RequirePermission('sessions.attendance')
+  async sendAllGradeNotifications(@Request() req: any, @Param('id') id: string) {
+    const data = await this.useCase.sendAllGradeNotifications(req.user.tenantId, id, req.user.sub);
+    return { success: true, data };
+  }
+
+  @Get(':id/attendance/notify-all-grades/:jobId')
+  @RequirePermission('sessions.attendance')
+  async getGradeNotificationProgress(
+    @Request() req: any, @Param('id') id: string, @Param('jobId') jobId: string,
+  ) {
+    const data = await this.useCase.getGradeNotificationJobProgress(req.user.tenantId, jobId);
+    if (!data) throw new AppError('NOT_FOUND', 'العملية غير موجودة', 404);
     return { success: true, data };
   }
 

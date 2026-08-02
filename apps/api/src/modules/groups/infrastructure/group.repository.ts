@@ -17,19 +17,23 @@ export class GroupRepository {
     const limit = params.limit || 20;
     const offset = (page - 1) * limit;
 
-    let base = db.selectFrom('groups').where('deleted_at', 'is', null);
+    let base = db
+      .selectFrom('groups')
+      .leftJoin('subject_grades', 'subject_grades.id', 'groups.subject_grade_id')
+      .leftJoin('subjects', 'subjects.id', 'subject_grades.subject_id')
+      .where('groups.deleted_at', 'is', null);
 
     if (params.search) {
-      base = base.where('name', 'ilike', `%${params.search}%`);
+      base = base.where('groups.name', 'ilike', `%${params.search}%`);
     }
     if (params.teacherId) {
-      base = base.where('teacher_id', '=', sql<string>`${params.teacherId}::uuid`);
+      base = base.where('groups.teacher_id', '=', sql<string>`${params.teacherId}::uuid`);
     }
     if (params.subjectGradeId) {
-      base = base.where('subject_grade_id', '=', sql<string>`${params.subjectGradeId}::uuid`);
+      base = base.where('groups.subject_grade_id', '=', sql<string>`${params.subjectGradeId}::uuid`);
     }
     if (params.isActive !== undefined) {
-      base = base.where('is_active', '=', params.isActive);
+      base = base.where('groups.is_active', '=', params.isActive);
     }
 
     const countResult = await base
@@ -38,8 +42,14 @@ export class GroupRepository {
     const total = Number(countResult?.count || 0);
 
     const rows = await base
-      .selectAll()
-      .orderBy('name', 'asc')
+      .select([
+        'groups.id', 'groups.name', 'groups.subject_grade_id', 'groups.teacher_id',
+        'groups.max_students', 'groups.schedule', 'groups.is_active',
+        'groups.created_at', 'groups.updated_at', 'groups.deleted_at',
+        'subjects.name as subject_name',
+        'subject_grades.grade as subject_grade_grade',
+      ])
+      .orderBy('groups.name', 'asc')
       .limit(limit)
       .offset(offset)
       .execute();
@@ -72,9 +82,17 @@ export class GroupRepository {
     const db = this.kysely.getTenantDb(tenantId);
     const row = await db
       .selectFrom('groups')
-      .selectAll()
-      .where('id', '=', sql<string>`${id}::uuid`)
-      .where('deleted_at', 'is', null)
+      .leftJoin('subject_grades', 'subject_grades.id', 'groups.subject_grade_id')
+      .leftJoin('subjects', 'subjects.id', 'subject_grades.subject_id')
+      .select([
+        'groups.id', 'groups.name', 'groups.subject_grade_id', 'groups.teacher_id',
+        'groups.max_students', 'groups.schedule', 'groups.is_active',
+        'groups.created_at', 'groups.updated_at', 'groups.deleted_at',
+        'subjects.name as subject_name',
+        'subject_grades.grade as subject_grade_grade',
+      ])
+      .where('groups.id', '=', sql<string>`${id}::uuid`)
+      .where('groups.deleted_at', 'is', null)
       .executeTakeFirst();
     if (!row) return null;
 
@@ -251,6 +269,9 @@ export class GroupRepository {
   }
 
   private toEntity(row: any, studentCount = 0): GroupEntity {
+    const subjectGradeLabel = row.subject_name
+      ? `${row.subject_name} — ${row.subject_grade_grade}`
+      : null;
     return new GroupEntity(
       row.id,
       row.name,
@@ -263,6 +284,7 @@ export class GroupRepository {
       row.updated_at,
       row.deleted_at,
       studentCount,
+      subjectGradeLabel,
     );
   }
 }

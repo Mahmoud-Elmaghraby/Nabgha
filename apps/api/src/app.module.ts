@@ -22,6 +22,7 @@ import { FinanceModule } from './modules/finance/finance.module';
 import { UploadModule } from './modules/upload/upload.module';
 import { TelegramModule } from './modules/telegram/telegram.module';
 import { PlatformModule } from './modules/platform/platform.module';
+import { ReportsModule } from './modules/reports/reports.module';
 
 @Module({
   imports: [
@@ -55,6 +56,7 @@ import { PlatformModule } from './modules/platform/platform.module';
     UploadModule,
     TelegramModule,
     PlatformModule,
+    ReportsModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: ZodValidationFilter },

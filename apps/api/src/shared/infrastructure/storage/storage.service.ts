@@ -9,8 +9,8 @@ const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 @Injectable()
 export class StorageService implements OnModuleInit {
   private readonly logger = new Logger(StorageService.name);
-  private client: Minio.Client;
-  private bucket: string;
+  private client!: Minio.Client;
+  private bucket!: string;
   private isDesktop: boolean;
   private localStoragePath: string;
 
@@ -156,5 +156,23 @@ export class StorageService implements OnModuleInit {
   // يُستخدم من main.ts لتسجيل الـ static route للـ storage
   getLocalStoragePath(): string {
     return this.localStoragePath;
+  }
+
+  /**
+   * يقرأ ملف من التخزين المحلي كـ Buffer خام (مستخدم لإرفاق صور في رسائل واتساب).
+   * متاح حالياً في Desktop mode بس — الأوضاع التانية (S3/MinIO) هترجع null
+   * لحد ما نبني منطق جلب مشابه ليها لو احتجناه لاحقاً.
+   */
+  async getFileBuffer(url: string): Promise<Buffer | null> {
+    if (!this.isDesktop) return null;
+    try {
+      const relativePath = url.replace(/^\/storage\//, '');
+      const fullPath = path.join(this.localStoragePath, relativePath);
+      if (!fs.existsSync(fullPath)) return null;
+      return fs.readFileSync(fullPath);
+    } catch (err: any) {
+      this.logger.warn(`getFileBuffer failed for ${url}: ${err.message}`);
+      return null;
+    }
   }
 }

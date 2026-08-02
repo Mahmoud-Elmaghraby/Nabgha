@@ -3,6 +3,7 @@ import { useToast } from '@/shared/components/Toast';
 import { useSessionAttendance, useAttendanceMutations, usePreviousAbsent, useUnpaidStudents } from '../hooks/useSessions';
 import { QrCameraScanner } from './QrCameraScanner';
 import { sessionsApi } from '../api/sessions.api';
+import { getFullMediaUrl } from '@/shared/lib/getFullMediaUrl';
 import { useQueryClient } from '@tanstack/react-query';
 import { SESSION_KEYS } from '../hooks/useSessions';
 import { useStudents } from '@/features/students/hooks/useStudents';
@@ -44,6 +45,8 @@ export function AttendanceSheet({ session, onClose }: Props) {
   const [scanMsg, setScanMsg] = useState<AttendanceAlertMessage | null>(null);
   const [showCamera, setShowCamera] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [showFullImage, setShowFullImage] = useState(false);
+  const [removingImage, setRemovingImage] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const scanRef = useRef<HTMLInputElement>(null);
 
@@ -63,6 +66,18 @@ export function AttendanceSheet({ session, onClose }: Props) {
   useEffect(() => {
     if (isOpen && canMark) scanRef.current?.focus();
   }, [isOpen, canMark, attendance]);
+
+  const handleImageRemove = async () => {
+    setRemovingImage(true);
+    try {
+      await sessionsApi.removeImage(session.id);
+      qc.invalidateQueries({ queryKey: SESSION_KEYS.all });
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error?.message || 'فشل حذف الصورة');
+    } finally {
+      setRemovingImage(false);
+    }
+  };
 
   const handleImageUpload = async (file: File) => {
     setUploading(true);
@@ -215,6 +230,35 @@ export function AttendanceSheet({ session, onClose }: Props) {
             </button>
           </div>
         </div>
+
+        {/* Session Image */}
+        {session.imageUrl && (
+          <div className="px-4 pt-3 shrink-0 relative">
+            <button onClick={() => setShowFullImage(true)} className="block w-full">
+              <img
+                src={getFullMediaUrl(session.imageUrl)}
+                alt="صورة الحصة"
+                className="w-full max-h-40 object-cover rounded-xl border border-gray-100 hover:opacity-90 transition-opacity"
+              />
+            </button>
+            {canMark && (
+              <button
+                onClick={handleImageRemove}
+                disabled={removingImage}
+                className="absolute top-5 left-2 w-7 h-7 flex items-center justify-center rounded-full bg-black/50 hover:bg-black/70 text-white disabled:opacity-50"
+                title="حذف الصورة"
+              >
+                {removingImage ? (
+                  <div className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M18 6L6 18M6 6l12 12" strokeLinecap="round"/>
+                  </svg>
+                )}
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Stats */}
         <div className="grid grid-cols-4 gap-2 px-4 py-3 border-b border-gray-50 shrink-0">
@@ -402,6 +446,29 @@ export function AttendanceSheet({ session, onClose }: Props) {
           onScan={handleScan}
           onClose={() => setShowCamera(false)}
         />
+      )}
+
+      {/* Full Image Lightbox */}
+      {showFullImage && session.imageUrl && (
+        <div
+          className="fixed inset-0 z-[60] bg-black/80 flex items-center justify-center p-4"
+          onClick={() => setShowFullImage(false)}
+        >
+          <button
+            onClick={() => setShowFullImage(false)}
+            className="absolute top-4 left-4 w-10 h-10 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white"
+          >
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M18 6L6 18M6 6l12 12" strokeLinecap="round"/>
+            </svg>
+          </button>
+          <img
+            src={getFullMediaUrl(session.imageUrl)}
+            alt="صورة الحصة"
+            className="max-w-full max-h-full object-contain rounded-lg"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
       )}
     </div>
   );

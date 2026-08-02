@@ -53,8 +53,15 @@ export const whatsappApi = {
     apiClient.put(`/whatsapp/inbound/${id}/read`),
 
   // Audience
-  resolveAudience: (params: ResolveAudienceParams) =>
-    apiClient.get<{ data: AudienceStudent[]; total: number }>('/whatsapp/audience', { params }),
+  resolveAudience: (params: ResolveAudienceParams) => {
+    // ننظّف الحقول الفاضية (زي groupId: '') قبل الإرسال — الباك إند بيتحقق منها
+    // كـ UUID صريح، والـ string الفاضي مش UUID صالح حتى لو الحقل اختياري أصلاً
+    const cleaned: Record<string, string> = {};
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') cleaned[key] = String(value);
+    });
+    return apiClient.get<{ data: AudienceStudent[]; total: number }>('/whatsapp/audience', { params: cleaned });
+  },
 
   // Test
   sendTest: (phone: string, templateKey: WaTemplateKey) =>

@@ -54,6 +54,10 @@ import { WA_PROVIDER as WA_PROVIDER_TOKEN } from './domain/interfaces/wa-provide
     HandleInboundUseCase,
     WaHealthMonitorUseCase,
   ],
-  exports: [SendNotificationUseCase, GetMessagesUseCase],
+  exports: [
+    SendNotificationUseCase, GetMessagesUseCase,
+    WA_PROVIDER_TOKEN, WA_SESSION_REPOSITORY, WA_SETTINGS_REPOSITORY,
+    WA_MESSAGE_REPOSITORY, WA_BULK_JOB_REPOSITORY,
+  ],
 })
 export class WhatsAppModule {}

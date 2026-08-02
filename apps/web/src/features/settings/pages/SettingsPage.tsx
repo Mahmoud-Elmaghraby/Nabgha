@@ -5,8 +5,9 @@ import { SubjectsManager } from '../../subjects/components/SubjectsManager';
 import { CardDesignerForm } from '../components/CardDesignerForm';
 import { TelegramSettingsForm } from '../components/TelegramSettingsForm';
 import { BrandingSettingsForm } from '../components/BrandingSettingsForm';
+import { BackupSettingsForm } from '../components/BackupSettingsForm';
 
-type Tab = 'center' | 'subjects' | 'card' | 'telegram' | 'branding';
+type Tab = 'center' | 'subjects' | 'card' | 'telegram' | 'branding' | 'backup';
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'center', label: 'بيانات المركز' },
@@ -14,6 +15,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'card', label: 'إعداد الكارت' },
   { key: 'telegram', label: 'تليجرام' },
   { key: 'branding', label: 'الهوية في الرسائل' },
+  { key: 'backup', label: 'النسخ الاحتياطي' },
 ];
 
 export default function SettingsPage() {
@@ -51,6 +53,7 @@ export default function SettingsPage() {
           {tab === 'card' && <CardDesignerForm />}
           {tab === 'telegram' && <TelegramSettingsForm />}
           {tab === 'branding' && <BrandingSettingsForm />}
+          {tab === 'backup' && <BackupSettingsForm />}
         </div>
       </div>
     </div>

@@ -135,8 +135,8 @@ export class WaController {
   async resolveAudienceHandler(@Request() req: any, @Query() query: any) {
     const parsed = ResolveAudienceSchema.safeParse(query);
     if (!parsed.success) throw new AppError('VALIDATION_ERROR', parsed.error.message, 400);
-    const data = await this.resolveAudience.execute(req.user.tenantId, parsed.data);
-    return { success: true, data };
+    const result = await this.resolveAudience.execute(req.user.tenantId, parsed.data);
+    return { success: true, data: result.data, total: result.total };
   }
 
   // ─── Bulk Send ────────────────────────────────────────────

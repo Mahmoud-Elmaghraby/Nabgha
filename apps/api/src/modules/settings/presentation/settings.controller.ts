@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Put, Query,
+  Controller, Get, Put, Query, Param,
   Body, UseGuards, Request,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../../../shared/infrastructure/guards/jwt-auth.guard';
@@ -9,6 +9,7 @@ import { PermissionGuard } from '../../../shared/infrastructure/guards/permissio
 import { RequirePermission } from '../../../shared/infrastructure/guards/permission.decorator';
 import { CenterSettingsUseCase } from '../application/use-cases/center-settings.usecase';
 import { BrandingService } from '../application/services/branding.service';
+import { TenantCapabilitiesService } from '../../../shared/infrastructure/tenant-capabilities/tenant-capabilities.service';
 import { ModuleSettingsRepository } from '../infrastructure/settings.repository';
 import { AppError } from '../../../core/errors/app.error';
 import { UpdateCenterSettingsSchema } from '../application/dtos/settings.dto';
@@ -20,7 +21,15 @@ export class SettingsController {
     private readonly centerSettings: CenterSettingsUseCase,
     private readonly moduleSettings: ModuleSettingsRepository,
     private readonly branding: BrandingService,
+    private readonly capabilities: TenantCapabilitiesService,
   ) {}
+
+  @Get('capabilities')
+  @RequirePermission('settings.view')
+  async getCapabilities(@Request() req: any) {
+    const data = await this.capabilities.getCapabilities(req.user.tenantId);
+    return { success: true, data };
+  }
 
   @Get('center')
   @RequirePermission('settings.view')
@@ -67,6 +76,22 @@ export class SettingsController {
   async saveCardDesigner(@Request() req: any, @Body() body: any) {
     await this.moduleSettings.set(req.user.tenantId, 'card_designer', JSON.stringify(body));
     return { success: true, data: body };
+  }
+
+  @Get('columns/:module')
+  @RequirePermission('settings.view')
+  async getVisibleColumns(@Request() req: any, @Param('module') moduleName: string) {
+    const raw = await this.moduleSettings.get(req.user.tenantId, `visible_columns:${moduleName}`);
+    const data = raw ? JSON.parse(raw) : null;
+    return { success: true, data };
+  }
+
+  @Put('columns/:module')
+  @RequirePermission('settings.edit')
+  async saveVisibleColumns(@Request() req: any, @Param('module') moduleName: string, @Body() body: any) {
+    const columns = Array.isArray(body?.columns) ? body.columns : [];
+    await this.moduleSettings.set(req.user.tenantId, `visible_columns:${moduleName}`, JSON.stringify(columns));
+    return { success: true, data: { columns } };
   }
 
   @Get('branding')

@@ -181,6 +181,52 @@ export class BaileysProvider implements IWaProvider, OnModuleDestroy {
     }
   }
 
+  async sendDocument(
+    tenantId: string,
+    phone: string,
+    document: Buffer,
+    fileName: string,
+    caption?: string,
+  ): Promise<WaSendResult> {
+    const sock = this.sockets.get(tenantId);
+    if (!sock) return { success: false, error: 'not_connected' };
+    try {
+      const normalizedPhone = this.normalizePhone(phone);
+      const jid = `${normalizedPhone}@s.whatsapp.net`;
+      this.logger.debug(`Sending WA document to ${jid} for tenant ${tenantId}`);
+      const result = await sock.sendMessage(jid, {
+        document,
+        fileName,
+        mimetype: 'application/pdf',
+        caption,
+      });
+      return { success: true, messageId: result?.key?.id ?? undefined };
+    } catch (err: any) {
+      this.logger.error(`Send document failed for tenant ${tenantId}: ${err.message}`);
+      return { success: false, error: err.message };
+    }
+  }
+
+  async sendImage(
+    tenantId: string,
+    phone: string,
+    image: Buffer,
+    caption?: string,
+  ): Promise<WaSendResult> {
+    const sock = this.sockets.get(tenantId);
+    if (!sock) return { success: false, error: 'not_connected' };
+    try {
+      const normalizedPhone = this.normalizePhone(phone);
+      const jid = `${normalizedPhone}@s.whatsapp.net`;
+      this.logger.debug(`Sending WA image to ${jid} for tenant ${tenantId}`);
+      const result = await sock.sendMessage(jid, { image, caption });
+      return { success: true, messageId: result?.key?.id ?? undefined };
+    } catch (err: any) {
+      this.logger.error(`Send image failed for tenant ${tenantId}: ${err.message}`);
+      return { success: false, error: err.message };
+    }
+  }
+
   private normalizePhone(phone: string): string {
     let digits = phone.replace(/\D/g, '');
     // Egyptian numbers starting with 0 → prepend country code 20

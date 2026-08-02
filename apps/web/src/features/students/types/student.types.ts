@@ -16,6 +16,7 @@ export interface StudentDto {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+  groupNames?: string;
 }
 
 export interface CreateStudentPayload {
@@ -54,6 +55,7 @@ export interface ListStudentsParams {
   search?: string;
   grade?: string;
   isActive?: boolean;
+  subjectId?: string;
   page?: number;
   limit?: number;
 }
@@ -88,4 +90,5 @@ export interface StudentGroupDto {
     endTime: string;
   }>;
   isActive: boolean;
+  subjectGradeLabel: string | null;
 }

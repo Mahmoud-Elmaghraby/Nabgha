@@ -28,6 +28,7 @@ export class SessionRepository {
       row.scanned_at ?? null, row.notes ?? null,
       row.created_at, row.updated_at,
       row.student_name, row.student_code, row.student_phone, row.parent_phone,
+      row.grade_notified_at ?? null,
     );
   }
 
@@ -180,7 +181,7 @@ export class SessionRepository {
       .select([
         'attendance.id', 'attendance.session_id', 'attendance.student_id',
         'attendance.status', 'attendance.degree', 'attendance.scanned_at',
-        'attendance.notes', 'attendance.created_at', 'attendance.updated_at',
+        'attendance.notes', 'attendance.created_at', 'attendance.updated_at', 'attendance.grade_notified_at',
         'students.full_name as student_name', 'students.student_code',
         'students.student_phone', 'students.parent_phone',
       ])
@@ -197,7 +198,7 @@ export class SessionRepository {
       .select([
         'attendance.id', 'attendance.session_id', 'attendance.student_id',
         'attendance.status', 'attendance.degree', 'attendance.scanned_at',
-        'attendance.notes', 'attendance.created_at', 'attendance.updated_at',
+        'attendance.notes', 'attendance.created_at', 'attendance.updated_at', 'attendance.grade_notified_at',
         'students.full_name as student_name', 'students.student_code',
         'students.student_phone', 'students.parent_phone',
       ])
@@ -214,7 +215,7 @@ export class SessionRepository {
       .select([
         'attendance.id', 'attendance.session_id', 'attendance.student_id',
         'attendance.status', 'attendance.degree', 'attendance.scanned_at',
-        'attendance.notes', 'attendance.created_at', 'attendance.updated_at',
+        'attendance.notes', 'attendance.created_at', 'attendance.updated_at', 'attendance.grade_notified_at',
         'students.full_name as student_name', 'students.student_code',
         'students.student_phone', 'students.parent_phone',
       ])
@@ -233,6 +234,13 @@ export class SessionRepository {
       notes: record.notes,
       updated_at: new Date() as any,
     } as any).where('id', '=', sql<string>`${record.id}::uuid`).execute();
+  }
+
+  async markGradeNotified(tenantId: string, attendanceId: string): Promise<void> {
+    const db = this.kysely.getTenantDb(tenantId);
+    await db.updateTable('attendance').set({
+      grade_notified_at: new Date() as any,
+    } as any).where('id', '=', sql<string>`${attendanceId}::uuid`).execute();
   }
 
   async getPreviousAbsentStudents(tenantId: string, sessionId: string, groupId: string): Promise<string[]> {
@@ -394,7 +402,7 @@ export class SessionRepository {
       .select([
         'attendance.id', 'attendance.session_id', 'attendance.student_id',
         'attendance.status', 'attendance.degree', 'attendance.scanned_at',
-        'attendance.notes', 'attendance.created_at', 'attendance.updated_at',
+        'attendance.notes', 'attendance.created_at', 'attendance.updated_at', 'attendance.grade_notified_at',
         'students.full_name as student_name', 'students.student_code',
         'students.student_phone', 'students.parent_phone',
       ])
@@ -415,7 +423,7 @@ export class SessionRepository {
       .select([
         'attendance.id', 'attendance.session_id', 'attendance.student_id',
         'attendance.status', 'attendance.degree', 'attendance.scanned_at',
-        'attendance.notes', 'attendance.created_at', 'attendance.updated_at',
+        'attendance.notes', 'attendance.created_at', 'attendance.updated_at', 'attendance.grade_notified_at',
         'students.full_name as student_name', 'students.student_code',
         'students.student_phone', 'students.parent_phone',
       ])
@@ -484,7 +492,7 @@ export class SessionRepository {
       .select([
         'attendance.id', 'attendance.session_id', 'attendance.student_id',
         'attendance.status', 'attendance.degree', 'attendance.scanned_at',
-        'attendance.notes', 'attendance.created_at', 'attendance.updated_at',
+        'attendance.notes', 'attendance.created_at', 'attendance.updated_at', 'attendance.grade_notified_at',
         'students.full_name as student_name', 'students.student_code',
         'students.student_phone', 'students.parent_phone',
       ])

@@ -17,6 +17,7 @@ export class GroupEntity {
     public updatedAt: Date,
     public deletedAt: Date | null,
     public studentCount: number = 0,
+    public subjectGradeLabel: string | null = null,
   ) {}
 
   update(data: {

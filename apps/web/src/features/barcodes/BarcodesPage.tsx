@@ -4,19 +4,9 @@ import { apiClient } from '@/shared/lib/api/client';
 import { generateLabelsPDF, generateCardsPDF } from '@/shared/services/pdf/pdf.service';
 import { useToast } from '@/shared/components/Toast';
 import { LabelsPreviewModal } from './LabelsPreviewModal';
-import { useSubjects } from '@/features/subjects/hooks/useSubjects';
+import { useGroups } from '@/features/groups/hooks/useGroups';
 import { DAY_LABELS } from '@/features/groups/types/group.types';
 import type { StudentQRData } from '@/shared/services/pdf/pdf.service';
-
-function useGroups() {
-  return useQuery({
-    queryKey: ['barcodes-groups'],
-    queryFn: async () => {
-      const res = await apiClient.get('/groups', { params: { limit: 1000 } });
-      return res.data.data?.data ?? [];
-    },
-  });
-}
 
 function useStudentsSearch(q: string) {
   return useQuery({
@@ -62,31 +52,18 @@ export default function BarcodesPage() {
   const [loading, setLoading] = useState(false);
   const [showLabelsPreview, setShowLabelsPreview] = useState(false);
 
-  const { data: groups = [] } = useGroups();
+  const { data: groupsData } = useGroups({ limit: 1000 });
+  const groups = groupsData?.data || [];
   const { data: searchResults = [] } = useStudentsSearch(searchQ);
   const { data: cardSettings } = useCardDesignerSettings();
   const { data: centerSettings } = useCenterSettings();
-  const { data: subjects = [] } = useSubjects();
 
   const getGroupLabel = (g: any) => {
-    let subjectPart = '';
-    if (g.subjectGradeId) {
-      for (const item of subjects) {
-        const grade = item.grades.find((x: any) => x.id === g.subjectGradeId);
-        if (grade) {
-          subjectPart = `${item.subject.name} - ${grade.grade}`;
-          break;
-        }
-      }
-    }
-
     let schedulePart = '';
     if (g.schedule && g.schedule.length > 0) {
-      const times = g.schedule.map((s: any) => `${DAY_LABELS[s.day as keyof typeof DAY_LABELS]} ${s.startTime}`).join('، ');
-      schedulePart = times;
+      schedulePart = g.schedule.map((s: any) => `${DAY_LABELS[s.day as keyof typeof DAY_LABELS]} ${s.startTime}`).join('، ');
     }
-
-    return [subjectPart, schedulePart].filter(Boolean).join(' | ');
+    return [g.subjectGradeLabel, schedulePart].filter(Boolean).join(' | ');
   };
 
   const centerName = centerSettings?.centerName || 'نبغة';

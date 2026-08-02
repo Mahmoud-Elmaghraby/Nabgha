@@ -1,5 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject } from '@nestjs/common';
 import { SendNotificationUseCase } from '../../../whatsapp/application/use-cases/send-notification.usecase';
+import { StorageService } from '../../../../shared/infrastructure/storage/storage.service';
+import { IWaBulkJobRepository, WA_BULK_JOB_REPOSITORY } from '../../../whatsapp/domain/repositories/wa.repository.interface';
 import { BrandingService } from '../../../settings/application/services/branding.service';
 import { KyselyService } from '../../../../shared/infrastructure/database/kysely.service';
 import { sql } from 'kysely';
@@ -20,6 +22,8 @@ export class SessionUseCase {
     private readonly sendNotification: SendNotificationUseCase,
     private readonly kysely: KyselyService,
     private readonly branding: BrandingService,
+    private readonly storage: StorageService,
+    @Inject(WA_BULK_JOB_REPOSITORY) private readonly bulkJobRepo: IWaBulkJobRepository,
   ) {}
 
   async list(tenantId: string, params: ListSessionsDto) {
@@ -98,7 +102,21 @@ export class SessionUseCase {
   async setImage(tenantId: string, id: string, imageUrl: string): Promise<SessionEntity> {
     const session = await this.getById(tenantId, id);
     if (!session.hasImage) throw new AppError('INVALID_TYPE', 'هذا النوع لا يدعم الصور', 400);
+    // لو فيه صورة قديمة، نمسحها من التخزين قبل ما نستبدلها — تجنباً لتراكم ملفات يتيمة
+    if (session.imageUrl) {
+      await this.storage.deleteFile(session.imageUrl).catch(() => {});
+    }
     session.update({ imageUrl });
+    await this.repo.save(tenantId, session);
+    return session;
+  }
+
+  async removeImage(tenantId: string, id: string): Promise<SessionEntity> {
+    const session = await this.getById(tenantId, id);
+    if (session.imageUrl) {
+      await this.storage.deleteFile(session.imageUrl).catch(() => {});
+    }
+    session.update({ imageUrl: null });
     await this.repo.save(tenantId, session);
     return session;
   }
@@ -112,32 +130,176 @@ export class SessionUseCase {
     tenantId: string, sessionId: string, studentId: string, data: UpdateAttendanceDto,
   ): Promise<AttendanceEntity> {
     const session = await this.getById(tenantId, sessionId);
-    if (!session.isOpen) throw new AppError('INVALID_STATUS', 'الحصة مغلقة', 400);
+    // ملاحظة: رصد/تصحيح الدرجة مسموح حتى لو الحصة "منتهية" — التصحيح غالباً بيحصل
+    // بعد انتهاء الامتحان فعلياً (تصحيح الأوراق ياخد وقت). تحديث حالة الحضور نفسها
+    // (حاضر/غايب/متأخر) بس اللي بيتطلب حصة لسه مفتوحة (مجدولة/جارية).
+    if (!session.isOpen && data.status !== undefined) {
+      throw new AppError('INVALID_STATUS', 'الحصة مغلقة', 400);
+    }
     const record = await this.repo.findAttendanceRecord(tenantId, sessionId, studentId);
     if (!record) throw new AppError('NOT_FOUND', 'الطالب غير مسجل في هذه الحصة', 404);
 
-    // لو التسجيل الصريح "غايب"، افحص رصيد التعويض الأول قبل ما تثبته غياب فعلي
-    if (data.status === 'absent' && session.groupId) {
-      const excused = await this.tryExcuseWithCredit(tenantId, session, record);
-      if (excused) return record;
+    // ─── تحديث حالة الحضور (لو صراحة اتبعتت) ───
+    // منفصل تماماً عن رصد الدرجة — عشان تعديل درجة طالب مايبعتش رسالة "حضور" مكررة كل مرة.
+    if (data.status !== undefined) {
+      // لو التسجيل الصريح "غايب"، افحص رصيد التعويض الأول قبل ما تثبته غياب فعلي
+      if (data.status === 'absent' && session.groupId) {
+        const excused = await this.tryExcuseWithCredit(tenantId, session, record);
+        if (excused) return record;
+      }
+
+      if (data.status === 'present') record.markPresent();
+      else if (data.status === 'absent') record.markAbsent();
+      else record.markLate();
+
+      await this.repo.saveAttendance(tenantId, record);
+
+      // WhatsApp notification — fire and forget
+      this.sendAttendanceNotification(tenantId, session, record, data.status)
+        .catch(err => this.logger.error('WA notification failed: ' + err.message));
     }
 
-    if (data.status === 'present') record.markPresent();
-    else if (data.status === 'absent') record.markAbsent();
-    else record.markLate();
+    // ─── رصد الدرجة (تسجيل صامت فقط — الإرسال قرار صريح من المدرّس لاحقاً،
+    // إما فردي (زرار "إرسال" لكل طالب) أو جماعي (زرار "إرسال الكل" بعد المراجعة) ───
     if (data.degree !== undefined && session.hasGrades) {
-      if (session.outOf && data.degree > session.outOf)
+      if (!session.outOf) {
+        throw new AppError('INVALID_SESSION', 'هذه الحصة لا تحتوي على درجة قصوى محددة', 400);
+      }
+      if (data.degree > session.outOf) {
         throw new AppError('INVALID_DEGREE', `الدرجة لا تتجاوز ${session.outOf}`, 400);
+      }
       record.setDegree(data.degree);
+      await this.repo.saveAttendance(tenantId, record);
     }
-    if (data.notes !== undefined) record.notes = data.notes;
-    await this.repo.saveAttendance(tenantId, record);
 
-    // WhatsApp notification — fire and forget
-    this.sendAttendanceNotification(tenantId, session, record, data.status)
-      .catch(err => this.logger.error('WA notification failed: ' + err.message));
+    if (data.notes !== undefined) {
+      record.notes = data.notes;
+      await this.repo.saveAttendance(tenantId, record);
+    }
 
     return record;
+  }
+
+  private mapWaErrorToArabic(error?: string): string {
+    const map: Record<string, string> = {
+      not_connected: 'الواتساب غير متصل حالياً',
+      wa_disabled: 'خدمة الواتساب معطّلة',
+      outside_send_hours: 'خارج ساعات الإرسال المسموحة',
+      session_banned: 'حساب الواتساب محظور مؤقتاً',
+      phone_not_on_whatsapp: 'رقم ولي الأمر غير مسجّل على واتساب',
+      daily_limit_reached: 'تم الوصول للحد الأقصى اليومي للرسائل',
+      template_not_found: 'قالب الرسالة غير موجود',
+      notification_disabled: 'هذا النوع من الإشعارات معطّل من الإعدادات',
+      no_phone: 'لا يوجد رقم هاتف مسجّل لولي الأمر',
+    };
+    return map[error ?? ''] ?? 'فشل الإرسال لسبب غير معروف';
+  }
+
+  /** إرسال فردي — يرجع فوراً (fire-and-forget)، الإرسال الفعلي (بتأخيره الأمني) بيحصل في الخلفية */
+  async resendGradeNotification(tenantId: string, sessionId: string, studentId: string): Promise<void> {
+    const session = await this.getById(tenantId, sessionId);
+    const record = await this.repo.findAttendanceRecord(tenantId, sessionId, studentId);
+    if (!record) throw new AppError('NOT_FOUND', 'الطالب غير مسجل في هذه الحصة', 404);
+    if (record.degree === null) throw new AppError('VALIDATION_ERROR', 'لم يتم رصد درجة لهذا الطالب بعد', 400);
+
+    this.sendGradeNotification(tenantId, session, record)
+      .then(async (result) => {
+        if (result.success) {
+          await this.repo.markGradeNotified(tenantId, record.id);
+        } else {
+          this.logger.warn(`Grade notification failed for ${record.studentId}: ${this.mapWaErrorToArabic(result.error)}`);
+        }
+      })
+      .catch((err) => this.logger.error(`Grade notification error: ${err.message}`));
+  }
+
+  /** إرسال جماعي — بيرجع Job ID فوراً، الإرسال الفعلي بيحصل في الخلفية مع تتبّع تقدّم حقيقي */
+  async sendAllGradeNotifications(tenantId: string, sessionId: string, createdBy: string): Promise<{ jobId: string }> {
+    const session = await this.getById(tenantId, sessionId);
+    const allAttendance = await this.repo.findAttendance(tenantId, sessionId);
+    const pending = allAttendance.filter(r =>
+      r.degree !== null && (!r.gradeNotifiedAt || r.updatedAt > r.gradeNotifiedAt)
+    );
+
+    const job = await this.bulkJobRepo.create({
+      tenantId,
+      title: 'إرسال الدرجات',
+      body: `الحصة: ${session.title}`,
+      total: pending.length,
+      createdBy,
+      scheduledAt: null,
+    });
+
+    this.processGradeNotificationsInBackground(tenantId, session, pending, job.id)
+      .catch((err) => this.logger.error(`Bulk grade job failed: ${err.message}`));
+
+    return { jobId: job.id };
+  }
+
+  private async processGradeNotificationsInBackground(
+    tenantId: string, session: SessionEntity, pending: AttendanceEntity[], jobId: string,
+  ): Promise<void> {
+    const job = await this.bulkJobRepo.findById(tenantId, jobId);
+    if (!job) return;
+    job.start();
+    await this.bulkJobRepo.save(job);
+
+    for (const record of pending) {
+      try {
+        const result = await this.sendGradeNotification(tenantId, session, record);
+        if (result.success) {
+          await this.repo.markGradeNotified(tenantId, record.id);
+          job.incrementSent();
+        } else {
+          job.incrementFailed();
+        }
+      } catch (err: any) {
+        this.logger.error(`Bulk grade notify failed for ${record.studentId}: ${err.message}`);
+        job.incrementFailed();
+      }
+      await this.bulkJobRepo.save(job);
+    }
+  }
+
+  async getGradeNotificationJobProgress(tenantId: string, jobId: string) {
+    const job = await this.bulkJobRepo.findById(tenantId, jobId);
+    if (!job) return null;
+    return {
+      jobId: job.id, total: job.total, sent: job.sent,
+      failed: job.failed, progress: job.progress, status: job.status,
+    };
+  }
+
+  private async sendGradeNotification(
+    tenantId: string, session: SessionEntity, record: AttendanceEntity,
+  ): Promise<{ success: boolean; error?: string }> {
+    if (!record.parentPhone || record.degree === null) return { success: false, error: 'no_phone' };
+
+    const branding = await this.branding.getBrandingInfo(tenantId, { groupId: session.groupId ?? undefined });
+    const subject = session.groupName || session.grade || session.title;
+    const date = new Date(session.startDate).toLocaleDateString('ar-EG');
+
+    let imageBuffer: Buffer | undefined;
+    if (session.imageUrl) {
+      const buffer = await this.storage.getFileBuffer(session.imageUrl);
+      if (buffer) imageBuffer = buffer;
+    }
+
+    const result = await this.sendNotification.execute({
+      tenantId,
+      phone: record.parentPhone,
+      templateKey: 'GRADE_RECORDED',
+      vars: {
+        student_name: record.studentName || '',
+        subject,
+        date,
+        degree: String(record.degree),
+        out_of: String(session.outOf ?? ''),
+        center_name: branding.name,
+      },
+      imageBuffer,
+    });
+    return result;
   }
 
   // ─── نظام رصيد التعويض (حضور بديل في مادة أخرى) ────────────
@@ -251,21 +413,33 @@ export class SessionUseCase {
 
   async bulkUpdateAttendance(
     tenantId: string, sessionId: string, data: BulkUpdateAttendanceDto,
-  ): Promise<void> {
+  ): Promise<{ failed: { studentId: string; reason: string }[] }> {
     const session = await this.getById(tenantId, sessionId);
     if (!session.isOpen) throw new AppError('INVALID_STATUS', 'الحصة مغلقة', 400);
+
+    const failed: { studentId: string; reason: string }[] = [];
+
     await Promise.all(data.updates.map(async update => {
       const record = await this.repo.findAttendanceRecord(tenantId, sessionId, update.studentId);
       if (!record) return;
       if (update.status === 'present') record.markPresent();
       else if (update.status === 'absent') record.markAbsent();
       else record.markLate();
+
       if (update.degree !== undefined && session.hasGrades) {
-        if (!session.outOf || update.degree <= session.outOf) record.setDegree(update.degree);
+        if (!session.outOf) {
+          failed.push({ studentId: update.studentId, reason: 'الحصة لا تحتوي على درجة قصوى محددة' });
+        } else if (update.degree > session.outOf) {
+          failed.push({ studentId: update.studentId, reason: `الدرجة لا تتجاوز ${session.outOf}` });
+        } else {
+          record.setDegree(update.degree);
+        }
       }
       if (update.notes !== undefined) record.notes = update.notes;
       await this.repo.saveAttendance(tenantId, record);
     }));
+
+    return { failed };
   }
 
   async getPreviousAbsentStudents(tenantId: string, sessionId: string): Promise<string[]> {

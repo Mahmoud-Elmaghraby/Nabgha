@@ -12,6 +12,7 @@ import { StudentFormModal } from '../components/StudentFormModal';
 import { StudentQrModal } from '../components/StudentQrModal';
 import { apiClient } from '@/shared/lib/api/client';
 import { DAY_LABELS } from '@/features/groups/types/group.types';
+import { getGroupSelectLabel } from '@/features/groups/utils/formatGroupLabel';
 import { DUE_STATUS_LABELS, PAYMENT_STATUS_LABELS, PAYMENT_METHOD_LABELS } from '@/features/finance/types/finance.types';
 import { ATTENDANCE_STATUS_LABELS, SESSION_TYPE_LABELS, type AttendanceStatus, type SessionType } from '@/features/sessions/types/session.types';
 
@@ -80,32 +81,13 @@ export default function StudentProfilePage() {
 
   const enrolledGroupIds = new Set(studentGroups.map((g: any) => g.groupId));
 
-  const getGradeForGroup = (subjectGradeId: string | null) => {
-    if (!subjectGradeId) return null;
-    for (const item of subjects) {
-      const grade = item.grades.find((g: any) => g.id === subjectGradeId);
-      if (grade) return grade.grade;
-    }
-    return null;
-  };
-
-  const getSubjectNameForGroup = (subjectGradeId: string | null) => {
-    if (!subjectGradeId) return '';
-    for (const item of subjects) {
-      const grade = item.grades.find((g: any) => g.id === subjectGradeId);
-      if (grade) return item.subject.name;
-    }
-    return '';
-  };
-
   const availableGroups = (allGroups?.data || []).filter((g: any) => {
     if (!g.isActive) return false;
     if (enrolledGroupIds.has(g.id)) return false;
     if (!student) return false;
     if (!g.subjectGradeId) return true;
     if (!student.grade) return true;
-    const groupGrade = getGradeForGroup(g.subjectGradeId);
-    return groupGrade === student.grade;
+    return g.subjectGradeLabel?.endsWith(` — ${student.grade}`) ?? true;
   });
 
   const handleDelete = async () => {
@@ -350,15 +332,11 @@ export default function StudentProfilePage() {
                       <select value={selectedGroupId} onChange={e => setSelectedGroupId(e.target.value)}
                         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#0E3B2E]/20">
                         <option value="">اختر مجموعة</option>
-                        {availableGroups.map((g: any) => {
-                          const subjectName = getSubjectNameForGroup(g.subjectGradeId);
-                          const scheduleStr = g.schedule?.map((s: any) => `${DAY_LABELS[s.day as keyof typeof DAY_LABELS]} ${s.startTime}`).join(' · ') || 'بدون موعد';
-                          return (
-                            <option key={g.id} value={g.id}>
-                              {g.name} {subjectName ? `— ${subjectName}` : ''} — {scheduleStr} ({g.studentCount}/{g.maxStudents})
-                            </option>
-                          );
-                        })}
+                        {availableGroups.map((g: any) => (
+                          <option key={g.id} value={g.id}>
+                            {getGroupSelectLabel(g)} ({g.studentCount}/{g.maxStudents})
+                          </option>
+                        ))}
                       </select>
                     </div>
                     <div>
@@ -383,6 +361,9 @@ export default function StudentProfilePage() {
                     <div key={g.enrollmentId} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl border border-gray-100">
                       <div>
                         <p className="text-sm font-medium text-gray-900">{g.groupName}</p>
+                        {g.subjectGradeLabel && (
+                          <p className="text-xs text-gray-400 mt-0.5">{g.subjectGradeLabel}</p>
+                        )}
                         <div className="flex items-center gap-2 mt-0.5">
                           {g.discount > 0 && (
                             <span className="text-xs text-[#0E3B2E] bg-[#0E3B2E]/10 px-2 py-0.5 rounded-full">

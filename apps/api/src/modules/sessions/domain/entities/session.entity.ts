@@ -17,6 +17,7 @@ export class AttendanceEntity {
     public readonly studentCode?: string,
     public readonly studentPhone?: string,
     public readonly parentPhone?: string,
+    public gradeNotifiedAt: Date | null = null,
   ) {}
 
   markPresent(scannedAt?: Date): void {
@@ -84,7 +85,7 @@ export class SessionEntity {
 
   update(data: Partial<{
     title: string; outOf: number; startDate: Date; endDate: Date;
-    startTime: string; endTime: string; notes: string; imageUrl: string;
+    startTime: string; endTime: string; notes: string; imageUrl: string | null;
   }>): void {
     Object.assign(this, data);
     this.updatedAt = new Date();

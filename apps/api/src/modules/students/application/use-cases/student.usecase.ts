@@ -24,6 +24,13 @@ export class StudentUseCase {
     return this.repo.findAll(tenantId, params);
   }
 
+  async listForExport(
+    tenantId: string,
+    params: Omit<ListStudentsDto, 'page' | 'limit'>,
+  ): Promise<StudentEntity[]> {
+    return this.repo.findAllForExport(tenantId, params);
+  }
+
   async getById(tenantId: string, id: string): Promise<StudentEntity> {
     const student = await this.repo.findById(tenantId, id);
     if (!student) throw new AppError('NOT_FOUND', 'الطالب غير موجود', 404);
