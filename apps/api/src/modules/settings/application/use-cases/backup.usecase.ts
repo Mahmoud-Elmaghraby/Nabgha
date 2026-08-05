@@ -50,8 +50,23 @@ export class BackupUseCase {
     const databaseUrl = process.env.DATABASE_URL
       ?? 'postgresql://nabgha:nabgha123@127.0.0.1:5432/nabgha';
 
+    // تفكيك الرابط لمكوناته وتمريرها كمعاملات منفصلة لـ pg_dump بدل الرابط الكامل
+    // كمعامل واحد — تمرير الرابط الكامل عبر execFile كان بيفشل بخطأ "spawn UNKNOWN"
+    // غامض على ويندوز، بينما نفس البيانات بمعاملات منفصلة (-U/-h/-d) شغالة 100%.
+    // الباسورد بيتمرر عبر PGPASSWORD كـ environment variable بدل تضمينه في المعامل.
+    const dbUrl = new URL(databaseUrl);
+    const dbUser = decodeURIComponent(dbUrl.username);
+    const dbPassword = decodeURIComponent(dbUrl.password);
+    const dbHost = dbUrl.hostname;
+    const dbPort = dbUrl.port || '5432';
+    const dbName = dbUrl.pathname.replace(/^\//, '');
+
     try {
-      await execFileAsync(pgDumpPath, [databaseUrl, '-F', 'c', '-f', dumpFilePath]);
+      await execFileAsync(
+        pgDumpPath,
+        ['-U', dbUser, '-h', dbHost, '-p', dbPort, '-d', dbName, '-F', 'c', '-f', dumpFilePath],
+        { env: { ...process.env, PGPASSWORD: dbPassword } },
+      );
     } catch (err: any) {
       this.logger.error(`pg_dump failed: ${err.message}`);
       throw new AppError('BACKUP_FAILED', 'فشل أخذ نسخة قاعدة البيانات', 500);

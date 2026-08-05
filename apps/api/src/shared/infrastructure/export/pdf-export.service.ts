@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import puppeteer, { Browser } from 'puppeteer';
 import { ExportColumn, ExportOptions, CompositeReportOptions } from './export.types';
 
@@ -19,17 +19,40 @@ const DEFAULT_HEADER_COLOR = '#333333';
 const MAX_CONCURRENT_JOBS = 3; // حد أقصى للحمل المتزامن على السيرفر
 
 @Injectable()
-export class PdfExportService implements OnModuleInit, OnModuleDestroy {
+export class PdfExportService implements OnModuleDestroy {
   private readonly logger = new Logger(PdfExportService.name);
   private browser: Browser | null = null;
+  private launchPromise: Promise<Browser> | null = null;
   private activeJobs = 0;
 
-  async onModuleInit(): Promise<void> {
-    this.browser = await puppeteer.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    });
-    this.logger.log('Puppeteer browser instance launched');
+  // إطلاق كسول (lazy) — Chrome بتاع Puppeteer مش بيتشغّل غير أول مرة حد
+  // فعلاً يطلب تصدير PDF، مش من ساعة ما البرنامج بيفتح. ده بيحل مشكلتين:
+  // 1. إقلاع أبطأ من غير داعي لمستخدم أصلاً مش هيستخدم التقارير في الجلسة دي.
+  // 2. تشغيل متصفح كامل جديد في كل مرة نبغة بتفتح كان بيسبب آثار جانبية غير
+  //    متوقعة على مستوى النظام (زي تفعيل أوفرلايز صوت من برامج تالتة على بعض
+  //    الأجهزة) رغم إنه مش استخدام فعلي لأي فيتشر.
+  private async getBrowser(): Promise<Browser> {
+    if (this.browser) return this.browser;
+
+    if (!this.launchPromise) {
+      this.launchPromise = puppeteer
+        .launch({
+          headless: 'shell',
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--mute-audio',
+            '--disable-gpu',
+          ],
+        })
+        .then((browser) => {
+          this.browser = browser;
+          this.logger.log('Puppeteer browser instance launched (lazy, on first use)');
+          return browser;
+        });
+    }
+
+    return this.launchPromise;
   }
 
   async onModuleDestroy(): Promise<void> {
@@ -41,16 +64,12 @@ export class PdfExportService implements OnModuleInit, OnModuleDestroy {
     columns: ExportColumn<T>[],
     options: ExportOptions = {},
   ): Promise<Buffer> {
-    if (!this.browser) {
-      throw new Error('PdfExportService: browser not initialized');
-    }
-
+    const browser = await this.getBrowser();
     while (this.activeJobs >= MAX_CONCURRENT_JOBS) {
       await new Promise((resolve) => setTimeout(resolve, 200));
     }
     this.activeJobs++;
-
-    const page = await this.browser.newPage();
+    const page = await browser.newPage();
     try {
       const html = this.buildHtml(rows, columns, options);
       await page.setContent(html, { waitUntil: 'load' });
@@ -74,9 +93,7 @@ export class PdfExportService implements OnModuleInit, OnModuleDestroy {
   ): string {
     const rtl = options.rtl ?? true;
     const headerColor = options.headerColor ?? DEFAULT_HEADER_COLOR;
-
     const theadCells = columns.map((col) => `<th>${this.escape(col.header)}</th>`).join('');
-
     const bodyRows = rows
       .map((row) => {
         const cells = columns
@@ -89,14 +106,12 @@ export class PdfExportService implements OnModuleInit, OnModuleDestroy {
         return `<tr>${cells}</tr>`;
       })
       .join('');
-
     const headerBlock = options.title
       ? `<div class="header">
           <h1>${this.escape(options.title)}</h1>
           ${options.subtitle ? `<p class="subtitle">${this.escape(options.subtitle)}</p>` : ''}
         </div>`
       : '';
-
     return `<!DOCTYPE html>
 <html dir="${rtl ? 'rtl' : 'ltr'}" lang="ar">
 <head>
@@ -135,16 +150,12 @@ export class PdfExportService implements OnModuleInit, OnModuleDestroy {
 
   /** تقرير مركّب: ملخص أرقام + أقسام (جداول) متتالية في نفس ملف الـ PDF */
   async generateReport(options: CompositeReportOptions): Promise<Buffer> {
-    if (!this.browser) {
-      throw new Error('PdfExportService: browser not initialized');
-    }
-
+    const browser = await this.getBrowser();
     while (this.activeJobs >= MAX_CONCURRENT_JOBS) {
       await new Promise((resolve) => setTimeout(resolve, 200));
     }
     this.activeJobs++;
-
-    const page = await this.browser.newPage();
+    const page = await browser.newPage();
     try {
       const html = this.buildCompositeHtml(options);
       await page.setContent(html, { waitUntil: 'load' });
@@ -163,7 +174,6 @@ export class PdfExportService implements OnModuleInit, OnModuleDestroy {
   private buildCompositeHtml(options: CompositeReportOptions): string {
     const rtl = options.rtl ?? true;
     const headerColor = options.headerColor ?? DEFAULT_HEADER_COLOR;
-
     const summaryBlock = options.summary && options.summary.length > 0
       ? `<div class="summary">
           ${options.summary.map(item => `
@@ -174,7 +184,6 @@ export class PdfExportService implements OnModuleInit, OnModuleDestroy {
           `).join('')}
         </div>`
       : '';
-
     const sectionsBlock = options.sections.map(section => {
       const theadCells = section.columns.map(col => `<th>${this.escape(col.header)}</th>`).join('');
       const bodyRows = section.rows.length > 0
@@ -187,7 +196,6 @@ export class PdfExportService implements OnModuleInit, OnModuleDestroy {
             return `<tr>${cells}</tr>`;
           }).join('')
         : `<tr><td colspan="${section.columns.length}" class="empty-row">لا توجد بيانات</td></tr>`;
-
       return `
         <div class="section">
           <h2>${this.escape(section.title)}</h2>
@@ -198,7 +206,6 @@ export class PdfExportService implements OnModuleInit, OnModuleDestroy {
         </div>
       `;
     }).join('');
-
     return `<!DOCTYPE html>
 <html dir="${rtl ? 'rtl' : 'ltr'}" lang="ar">
 <head>
@@ -237,16 +244,12 @@ export class PdfExportService implements OnModuleInit, OnModuleDestroy {
 
   /** لوحة شرف — تصميم احتفالي مختلف تماماً عن الجداول العادية (ميداليات + ألوان) */
   async generateHonorBoard(options: HonorBoardOptions): Promise<Buffer> {
-    if (!this.browser) {
-      throw new Error('PdfExportService: browser not initialized');
-    }
-
+    const browser = await this.getBrowser();
     while (this.activeJobs >= MAX_CONCURRENT_JOBS) {
       await new Promise((resolve) => setTimeout(resolve, 200));
     }
     this.activeJobs++;
-
-    const page = await this.browser.newPage();
+    const page = await browser.newPage();
     try {
       const html = this.buildHonorBoardHtml(options);
       await page.setContent(html, { waitUntil: 'load' });
@@ -265,12 +268,10 @@ export class PdfExportService implements OnModuleInit, OnModuleDestroy {
   private buildHonorBoardHtml(options: HonorBoardOptions): string {
     const MEDALS = ['🥇', '🥈', '🥉'];
     const RANK_COLORS = ['#D4AB53', '#B0B0B0', '#B87333'];
-
     const entriesHtml = options.entries.map((entry) => {
       const isTop3 = entry.rank <= 3;
       const medal = isTop3 ? MEDALS[entry.rank - 1] : '';
       const accentColor = isTop3 ? RANK_COLORS[entry.rank - 1] : '#0E3B2E';
-
       return `
         <div class="entry ${isTop3 ? 'top3' : ''}" style="border-color: ${accentColor};">
           <div class="rank-badge" style="background: ${accentColor};">
@@ -284,7 +285,6 @@ export class PdfExportService implements OnModuleInit, OnModuleDestroy {
         </div>
       `;
     }).join('');
-
     return `<!DOCTYPE html>
 <html dir="rtl" lang="ar">
 <head>

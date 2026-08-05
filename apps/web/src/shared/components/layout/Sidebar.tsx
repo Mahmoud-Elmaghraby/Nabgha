@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/shared/lib/api/client';
 import { useAuthStore } from '@/shared/stores/auth.store';
 import { authApi } from '@/features/auth/api/auth.api';
+import type { LayoutMode } from '@/shared/hooks/useLayoutPreference';
 
 const NAV_ITEMS = [
   { path: '/dashboard', label: 'لوحة التحكم', icon: (
@@ -82,7 +83,12 @@ const NAV_ITEMS = [
   )},
 ];
 
-export function Sidebar() {
+interface SidebarProps {
+  onToggleLayout: () => void;
+  currentMode: LayoutMode;
+}
+
+export function Sidebar({ onToggleLayout, currentMode }: SidebarProps) {
   const navigate = useNavigate();
 
   const { data: waStatus } = useQuery({
@@ -108,11 +114,11 @@ export function Sidebar() {
   return (
     <aside className="fixed top-0 right-0 h-full w-64 bg-[#0E3B2E] flex flex-col z-50">
       {/* Logo */}
-      <div className="p-4 border-b border-white/10">
+      <div className="p-5 border-b border-white/10">
         <div className="flex items-center gap-3">
-          <img src="/Logo.png" alt="نبغة" className="w-16 h-16 object-contain" />
+          <img src="/Logo.png" alt="نبغة" className="w-14 h-14 object-contain drop-shadow-md" />
           <div>
-            <h1 className="text-white font-bold text-lg leading-none">نبغة</h1>
+            <h1 className="text-white font-black text-xl leading-none">نبغة</h1>
             <p className="text-white/50 text-xs mt-0.5">إدارة الدروس الخصوصية</p>
           </div>
         </div>
@@ -146,10 +152,23 @@ export function Sidebar() {
         ))}
       </nav>
 
-      {/* User */}
-      <div className="p-4 border-t border-white/10">
+      {/* User + Toggle */}
+      <div className="p-4 border-t border-white/10 space-y-2">
+        {/* Toggle layout mode */}
+        <button
+          onClick={onToggleLayout}
+          title="التبديل إلى شريط التنقل العلوي"
+          className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-white/50 hover:bg-white/10 hover:text-white transition-all text-sm"
+        >
+          <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <rect x="3" y="3" width="18" height="18" rx="2"/>
+            <line x1="3" y1="9" x2="21" y2="9"/>
+          </svg>
+          <span>التبديل للناف بار العلوي</span>
+        </button>
+        {/* Logout */}
         <div className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/10 cursor-pointer" onClick={handleLogout}>
-          <div className="w-8 h-8 bg-[#D4AB53]/20 rounded-full flex items-center justify-center">
+          <div className="w-8 h-8 bg-[#D4AB53]/20 rounded-full flex items-center justify-center border border-[#D4AB53]/30">
             <span className="text-[#D4AB53] text-sm font-bold">{user?.name?.charAt(0)}</span>
           </div>
           <div className="flex-1 min-w-0">

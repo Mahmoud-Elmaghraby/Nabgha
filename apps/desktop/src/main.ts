@@ -28,6 +28,41 @@ const DB_PATH = IS_PACKAGED
   ? path.join(RESOURCES, 'db')
   : path.join(__dirname, '..', '..', '..', 'packages', 'db');
 
+// مسار Chromium الحقيقي بتاع Puppeteer داخل المشروع نفسه — مش الـ cache الخاص
+// بأي مستخدم على الجهاز. من غير ده، أول تشغيل بيفشل بصمت لأن Puppeteer بيدوّر
+// على Chromium في C:\Users\{اسم المستخدم}\.cache\puppeteer وهو مش موجود هناك.
+const PUPPETEER_CACHE_PATH = IS_PACKAGED
+  ? path.join(RESOURCES, 'api', 'node_modules', 'puppeteer', '.local-chromium')
+  : path.join(__dirname, '..', '..', 'api', 'node_modules', 'puppeteer', '.local-chromium');
+
+// اكتشاف مسار Node.js الحقيقي — بحث في المسارات الثابتة الشائعة أولاً (نفس قائمة
+// الـ installer)، و"where node" كملاذ أخير. لو محدش موجود، نرمي خطأ واضح بدل ما
+// نسيب fallback قديم كان بيستبدل "electron.exe" بـ "node.exe" في مسار البرنامج
+// نفسه — وده كان بيفشل بصمت على أي تطبيق مُجمّع اسمه مش فيه كلمة "electron"
+// (زي "نبغة.exe")، فكان بيحاول يشغّل نبغة نفسها كأنها Node.js، وده سبب ظهور
+// نافذة بيضة ثانية عالقة عند بعض العملاء.
+function findNodePath(): string {
+  const knownPaths = [
+    path.join(process.env.PROGRAMFILES || 'C:\\Program Files', 'nodejs', 'node.exe'),
+    'C:\\Program Files\\nodejs\\node.exe',
+    'C:\\nvm4w\\nodejs\\node.exe',
+  ];
+  for (const p of knownPaths) {
+    if (fs.existsSync(p)) return p;
+  }
+
+  try {
+    const { execSync } = require('child_process');
+    const cmd = process.platform === 'win32' ? 'where node' : 'which node';
+    const result = execSync(cmd).toString().trim().split('\n')[0].trim();
+    if (result && fs.existsSync(result)) return result;
+  } catch {
+    // تجاهل — هنرمي خطأ واضح تحت بدل fallback هش
+  }
+
+  throw new Error('لم يتم العثور على Node.js على هذا الجهاز — تثبيت نبغة غير مكتمل');
+}
+
 function getLanIP(): string {
   const interfaces = os.networkInterfaces();
   for (const name of Object.keys(interfaces)) {
@@ -54,15 +89,60 @@ function waitForAPI(retries = 60): Promise<void> {
   });
 }
 
-function startAPI(): Promise<void> {
-  return new Promise((resolve, reject) => {
-    let nodePath: string;
-    const { execSync } = require('child_process');
+/**
+ * يقتل أي process تستخدم البورت المحدد قبل التشغيل —
+ * أكثر موثوقية من waitForPortFree لأننا نحرر البورت بنشاط
+ * بدل الانتظار السلبي الذي كان يعاني من race condition
+ * بين server.close() و resolve() على ويندوز.
+ */
+function killPortUser(port: number): Promise<void> {
+  return new Promise<void>((resolve) => {
+    if (process.platform !== 'win32') {
+      try { require('child_process').execSync(`fuser -k ${port}/tcp`, { stdio: 'ignore' }); } catch {}
+      return setTimeout(resolve, 500);
+    }
+
     try {
-      const cmd = process.platform === 'win32' ? 'where node' : 'which node';
-      nodePath = execSync(cmd).toString().trim().split('\n')[0].trim();
-    } catch {
-      nodePath = process.execPath.replace('electron.exe', 'node.exe').replace('electron', 'node');
+      const { execSync } = require('child_process');
+      const raw = execSync('netstat -ano').toString();
+      const pids = new Set<string>();
+
+      for (const line of raw.split('\n')) {
+        // نمسك أي LISTENING على البورت بغض النظر عن الـ address —
+        // سواء كان 0.0.0.0 أو 127.0.0.1 أو [::] — كلهم بيمنعوا bind جديد.
+        // `:${port} ` مع مسافة بعد الرقم يمنع التطابق الخاطئ مع :30010 مثلاً.
+        if (line.includes(`:${port} `) && line.includes('LISTENING')) {
+          const parts = line.trim().split(/\s+/);
+          const pid = parts[parts.length - 1];
+          if (pid && !isNaN(Number(pid)) && Number(pid) > 0) pids.add(pid);
+        }
+      }
+
+      for (const pid of pids) {
+        try {
+          execSync(`taskkill /F /PID ${pid}`, { stdio: 'ignore' });
+          console.log(`[Port] Terminated stale PID ${pid} holding port ${port}`);
+        } catch {}
+      }
+    } catch (err: any) {
+      console.warn('[Port] Could not inspect port users:', err?.message);
+    }
+
+    // نستنّى لحد ما الـ OS يحرر البورت فعلاً بعد الـ kill
+    setTimeout(resolve, 800);
+  });
+}
+
+function startAPI(): Promise<void> {
+  // تنظيف البورت أوّلاً في كل مرة — سواء كانت بداية أولى أو إعادة تشغيل
+  // وضعناه هنا جوّا startAPI نفسها بدل الاعتماد على استدعاءات خارجية
+  // عشان نضمن إن الـ kill يحصل مباشرة قبل الـ spawn في كل حالة
+  return killPortUser(API_PORT).then(() => new Promise<void>((resolve, reject) => {
+    let nodePath: string;
+    try {
+      nodePath = findNodePath();
+    } catch (err) {
+      return reject(err);
     }
 
     const dbUrl = process.env.DATABASE_URL ?? 'postgresql://nabgha:nabgha123@127.0.0.1:5432/nabgha';
@@ -82,6 +162,7 @@ function startAPI(): Promise<void> {
       DATABASE_URL: dbUrl,
       DOTENV_DISABLED: 'true',
       DB_MIGRATIONS_PATH: path.join(DB_PATH, 'src', 'migrations'),
+      PUPPETEER_CACHE_DIR: PUPPETEER_CACHE_PATH,
     };
 
     apiProcess = spawn(nodePath, [API_ENTRY], {
@@ -102,13 +183,14 @@ function startAPI(): Promise<void> {
     apiProcess.on('exit', (code) => {
       console.log(`[API] exited with code ${code}`);
       if (!isQuitting) {
-        setTimeout(() => startAPI(), 3000);
+        // startAPI دلوقتي بتعمل killPortUser تلقائياً قبل الـ spawn
+        startAPI();
       }
     });
 
     apiProcess.on('error', (err) => { reject(err); });
     setTimeout(() => resolve(), 1000);
-  });
+  }));
 }
 
 function runMigrations(): Promise<void> {
@@ -122,13 +204,11 @@ function runMigrations(): Promise<void> {
       return resolve();
     }
 
-    const { execSync: execSyncM } = require('child_process');
     let nodePath: string;
     try {
-      const cmd = process.platform === 'win32' ? 'where node' : 'which node';
-      nodePath = execSyncM(cmd).toString().trim().split('\n')[0].trim();
-    } catch {
-      nodePath = process.execPath.replace('electron.exe', 'node.exe').replace('electron', 'node');
+      nodePath = findNodePath();
+    } catch (err) {
+      return reject(err as Error);
     }
 
     const dbUrl = process.env.DATABASE_URL ?? 'postgresql://nabgha:nabgha123@127.0.0.1:5432/nabgha';
@@ -182,11 +262,20 @@ function createTray() {
 }
 
 function createSplashWindow(status = 'جاري التشغيل...'): BrowserWindow {
+  // ملحوظة: transparent:true اتشال عمداً — غير موثوق على وندوز (بيفشل يترندر
+  // شفاف على بعض كروت الشاشة/الدرايفرات أو لو تسريع الـ GPU متعطل، وبيظهر
+  // كمربع أبيض صريح فاضي بدل التصميم المقصود). backgroundColor بديل ثابت
+  // مايعتمدش على compositing الـ OS خالص. show:false + ready-to-show بيمنعوا
+  // كمان أي فلاش أبيض قبل ما الـ HTML يخلص تحميل.
   const splash = new BrowserWindow({
     width: 400, height: 300,
-    frame: false, alwaysOnTop: true, transparent: true,
+    frame: false, alwaysOnTop: true,
+    backgroundColor: '#0E3B2E',
+    show: false,
     webPreferences: { nodeIntegration: false },
   });
+
+  splash.once('ready-to-show', () => splash.show());
 
   const html = `<!DOCTYPE html>
 <html dir="rtl">
@@ -236,6 +325,9 @@ function createMainWindow() {
     show: true,
     title: 'نبغة',
     autoHideMenuBar: true,
+    // نفس منطق تفادي الفلاش الأبيض — لون خلفية ثابت مطابق لهوية التصميم
+    // بدل الأبيض الافتراضي لحد ما محتوى localhost:3001 يخلص تحميل.
+    backgroundColor: '#0E3B2E',
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -260,10 +352,10 @@ ipcMain.handle('get-printers', async () => {
     const output = execSync('wmic printer get name,default /format:list')
       .toString()
       .trim();
-    
+
     const printers: any[] = [];
     const blocks = output.split('\r\n\r\n').filter((b: string) => b.trim());
-    
+
     for (const block of blocks) {
       const lines = block.split('\r\n');
       const nameLine = lines.find((l: string) => l.startsWith('Name='));
@@ -280,7 +372,6 @@ ipcMain.handle('get-printers', async () => {
   }
 });
 // ── IPC: Print Labels ─────────────────────────────────────────
-// الطريقة الأساسية: توليد PDF بمقاس اللاصقة وفتحه للطباعة
 ipcMain.handle(
   'print-labels',
   async (
@@ -295,7 +386,6 @@ ipcMain.handle(
       return { success: false, errorType: 'no-images' };
     }
 
-    // Build HTML: one label per page
     const labelsHtml = images
       .map(
         (src) =>
@@ -343,12 +433,10 @@ ipcMain.handle(
 <body>${labelsHtml}</body>
 </html>`;
 
-    // Write HTML to temp file
     const tmpDir = app.getPath('temp');
     const tmpHtml = path.join(tmpDir, `nabgha-labels-${Date.now()}.html`);
     fs.writeFileSync(tmpHtml, html, 'utf-8');
 
-    // Create a hidden window to render the HTML
     const pxPerMm = 96 / 25.4;
     const printWin = new BrowserWindow({
       show: false,
@@ -360,7 +448,6 @@ ipcMain.handle(
     await printWin.loadFile(tmpHtml);
     console.log('[Print] Loaded HTML in hidden window');
 
-    // Wait for all images to render
     await printWin.webContents.executeJavaScript(`
       new Promise(resolve => {
         const imgs = document.querySelectorAll('img');
@@ -370,17 +457,15 @@ ipcMain.handle(
           if (img.complete) { loaded++; if (loaded === imgs.length) resolve(); }
           else { img.onload = () => { loaded++; if (loaded === imgs.length) resolve(); }; }
         });
-        setTimeout(resolve, 3000); // fallback timeout
+        setTimeout(resolve, 3000);
       })
     `);
     console.log('[Print] All images loaded');
 
-    // Convert mm to microns (1mm = 1000 microns)
     const widthMicrons = labelWidthMm * 1000;
     const heightMicrons = labelHeightMm * 1000;
 
     if (silent && deviceName) {
-      // محاولة طباعة صامتة مباشرة
       return new Promise((resolve) => {
         console.log(`[Print] Silent print to "${deviceName}"...`);
         printWin.webContents.print(
@@ -402,7 +487,6 @@ ipcMain.handle(
       });
     }
 
-    // الطريقة الأساسية: توليد PDF وفتحه
     try {
       const pdfData = await printWin.webContents.printToPDF({
         landscape: false,
@@ -418,8 +502,6 @@ ipcMain.handle(
       printWin.close();
       try { fs.unlinkSync(tmpHtml); } catch {}
 
-      // فتح الـ PDF — المستخدم يطبع منه مباشرة
-      // shell مستوردة من فوق
       await shell.openPath(pdfPath);
       console.log('[Print] PDF opened for printing');
 
@@ -433,7 +515,25 @@ ipcMain.handle(
   }
 );
 
+// ── Single Instance Lock ───────────────────────────────────────
+// السبب الجذري لـ EADDRINUSE: كان في أكثر من Electron instance
+// شغّال في نفس الوقت — كل واحد بيعمل killPortUser على API التاني
+// وبيشغّل API جديدة على 3001 → فوضى كاملة.
+// الحل: لو instance ثاني حاول يشتغل، نقفله فوراً ونرجع للأول.
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  console.log('[App] Another instance is already running — quitting.');
+  app.quit();
+}
 
+app.on('second-instance', () => {
+  // لو المستخدم حاول يفتح نبغة تاني وهي شغّالة
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  }
+});
 
 // ── App Ready ─────────────────────────────────────────────────
 app.whenReady().then(async () => {
@@ -449,6 +549,9 @@ app.whenReady().then(async () => {
       `document.querySelector('.status').textContent = 'جاري تشغيل الخادم...'`
     ).catch(() => {});
 
+    // نقتل أي API قديمة من run سابقة قبل ما نبدأ — يحمي من EADDRINUSE
+    // لو الـ Electron اتغلق بشكل مش نظيف وسابت process على البورت
+    await killPortUser(API_PORT);
     await startAPI();
 
     splash.webContents.executeJavaScript(
@@ -457,16 +560,16 @@ app.whenReady().then(async () => {
 
     await waitForAPI();
 
-    splash.close();
-    createMainWindow();
+  splash.destroy();
+createMainWindow();
 
     const lanIP = getLanIP();
     console.log(`نبغة شغالة على http://localhost:${API_PORT}`);
     console.log(`من الموبايل: http://${lanIP}:${API_PORT}`);
 
   } catch (err) {
-    console.error('Startup failed:', err);
-    splash.close();
+console.error('Startup failed:', err);
+splash.destroy();
     app.quit();
   }
 });

@@ -1,0 +1,335 @@
+
+[Migrate] 📦 Public Schema Migrations...
+[Migrate] ⏭  Skipped: public/001_initial.sql
+[Migrate] ⏭  Platform admin already exists
+[Migrate] Found 2 tenant(s)
+[Migrate] 🏫 Tenant: tenant_47ad65a0_c649_4620_b5cb_29eb69d2bab2
+[Migrate] ⏭  Skipped: tenant/001_initial.sql
+  ⏭  Skipped: tenant/002_add_student_extra_fields.sql
+  ⏭  Skipped: tenant/003_fix_wa_sessions_unique.sql
+  ⏭  Skipped: tenant/004_add_secondary_phones.sql
+  ⏭  Skipped: tenant/005_attendance_credits.sql
+  ⏭  Skipped: tenant/006_absence_excused_template.sql
+[Migrate] ⏭  Skipped: tenant/007_attendance_excused_status.sql
+  ⏭  Skipped: tenant/008_fix_grade_format.sql
+  ⏭  Skipped: tenant/009_treasury_transfers.sql
+  ⏭  Skipped: tenant/010_grade_notification_tracking.sql
+
+🏫 Tenant: tenant_0fc5be73_ad51_4920_8255_7619c99f3c53
+[Migrate] ⏭  Skipped: tenant/001_initial.sql
+  ⏭  Skipped: tenant/002_add_student_extra_fields.sql
+  ⏭  Skipped: tenant/003_fix_wa_sessions_unique.sql
+[Migrate] ⏭  Skipped: tenant/004_add_secondary_phones.sql
+  ⏭  Skipped: tenant/005_attendance_credits.sql
+  ⏭  Skipped: tenant/006_absence_excused_template.sql
+  ⏭  Skipped: tenant/007_attendance_excused_status.sql
+  ⏭  Skipped: tenant/008_fix_grade_format.sql
+  ⏭  Skipped: tenant/009_treasury_transfers.sql
+  ⏭  Skipped: tenant/010_grade_notification_tracking.sql
+
+🎉 All migrations completed successfully!
+[API] [00:08:48.955] [32mINFO[39m (14368): [36mServing storage from: C:\Users\fawzy\AppData\Roaming\Electron\storage[39m
+    [35mcontext[39m: "Bootstrap"
+[API] [00:08:48.957] [32mINFO[39m (14368): [36mServing frontend from: M:\Projects\Nabgha\apps\web\dist[39m
+    [35mcontext[39m: "Bootstrap"
+[API ERR] file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/BrowserLauncher.js:319
+            throw new Error(`Could not find ${getBrowserTypeDisplayName(browserType)} (ver. ${browserVersion}). This can occur if either\n` +
+                  ^
+
+Error: Could not find Chrome (ver. 150.0.7871.24). This can occur if either
+ 1. you did not perform an installation before running the script (e.g. `npx puppeteer browsers install chrome`) or
+ 2. your cache path is incorrectly configured (which is: M:\Projects\Nabgha\apps\api\node_modules\puppeteer\.local-chromium).
+For (2), check out our guide on configuring puppeteer at https://pptr.dev/guides/configuration.
+    at ChromeLauncher.resolveExecutablePath (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/BrowserLauncher.js:319:19)
+    at async ChromeLauncher.computeLaunchArguments (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/ChromeLauncher.js:92:19)
+    at async ChromeLauncher.launch (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/BrowserLauncher.js:67:28)
+    at async ChromeLauncher.launch (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/ChromeLauncher.js:39:16)
+    at async PuppeteerNode.launch (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/PuppeteerNode.js:120:16)
+    at async PdfExportService.onModuleInit (M:\Projects\Nabgha\apps\api\dist\shared\infrastructure\export\pdf-export.service.js:22:24)
+    at async Promise.all (index 0)
+    at async callModuleInitHook (M:\Projects\Nabgha\node_modules\.pnpm\@nestjs+core@11.1.26_@nestj_c77c7c299fc34e3aeab08bffaf0d5be3\node_modules\@nestjs\core\hooks\on-module-init.hook.js:43:5)
+    at async NestApplication.callInitHook (M:\Projects\Nabgha\node_modules\.pnpm\@nestjs+core@11.1.26_@nestj_c77c7c299fc34e3aeab08bffaf0d5be3\node_modules\@nestjs\core\nest-application-context.js:252:13)
+    at async NestApplication.init (M:\Projects\Nabgha\node_modules\.pnpm\@nestjs+core@11.1.26_@nestj_c77c7c299fc34e3aeab08bffaf0d5be3\node_modules\@nestjs\core\nest-application.js:105:9)
+    at async NestApplication.listen (M:\Projects\Nabgha\node_modules\.pnpm\@nestjs+core@11.1.26_@nestj_c77c7c299fc34e3aeab08bffaf0d5be3\node_modules\@nestjs\core\nest-application.js:177:13)
+    at async bootstrap (M:\Projects\Nabgha\apps\api\dist\main.js:56:5)
+
+Node.js v20.19.5
+[API] exited with code 1
+[API] [00:08:55.066] [32mINFO[39m (9288): [36mServing storage from: C:\Users\fawzy\AppData\Roaming\Electron\storage[39m
+    [35mcontext[39m: "Bootstrap"
+[API] [00:08:55.067] [32mINFO[39m (9288): [36mServing frontend from: M:\Projects\Nabgha\apps\web\dist[39m
+    [35mcontext[39m: "Bootstrap"
+[API ERR] file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/BrowserLauncher.js:319
+            throw new Error(`Could not find ${getBrowserTypeDisplayName(browserType)} (ver. ${browserVersion}). This can occur if either\n` +
+                  ^
+
+Error: Could not find Chrome (ver. 150.0.7871.24). This can occur if either
+ 1. you did not perform an installation before running the script (e.g. `npx puppeteer browsers install chrome`) or
+ 2. your cache path is incorrectly configured (which is: M:\Projects\Nabgha\apps\api\node_modules\puppeteer\.local-chromium).
+For (2), check out our guide on configuring puppeteer at https://pptr.dev/guides/configuration.
+    at ChromeLauncher.resolveExecutablePath (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/BrowserLauncher.js:319:19)
+    at async ChromeLauncher.computeLaunchArguments (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/ChromeLauncher.js:92:19)
+    at async ChromeLauncher.launch (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/BrowserLauncher.js:67:28)
+    at async ChromeLauncher.launch (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/ChromeLauncher.js:39:16)
+    at async PuppeteerNode.launch (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/PuppeteerNode.js:120:16)
+    at async PdfExportService.onModuleInit (M:\Projects\Nabgha\apps\api\dist\shared\infrastructure\export\pdf-export.service.js:22:24)
+    at async Promise.all (index 0)
+    at async callModuleInitHook (M:\Projects\Nabgha\node_modules\.pnpm\@nestjs+core@11.1.26_@nestj_c77c7c299fc34e3aeab08bffaf0d5be3\node_modules\@nestjs\core\hooks\on-module-init.hook.js:43:5)
+    at async NestApplication.callInitHook (M:\Projects\Nabgha\node_modules\.pnpm\@nestjs+core@11.1.26_@nestj_c77c7c299fc34e3aeab08bffaf0d5be3\node_modules\@nestjs\core\nest-application-context.js:252:13)
+    at async NestApplication.init (M:\Projects\Nabgha\node_modules\.pnpm\@nestjs+core@11.1.26_@nestj_c77c7c299fc34e3aeab08bffaf0d5be3\node_modules\@nestjs\core\nest-application.js:105:9)
+    at async NestApplication.listen (M:\Projects\Nabgha\node_modules\.pnpm\@nestjs+core@11.1.26_@nestj_c77c7c299fc34e3aeab08bffaf0d5be3\node_modules\@nestjs\core\nest-application.js:177:13)
+    at async bootstrap (M:\Projects\Nabgha\apps\api\dist\main.js:56:5)
+
+Node.js v20.19.5
+[API] exited with code 1
+[API] [00:09:00.213] [32mINFO[39m (11932): [36mServing storage from: C:\Users\fawzy\AppData\Roaming\Electron\storage[39m
+    [35mcontext[39m: "Bootstrap"
+[API] [00:09:00.213] [32mINFO[39m (11932): [36mServing frontend from: M:\Projects\Nabgha\apps\web\dist[39m
+    [35mcontext[39m: "Bootstrap"
+[API ERR] file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/BrowserLauncher.js:319
+            throw new Error(`Could not find ${getBrowserTypeDisplayName(browserType)} (ver. ${browserVersion}). This can occur if either\n` +
+                  ^
+
+Error: Could not find Chrome (ver. 150.0.7871.24). This can occur if either
+ 1. you did not perform an installation before running the script (e.g. `npx puppeteer browsers install chrome`) or
+ 2. your cache path is incorrectly configured (which is: M:\Projects\Nabgha\apps\api\node_modules\puppeteer\.local-chromium).
+For (2), check out our guide on configuring puppeteer at https://pptr.dev/guides/configuration.
+    at ChromeLauncher.resolveExecutablePath (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/BrowserLauncher.js:319:19)
+    at async ChromeLauncher.computeLaunchArguments (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/ChromeLauncher.js:92:19)
+    at async ChromeLauncher.launch (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/BrowserLauncher.js:67:28)
+    at async ChromeLauncher.launch (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/ChromeLauncher.js:39:16)
+    at async PuppeteerNode.launch (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/PuppeteerNode.js:120:16)
+    at async PdfExportService.onModuleInit (M:\Projects\Nabgha\apps\api\dist\shared\infrastructure\export\pdf-export.service.js:22:24)
+    at async Promise.all (index 0)
+    at async callModuleInitHook (M:\Projects\Nabgha\node_modules\.pnpm\@nestjs+core@11.1.26_@nestj_c77c7c299fc34e3aeab08bffaf0d5be3\node_modules\@nestjs\core\hooks\on-module-init.hook.js:43:5)
+    at async NestApplication.callInitHook (M:\Projects\Nabgha\node_modules\.pnpm\@nestjs+core@11.1.26_@nestj_c77c7c299fc34e3aeab08bffaf0d5be3\node_modules\@nestjs\core\nest-application-context.js:252:13)
+    at async NestApplication.init (M:\Projects\Nabgha\node_modules\.pnpm\@nestjs+core@11.1.26_@nestj_c77c7c299fc34e3aeab08bffaf0d5be3\node_modules\@nestjs\core\nest-application.js:105:9)
+    at async NestApplication.listen (M:\Projects\Nabgha\node_modules\.pnpm\@nestjs+core@11.1.26_@nestj_c77c7c299fc34e3aeab08bffaf0d5be3\node_modules\@nestjs\core\nest-application.js:177:13)
+    at async bootstrap (M:\Projects\Nabgha\apps\api\dist\main.js:56:5)
+
+Node.js v20.19.5
+[API] exited with code 1
+[API] [00:09:05.402] [32mINFO[39m (14944): [36mServing storage from: C:\Users\fawzy\AppData\Roaming\Electron\storage[39m
+    [35mcontext[39m: "Bootstrap"
+[API] [00:09:05.402] [32mINFO[39m (14944): [36mServing frontend from: M:\Projects\Nabgha\apps\web\dist[39m
+    [35mcontext[39m: "Bootstrap"
+[API ERR] file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/BrowserLauncher.js:319
+            throw new Error(`Could not find ${getBrowserTypeDisplayName(browserType)} (ver. ${browserVersion}). This can occur if either\n` +
+                  ^
+
+Error: Could not find Chrome (ver. 150.0.7871.24). This can occur if either
+ 1. you did not perform an installation before running the script (e.g. `npx puppeteer browsers install chrome`) or
+ 2. your cache path is incorrectly configured (which is: M:\Projects\Nabgha\apps\api\node_modules\puppeteer\.local-chromium).
+For (2), check out our guide on configuring puppeteer at https://pptr.dev/guides/configuration.
+    at ChromeLauncher.resolveExecutablePath (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/BrowserLauncher.js:319:19)
+    at async ChromeLauncher.computeLaunchArguments (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/ChromeLauncher.js:92:19)
+    at async ChromeLauncher.launch (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/BrowserLauncher.js:67:28)
+    at async ChromeLauncher.launch (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/ChromeLauncher.js:39:16)
+    at async PuppeteerNode.launch (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/PuppeteerNode.js:120:16)
+    at async PdfExportService.onModuleInit (M:\Projects\Nabgha\apps\api\dist\shared\infrastructure\export\pdf-export.service.js:22:24)
+    at async Promise.all (index 0)
+    at async callModuleInitHook (M:\Projects\Nabgha\node_modules\.pnpm\@nestjs+core@11.1.26_@nestj_c77c7c299fc34e3aeab08bffaf0d5be3\node_modules\@nestjs\core\hooks\on-module-init.hook.js:43:5)
+    at async NestApplication.callInitHook (M:\Projects\Nabgha\node_modules\.pnpm\@nestjs+core@11.1.26_@nestj_c77c7c299fc34e3aeab08bffaf0d5be3\node_modules\@nestjs\core\nest-application-context.js:252:13)
+    at async NestApplication.init (M:\Projects\Nabgha\node_modules\.pnpm\@nestjs+core@11.1.26_@nestj_c77c7c299fc34e3aeab08bffaf0d5be3\node_modules\@nestjs\core\nest-application.js:105:9)
+    at async NestApplication.listen (M:\Projects\Nabgha\node_modules\.pnpm\@nestjs+core@11.1.26_@nestj_c77c7c299fc34e3aeab08bffaf0d5be3\node_modules\@nestjs\core\nest-application.js:177:13)
+    at async bootstrap (M:\Projects\Nabgha\apps\api\dist\main.js:56:5)
+
+Node.js v20.19.5
+[API] exited with code 1
+[API] [00:09:10.674] [32mINFO[39m (23440): [36mServing storage from: C:\Users\fawzy\AppData\Roaming\Electron\storage[39m
+    [35mcontext[39m: "Bootstrap"
+[API] [00:09:10.675] [32mINFO[39m (23440): [36mServing frontend from: M:\Projects\Nabgha\apps\web\dist[39m
+    [35mcontext[39m: "Bootstrap"
+[API ERR] file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/BrowserLauncher.js:319
+            throw new Error(`Could not find ${getBrowserTypeDisplayName(browserType)} (ver. ${browserVersion}). This can occur if either\n` +
+                  ^
+
+Error: Could not find Chrome (ver. 150.0.7871.24). This can occur if either
+ 1. you did not perform an installation before running the script (e.g. `npx puppeteer browsers install chrome`) or
+ 2. your cache path is incorrectly configured (which is: M:\Projects\Nabgha\apps\api\node_modules\puppeteer\.local-chromium).
+For (2), check out our guide on configuring puppeteer at https://pptr.dev/guides/configuration.
+    at ChromeLauncher.resolveExecutablePath (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/BrowserLauncher.js:319:19)
+    at async ChromeLauncher.computeLaunchArguments (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/ChromeLauncher.js:92:19)
+    at async ChromeLauncher.launch (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/BrowserLauncher.js:67:28)
+    at async ChromeLauncher.launch (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/ChromeLauncher.js:39:16)
+    at async PuppeteerNode.launch (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/PuppeteerNode.js:120:16)
+    at async PdfExportService.onModuleInit (M:\Projects\Nabgha\apps\api\dist\shared\infrastructure\export\pdf-export.service.js:22:24)
+    at async Promise.all (index 0)
+    at async callModuleInitHook (M:\Projects\Nabgha\node_modules\.pnpm\@nestjs+core@11.1.26_@nestj_c77c7c299fc34e3aeab08bffaf0d5be3\node_modules\@nestjs\core\hooks\on-module-init.hook.js:43:5)
+    at async NestApplication.callInitHook (M:\Projects\Nabgha\node_modules\.pnpm\@nestjs+core@11.1.26_@nestj_c77c7c299fc34e3aeab08bffaf0d5be3\node_modules\@nestjs\core\nest-application-context.js:252:13)
+    at async NestApplication.init (M:\Projects\Nabgha\node_modules\.pnpm\@nestjs+core@11.1.26_@nestj_c77c7c299fc34e3aeab08bffaf0d5be3\node_modules\@nestjs\core\nest-application.js:105:9)
+    at async NestApplication.listen (M:\Projects\Nabgha\node_modules\.pnpm\@nestjs+core@11.1.26_@nestj_c77c7c299fc34e3aeab08bffaf0d5be3\node_modules\@nestjs\core\nest-application.js:177:13)
+    at async bootstrap (M:\Projects\Nabgha\apps\api\dist\main.js:56:5)
+
+Node.js v20.19.5
+[API] exited with code 1
+[API] [00:09:15.870] [32mINFO[39m (17880): [36mServing storage from: C:\Users\fawzy\AppData\Roaming\Electron\storage[39m
+    [35mcontext[39m: "Bootstrap"
+[API] [00:09:15.870] [32mINFO[39m (17880): [36mServing frontend from: M:\Projects\Nabgha\apps\web\dist[39m
+    [35mcontext[39m: "Bootstrap"
+[API ERR] file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/BrowserLauncher.js:319
+            throw new Error(`Could not find ${getBrowserTypeDisplayName(browserType)} (ver. ${browserVersion}). This can occur if either\n` +
+                  ^
+
+Error: Could not find Chrome (ver. 150.0.7871.24). This can occur if either
+ 1. you did not perform an installation before running the script (e.g. `npx puppeteer browsers install chrome`) or
+ 2. your cache path is incorrectly configured (which is: M:\Projects\Nabgha\apps\api\node_modules\puppeteer\.local-chromium).
+For (2), check out our guide on configuring puppeteer at https://pptr.dev/guides/configuration.
+    at ChromeLauncher.resolveExecutablePath (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/BrowserLauncher.js:319:19)
+    at async ChromeLauncher.computeLaunchArguments (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/ChromeLauncher.js:92:19)
+    at async ChromeLauncher.launch (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/BrowserLauncher.js:67:28)
+    at async ChromeLauncher.launch (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/ChromeLauncher.js:39:16)
+    at async PuppeteerNode.launch (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/PuppeteerNode.js:120:16)
+    at async PdfExportService.onModuleInit (M:\Projects\Nabgha\apps\api\dist\shared\infrastructure\export\pdf-export.service.js:22:24)
+    at async Promise.all (index 0)
+    at async callModuleInitHook (M:\Projects\Nabgha\node_modules\.pnpm\@nestjs+core@11.1.26_@nestj_c77c7c299fc34e3aeab08bffaf0d5be3\node_modules\@nestjs\core\hooks\on-module-init.hook.js:43:5)
+    at async NestApplication.callInitHook (M:\Projects\Nabgha\node_modules\.pnpm\@nestjs+core@11.1.26_@nestj_c77c7c299fc34e3aeab08bffaf0d5be3\node_modules\@nestjs\core\nest-application-context.js:252:13)
+    at async NestApplication.init (M:\Projects\Nabgha\node_modules\.pnpm\@nestjs+core@11.1.26_@nestj_c77c7c299fc34e3aeab08bffaf0d5be3\node_modules\@nestjs\core\nest-application.js:105:9)
+    at async NestApplication.listen (M:\Projects\Nabgha\node_modules\.pnpm\@nestjs+core@11.1.26_@nestj_c77c7c299fc34e3aeab08bffaf0d5be3\node_modules\@nestjs\core\nest-application.js:177:13)
+    at async bootstrap (M:\Projects\Nabgha\apps\api\dist\main.js:56:5)
+
+Node.js v20.19.5
+[API] exited with code 1
+[API] [00:09:21.211] [32mINFO[39m (24456): [36mServing storage from: C:\Users\fawzy\AppData\Roaming\Electron\storage[39m
+    [35mcontext[39m: "Bootstrap"
+[API] [00:09:21.212] [32mINFO[39m (24456): [36mServing frontend from: M:\Projects\Nabgha\apps\web\dist[39m
+    [35mcontext[39m: "Bootstrap"
+[API ERR] file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/BrowserLauncher.js:319
+            throw new Error(`Could not find ${getBrowserTypeDisplayName(browserType)} (ver. ${browserVersion}). This can occur if either\n` +
+                  ^
+
+Error: Could not find Chrome (ver. 150.0.7871.24). This can occur if either
+ 1. you did not perform an installation before running the script (e.g. `npx puppeteer browsers install chrome`) or
+ 2. your cache path is incorrectly configured (which is: M:\Projects\Nabgha\apps\api\node_modules\puppeteer\.local-chromium).
+For (2), check out our guide on configuring puppeteer at https://pptr.dev/guides/configuration.
+    at ChromeLauncher.resolveExecutablePath (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/BrowserLauncher.js:319:19)
+    at async ChromeLauncher.computeLaunchArguments (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/ChromeLauncher.js:92:19)
+    at async ChromeLauncher.launch (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/BrowserLauncher.js:67:28)
+    at async ChromeLauncher.launch (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/ChromeLauncher.js:39:16)
+    at async PuppeteerNode.launch (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/PuppeteerNode.js:120:16)
+    at async PdfExportService.onModuleInit (M:\Projects\Nabgha\apps\api\dist\shared\infrastructure\export\pdf-export.service.js:22:24)
+    at async Promise.all (index 0)
+    at async callModuleInitHook (M:\Projects\Nabgha\node_modules\.pnpm\@nestjs+core@11.1.26_@nestj_c77c7c299fc34e3aeab08bffaf0d5be3\node_modules\@nestjs\core\hooks\on-module-init.hook.js:43:5)
+    at async NestApplication.callInitHook (M:\Projects\Nabgha\node_modules\.pnpm\@nestjs+core@11.1.26_@nestj_c77c7c299fc34e3aeab08bffaf0d5be3\node_modules\@nestjs\core\nest-application-context.js:252:13)
+    at async NestApplication.init (M:\Projects\Nabgha\node_modules\.pnpm\@nestjs+core@11.1.26_@nestj_c77c7c299fc34e3aeab08bffaf0d5be3\node_modules\@nestjs\core\nest-application.js:105:9)
+    at async NestApplication.listen (M:\Projects\Nabgha\node_modules\.pnpm\@nestjs+core@11.1.26_@nestj_c77c7c299fc34e3aeab08bffaf0d5be3\node_modules\@nestjs\core\nest-application.js:177:13)
+    at async bootstrap (M:\Projects\Nabgha\apps\api\dist\main.js:56:5)
+
+Node.js v20.19.5
+[API] exited with code 1
+[API] [00:09:26.337] [32mINFO[39m (16124): [36mServing storage from: C:\Users\fawzy\AppData\Roaming\Electron\storage[39m
+    [35mcontext[39m: "Bootstrap"
+[API] [00:09:26.338] [32mINFO[39m (16124): [36mServing frontend from: M:\Projects\Nabgha\apps\web\dist[39m
+    [35mcontext[39m: "Bootstrap"
+[API ERR] file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/BrowserLauncher.js:319
+            throw new Error(`Could not find ${getBrowserTypeDisplayName(browserType)} (ver. ${browserVersion}). This can occur if either\n` +
+                  ^
+
+Error: Could not find Chrome (ver. 150.0.7871.24). This can occur if either
+ 1. you did not perform an installation before running the script (e.g. `npx puppeteer browsers install chrome`) or
+ 2. your cache path is incorrectly configured (which is: M:\Projects\Nabgha\apps\api\node_modules\puppeteer\.local-chromium).
+For (2), check out our guide on configuring puppeteer at https://pptr.dev/guides/configuration.
+    at ChromeLauncher.resolveExecutablePath (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/BrowserLauncher.js:319:19)
+    at async ChromeLauncher.computeLaunchArguments (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/ChromeLauncher.js:92:19)
+    at async ChromeLauncher.launch (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/BrowserLauncher.js:67:28)
+    at async ChromeLauncher.launch (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/ChromeLauncher.js:39:16)
+    at async PuppeteerNode.launch (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/PuppeteerNode.js:120:16)
+    at async PdfExportService.onModuleInit (M:\Projects\Nabgha\apps\api\dist\shared\infrastructure\export\pdf-export.service.js:22:24)
+    at async Promise.all (index 0)
+    at async callModuleInitHook (M:\Projects\Nabgha\node_modules\.pnpm\@nestjs+core@11.1.26_@nestj_c77c7c299fc34e3aeab08bffaf0d5be3\node_modules\@nestjs\core\hooks\on-module-init.hook.js:43:5)
+    at async NestApplication.callInitHook (M:\Projects\Nabgha\node_modules\.pnpm\@nestjs+core@11.1.26_@nestj_c77c7c299fc34e3aeab08bffaf0d5be3\node_modules\@nestjs\core\nest-application-context.js:252:13)
+    at async NestApplication.init (M:\Projects\Nabgha\node_modules\.pnpm\@nestjs+core@11.1.26_@nestj_c77c7c299fc34e3aeab08bffaf0d5be3\node_modules\@nestjs\core\nest-application.js:105:9)
+    at async NestApplication.listen (M:\Projects\Nabgha\node_modules\.pnpm\@nestjs+core@11.1.26_@nestj_c77c7c299fc34e3aeab08bffaf0d5be3\node_modules\@nestjs\core\nest-application.js:177:13)
+    at async bootstrap (M:\Projects\Nabgha\apps\api\dist\main.js:56:5)
+
+Node.js v20.19.5
+[API] exited with code 1
+[API] [00:09:31.622] [32mINFO[39m (18440): [36mServing storage from: C:\Users\fawzy\AppData\Roaming\Electron\storage[39m
+    [35mcontext[39m: "Bootstrap"
+[API] [00:09:31.623] [32mINFO[39m (18440): [36mServing frontend from: M:\Projects\Nabgha\apps\web\dist[39m
+    [35mcontext[39m: "Bootstrap"
+[API ERR] file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/BrowserLauncher.js:319
+            throw new Error(`Could not find ${getBrowserTypeDisplayName(browserType)} (ver. ${browserVersion}). This can occur if either\n` +
+                  ^
+
+Error: Could not find Chrome (ver. 150.0.7871.24). This can occur if either
+ 1. you did not perform an installation before running the script (e.g. `npx puppeteer browsers install chrome`) or
+ 2. your cache path is incorrectly configured (which is: M:\Projects\Nabgha\apps\api\node_modules\puppeteer\.local-chromium).
+For (2), check out our guide on configuring puppeteer at https://pptr.dev/guides/configuration.
+    at ChromeLauncher.resolveExecutablePath (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/BrowserLauncher.js:319:19)
+    at async ChromeLauncher.computeLaunchArguments (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/ChromeLauncher.js:92:19)
+    at async ChromeLauncher.launch (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/BrowserLauncher.js:67:28)
+    at async ChromeLauncher.launch (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/ChromeLauncher.js:39:16)
+    at async PuppeteerNode.launch (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/PuppeteerNode.js:120:16)
+    at async PdfExportService.onModuleInit (M:\Projects\Nabgha\apps\api\dist\shared\infrastructure\export\pdf-export.service.js:22:24)
+    at async Promise.all (index 0)
+    at async callModuleInitHook (M:\Projects\Nabgha\node_modules\.pnpm\@nestjs+core@11.1.26_@nestj_c77c7c299fc34e3aeab08bffaf0d5be3\node_modules\@nestjs\core\hooks\on-module-init.hook.js:43:5)
+    at async NestApplication.callInitHook (M:\Projects\Nabgha\node_modules\.pnpm\@nestjs+core@11.1.26_@nestj_c77c7c299fc34e3aeab08bffaf0d5be3\node_modules\@nestjs\core\nest-application-context.js:252:13)
+    at async NestApplication.init (M:\Projects\Nabgha\node_modules\.pnpm\@nestjs+core@11.1.26_@nestj_c77c7c299fc34e3aeab08bffaf0d5be3\node_modules\@nestjs\core\nest-application.js:105:9)
+    at async NestApplication.listen (M:\Projects\Nabgha\node_modules\.pnpm\@nestjs+core@11.1.26_@nestj_c77c7c299fc34e3aeab08bffaf0d5be3\node_modules\@nestjs\core\nest-application.js:177:13)
+    at async bootstrap (M:\Projects\Nabgha\apps\api\dist\main.js:56:5)
+
+Node.js v20.19.5
+[API] exited with code 1
+[API] [00:09:36.730] [32mINFO[39m (6996): [36mServing storage from: C:\Users\fawzy\AppData\Roaming\Electron\storage[39m
+    [35mcontext[39m: "Bootstrap"
+[API] [00:09:36.731] [32mINFO[39m (6996): [36mServing frontend from: M:\Projects\Nabgha\apps\web\dist[39m
+    [35mcontext[39m: "Bootstrap"
+[API ERR] file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/BrowserLauncher.js:319
+            throw new Error(`Could not find ${getBrowserTypeDisplayName(browserType)} (ver. ${browserVersion}). This can occur if either\n` +
+                  ^
+
+Error: Could not find Chrome (ver. 150.0.7871.24). This can occur if either
+ 1. you did not perform an installation before running the script (e.g. `npx puppeteer browsers install chrome`) or
+ 2. your cache path is incorrectly configured (which is: M:\Projects\Nabgha\apps\api\node_modules\puppeteer\.local-chromium).
+For (2), check out our guide on configuring puppeteer at https://pptr.dev/guides/configuration.
+    at ChromeLauncher.resolveExecutablePath (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/BrowserLauncher.js:319:19)
+    at async ChromeLauncher.computeLaunchArguments (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/ChromeLauncher.js:92:19)
+    at async ChromeLauncher.launch (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/BrowserLauncher.js:67:28)
+    at async ChromeLauncher.launch (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/ChromeLauncher.js:39:16)
+    at async PuppeteerNode.launch (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/PuppeteerNode.js:120:16)
+    at async PdfExportService.onModuleInit (M:\Projects\Nabgha\apps\api\dist\shared\infrastructure\export\pdf-export.service.js:22:24)
+    at async Promise.all (index 0)
+    at async callModuleInitHook (M:\Projects\Nabgha\node_modules\.pnpm\@nestjs+core@11.1.26_@nestj_c77c7c299fc34e3aeab08bffaf0d5be3\node_modules\@nestjs\core\hooks\on-module-init.hook.js:43:5)
+    at async NestApplication.callInitHook (M:\Projects\Nabgha\node_modules\.pnpm\@nestjs+core@11.1.26_@nestj_c77c7c299fc34e3aeab08bffaf0d5be3\node_modules\@nestjs\core\nest-application-context.js:252:13)
+    at async NestApplication.init (M:\Projects\Nabgha\node_modules\.pnpm\@nestjs+core@11.1.26_@nestj_c77c7c299fc34e3aeab08bffaf0d5be3\node_modules\@nestjs\core\nest-application.js:105:9)
+    at async NestApplication.listen (M:\Projects\Nabgha\node_modules\.pnpm\@nestjs+core@11.1.26_@nestj_c77c7c299fc34e3aeab08bffaf0d5be3\node_modules\@nestjs\core\nest-application.js:177:13)
+    at async bootstrap (M:\Projects\Nabgha\apps\api\dist\main.js:56:5)
+
+Node.js v20.19.5
+[API] exited with code 1
+[API] [00:09:41.985] [32mINFO[39m (13004): [36mServing storage from: C:\Users\fawzy\AppData\Roaming\Electron\storage[39m
+    [35mcontext[39m: "Bootstrap"
+[API] [00:09:41.985] [32mINFO[39m (13004): [36mServing frontend from: M:\Projects\Nabgha\apps\web\dist[39m
+    [35mcontext[39m: "Bootstrap"
+[API ERR] file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/BrowserLauncher.js:319
+            throw new Error(`Could not find ${getBrowserTypeDisplayName(browserType)} (ver. ${browserVersion}). This can occur if either\n` +
+                  ^
+
+Error: Could not find Chrome (ver. 150.0.7871.24). This can occur if either
+ 1. you did not perform an installation before running the script (e.g. `npx puppeteer browsers install chrome`) or
+ 2. your cache path is incorrectly configured (which is: M:\Projects\Nabgha\apps\api\node_modules\puppeteer\.local-chromium).
+For (2), check out our guide on configuring puppeteer at https://pptr.dev/guides/configuration.
+    at ChromeLauncher.resolveExecutablePath (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/BrowserLauncher.js:319:19)
+    at async ChromeLauncher.computeLaunchArguments (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/ChromeLauncher.js:92:19)
+    at async ChromeLauncher.launch (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/BrowserLauncher.js:67:28)
+    at async ChromeLauncher.launch (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/ChromeLauncher.js:39:16)
+    at async PuppeteerNode.launch (file:///M:/Projects/Nabgha/node_modules/.pnpm/puppeteer-core@25.3.0_yauzl@2.10.0/node_modules/puppeteer-core/lib/puppeteer/node/PuppeteerNode.js:120:16)
+    at async PdfExportService.onModuleInit (M:\Projects\Nabgha\apps\api\dist\shared\infrastructure\export\pdf-export.service.js:22:24)
+    at async Promise.all (index 0)
+    at async callModuleInitHook (M:\Projects\Nabgha\node_modules\.pnpm\@nestjs+core@11.1.26_@nestj_c77c7c299fc34e3aeab08bffaf0d5be3\node_modules\@nestjs\core\hooks\on-module-init.hook.js:43:5)
+    at async NestApplication.callInitHook (M:\Projects\Nabgha\node_modules\.pnpm\@nestjs+core@11.1.26_@nestj_c77c7c299fc34e3aeab08bffaf0d5be3\node_modules\@nestjs\core\nest-application-context.js:252:13)
+    at async NestApplication.init (M:\Projects\Nabgha\node_modules\.pnpm\@nestjs+core@11.1.26_@nestj_c77c7c299fc34e3aeab08bffaf0d5be3\node_modules\@nestjs\core\nest-application.js:105:9)
+    at async NestApplication.listen (M:\Projects\Nabgha\node_modules\.pnpm\@nestjs+core@11.1.26_@nestj_c77c7c299fc34e3aeab08bffaf0d5be3\node_modules\@nestjs\core\nest-application.js:177:13)
+    at async bootstrap (M:\Projects\Nabgha\apps\api\dist\main.js:56:5)
+
+Node.js v20.19.5
+[API] exited with code 1
+Startup failed: Error: API not available
+    at ClientRequest.<anonymous> (M:\Projects\Nabgha\apps\desktop\dist\main.js:117:28)
+    at ClientRequest.emit (node:events:514:28)
+    at Socket.socketErrorListener (node:_http_client:495:9)
+    at Socket.emit (node:events:514:28)
+    at emitErrorNT (node:internal/streams/destroy:151:8)
+    at emitErrorCloseNT (node:internal/streams/destroy:116:3)
+    at process.processTicksAndRejections (node:internal/process/task_queues:82:21)
