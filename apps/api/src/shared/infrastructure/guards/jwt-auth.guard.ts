@@ -6,3 +6,6 @@ export class JwtAuthGuard extends AuthGuard('jwt') {}
 
 @Injectable()
 export class PlatformJwtAuthGuard extends AuthGuard('platform-jwt') {}
+
+@Injectable()
+export class ParentJwtAuthGuard extends AuthGuard('parent-jwt') {}

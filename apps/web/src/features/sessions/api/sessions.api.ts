@@ -21,6 +21,11 @@ export const sessionsApi = {
     return res.data.data;
   },
 
+  generateToday: async (date?: string): Promise<{ created: number; skipped: number; total: number }> => {
+    const res = await apiClient.post('/sessions/generate-today', date ? { date } : {});
+    return res.data.data;
+  },
+
   update: async (id: string, payload: Partial<CreateSessionPayload>): Promise<Session> => {
     const res = await apiClient.put(`/sessions/${id}`, payload);
     return res.data.data;

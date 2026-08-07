@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useToast } from '@/shared/components/Toast';
 import { useConfirm } from '@/shared/components/Confirm';
 import { useGroups } from '@/features/groups/hooks/useGroups';
 import { GRADE_OPTIONS } from '@nabgha/types';
-import { useSessions, useSessionMutations } from '../hooks/useSessions';
+import { useSessions, useSessionMutations, useSession } from '../hooks/useSessions';
 import { SessionFormModal } from '../components/SessionFormModal';
 import { AttendanceSheet } from '../components/AttendanceSheet';
 import { DegreesSheet } from '../components/DegreesSheet';
@@ -55,9 +56,25 @@ export default function SessionsPage() {
 
   const toast = useToast();
   const confirm = useConfirm();
-  const { start, complete, cancel, remove } = useSessionMutations();
+  const { start, complete, cancel, remove, generateToday } = useSessionMutations();
   const { data: groupsData } = useGroups({ limit: 1000 });
   const groups = groupsData?.data || [];
+
+  // فتح شاشة التحضير مباشرة لو جاي من الزرار العائم (?openAttendance=<id>) —
+  // بنجيب الحصة بمعرفها مباشرة (مش من القايمة الحالية) عشان تفتح صح حتى لو
+  // مش موجودة في الصفحة/الفلتر المعروض دلوقتي
+  const [searchParams, setSearchParams] = useSearchParams();
+  const openAttendanceId = searchParams.get('openAttendance');
+  const { data: openAttendanceSession } = useSession(openAttendanceId ?? '');
+
+  useEffect(() => {
+    if (!openAttendanceId || !openAttendanceSession) return;
+    setSelectedSession(openAttendanceSession);
+    const next = new URLSearchParams(searchParams);
+    next.delete('openAttendance');
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openAttendanceId, openAttendanceSession]);
 
   const sessions = data?.data || [];
   const total = data?.total || 0;
@@ -195,6 +212,18 @@ export default function SessionsPage() {
     }
   };
 
+  // توليد يدوي لحصص اليوم حسب الجدول الأسبوعي للمجموعات — بيتجاهل أي مجموعة
+  // عندها حصة بالفعل النهاردة عشان يمنع التكرار لو اتضغط أكتر من مرة.
+  const handleGenerateToday = async () => {
+    if (!(await confirm('توليد حصص اليوم حسب جدول المجموعات؟'))) return;
+    try {
+      const r = await generateToday.mutateAsync(undefined);
+      toast.success(`تم إنشاء ${r.created} حصة — ${r.skipped} موجودة بالفعل`);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error?.message || 'حدث خطأ');
+    }
+  };
+
   return (
     <div className="p-4 md:p-6 space-y-4" dir="rtl">
       {/* Header */}
@@ -204,13 +233,23 @@ export default function SessionsPage() {
           <p className="text-sm text-gray-400 mt-0.5">{total} حصة</p>
         </div>
         {hasPermission('sessions.create') && (
-          <button onClick={() => setShowForm(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-[#0E3B2E] text-white rounded-xl text-sm font-medium hover:bg-[#1F6B4E] transition-colors">
-            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M12 5v14M5 12h14" strokeLinecap="round"/>
-            </svg>
-            حصة جديدة
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={handleGenerateToday} disabled={generateToday.isPending}
+              title="توليد الحصص المجدولة اليوم حسب جدول المجموعات"
+              className="flex items-center gap-2 px-4 py-2 border border-[#0E3B2E] text-[#0E3B2E] rounded-xl text-sm font-medium hover:bg-[#0E3B2E]/5 transition-colors disabled:opacity-60">
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8M3 22v-6h6M21 12a9 9 0 0 1-15 6.7L3 16" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              {generateToday.isPending ? 'جاري...' : 'توليد حصص اليوم'}
+            </button>
+            <button onClick={() => setShowForm(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-[#0E3B2E] text-white rounded-xl text-sm font-medium hover:bg-[#1F6B4E] transition-colors">
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 5v14M5 12h14" strokeLinecap="round"/>
+              </svg>
+              حصة جديدة
+            </button>
+          </div>
         )}
       </div>
 

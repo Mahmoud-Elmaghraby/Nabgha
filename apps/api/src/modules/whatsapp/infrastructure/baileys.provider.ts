@@ -11,6 +11,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as qrcode from 'qrcode';
 import type { IWaProvider, WaConnectionState, WaSendResult } from '../domain/interfaces/wa-provider.interface';
+import { normalizePhone } from '../../../shared/utils/phone.util';
 
 @Injectable()
 export class BaileysProvider implements IWaProvider, OnModuleDestroy {
@@ -228,12 +229,7 @@ export class BaileysProvider implements IWaProvider, OnModuleDestroy {
   }
 
   private normalizePhone(phone: string): string {
-    let digits = phone.replace(/\D/g, '');
-    // Egyptian numbers starting with 0 → prepend country code 20
-    if (digits.startsWith('0')) {
-      digits = '20' + digits.slice(1);
-    }
-    return digits;
+    return normalizePhone(phone);
   }
 
   onQrCode(tenantId: string, callback: (qr: string) => void): void {

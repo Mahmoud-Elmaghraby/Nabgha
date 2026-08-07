@@ -1,11 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { Inject } from '@nestjs/common';
+import type { Kysely } from 'kysely';
+import type { TenantDatabase } from '@nabgha/db';
 import { IFinanceRepository, FINANCE_REPOSITORY } from '../../domain/repositories/finance.repository.interface';
 import { AppError } from '../../../../core/errors/app.error';
 import { SendNotificationUseCase } from '../../../whatsapp/application/use-cases/send-notification.usecase';
 import { KyselyService } from "../../../../shared/infrastructure/database/kysely.service";
 import { PrismaService } from "../../../../shared/infrastructure/database/prisma.service";
+import type { PaymentEntity } from '../../domain/entities/finance.entity';
 import type {
   CreateTreasuryDto, UpdateTreasuryDto, GenerateDuesDto, UpdateDueDto,
   CreatePaymentDto, CancelPaymentDto, RefundPaymentDto, CreateManualDueDto,
@@ -24,6 +27,40 @@ export class FinanceUseCase {
     private readonly kysely: KyselyService,
     private readonly prisma: PrismaService,
   ) {}
+
+  // ─── Transaction Helpers ────────────────────────────────────
+  // كل عملية مالية مركّبة (تحصيل/إلغاء/استرجاع/تحويل/مصروف) لازم تتلف في transaction
+  // واحدة — لو أي خطوة فشلت في النص (قطع كهرباء، تقفيلة مفاجئة للجهاز، مشكلة اتصال
+  // لحظية)، كل الخطوات بترجع (rollback) بدل ما يفضل رصيد خزينة اتحدّث من غير سجل
+  // حركة يوضحه، أو فاتورة اتسجلت مدفوعة من غير ما رصيد الخزينة يتحدث فعلياً.
+  private async runInTransaction<T>(
+    tenantId: string,
+    fn: (trx: Kysely<TenantDatabase>) => Promise<T>,
+  ): Promise<T> {
+    const db = this.kysely.getTenantDb(tenantId);
+    return db.transaction().execute(fn);
+  }
+
+  // نسخ "مقفولة" (SELECT ... FOR UPDATE) من getTreasury/getDue — تُستخدم فقط جوه
+  // transaction فعلية، عشان تمنع اتنين يحصّلوا/يلغوا في نفس اللحظة بالظبط على نفس
+  // الفاتورة أو الخزينة (lost update / race condition)
+  private async getTreasuryLocked(tenantId: string, id: string, trx: Kysely<TenantDatabase>) {
+    const treasury = await this.repo.findTreasuryById(tenantId, id, { trx, forUpdate: true });
+    if (!treasury) throw new AppError('NOT_FOUND', 'الخزينة غير موجودة', 404);
+    return treasury;
+  }
+
+  private async getDueLocked(tenantId: string, id: string, trx: Kysely<TenantDatabase>) {
+    const due = await this.repo.findDueById(tenantId, id, { trx, forUpdate: true });
+    if (!due) throw new AppError('NOT_FOUND', 'الفاتورة غير موجودة', 404);
+    return due;
+  }
+
+  private async getPaymentInTx(tenantId: string, id: string, trx: Kysely<TenantDatabase>) {
+    const payment = await this.repo.findPaymentById(tenantId, id, trx);
+    if (!payment) throw new AppError('NOT_FOUND', 'الإيصال غير موجود', 404);
+    return payment;
+  }
 
   // ─── Treasuries ───────────────────────────────────────────
   async listTreasuries(tenantId: string) {
@@ -64,22 +101,31 @@ export class FinanceUseCase {
   }
 
   async transferBetweenTreasuries(tenantId: string, data: TransferBetweenTreasuriesDto, userId: string) {
-    const fromTreasury = await this.getTreasury(tenantId, data.fromTreasuryId);
-    const toTreasury = await this.getTreasury(tenantId, data.toTreasuryId);
+    return this.runInTransaction(tenantId, async (trx) => {
+      // نقفل الخزينتين بترتيب ثابت (حسب الـ id) مش بترتيب from/to — عشان لو
+      // حصل تحويلين متزامنين بالعكس (A→B و B→A) في نفس اللحظة، الاتنين يحاولوا
+      // يقفلوا بنفس الترتيب فمايحصلش deadlock بينهم
+      const [firstId, secondId] = [data.fromTreasuryId, data.toTreasuryId].sort();
+      const first = await this.getTreasuryLocked(tenantId, firstId, trx);
+      const second = await this.getTreasuryLocked(tenantId, secondId, trx);
+      const fromTreasury = first.id === data.fromTreasuryId ? first : second;
+      const toTreasury = first.id === data.fromTreasuryId ? second : first;
 
-    if (data.amount > fromTreasury.balance) {
-      throw new AppError('INSUFFICIENT_BALANCE', `رصيد الخزينة الحالي (${fromTreasury.balance} جنيه) أقل من مبلغ التحويل`, 400);
-    }
+      if (!fromTreasury.isActive || !toTreasury.isActive) {
+        throw new AppError('TREASURY_INACTIVE', 'لا يمكن التحويل من/إلى خزينة متوقفة', 400);
+      }
+      if (data.amount > fromTreasury.balance) {
+        throw new AppError('INSUFFICIENT_BALANCE', `رصيد الخزينة الحالي (${fromTreasury.balance} جنيه) أقل من مبلغ التحويل`, 400);
+      }
 
-    const fromBalanceBefore = fromTreasury.balance;
-    fromTreasury.debit(data.amount);
-    const toBalanceBefore = toTreasury.balance;
-    toTreasury.credit(data.amount);
+      const fromBalanceBefore = fromTreasury.balance;
+      fromTreasury.debit(data.amount);
+      const toBalanceBefore = toTreasury.balance;
+      toTreasury.credit(data.amount);
 
-    await Promise.all([
-      this.repo.saveTreasury(tenantId, fromTreasury),
-      this.repo.saveTreasury(tenantId, toTreasury),
-      this.repo.createTransaction(tenantId, {
+      await this.repo.saveTreasury(tenantId, fromTreasury, trx);
+      await this.repo.saveTreasury(tenantId, toTreasury, trx);
+      await this.repo.createTransaction(tenantId, {
         treasuryId: fromTreasury.id,
         type: 'transfer_out',
         amount: data.amount,
@@ -88,8 +134,8 @@ export class FinanceUseCase {
         notes: data.notes,
         createdBy: userId,
         relatedTreasuryId: toTreasury.id,
-      }),
-      this.repo.createTransaction(tenantId, {
+      }, trx);
+      await this.repo.createTransaction(tenantId, {
         treasuryId: toTreasury.id,
         type: 'transfer_in',
         amount: data.amount,
@@ -98,12 +144,12 @@ export class FinanceUseCase {
         notes: data.notes,
         createdBy: userId,
         relatedTreasuryId: fromTreasury.id,
-      }),
-    ]);
+      }, trx);
 
-    this.logger.log(`Transfer: ${data.amount} from treasury ${fromTreasury.id} to ${toTreasury.id}`);
+      this.logger.log(`Transfer: ${data.amount} from treasury ${fromTreasury.id} to ${toTreasury.id}`);
 
-    return { fromTreasury, toTreasury };
+      return { fromTreasury, toTreasury };
+    });
   }
 
   // ─── Monthly Dues ─────────────────────────────────────────
@@ -237,10 +283,16 @@ export class FinanceUseCase {
     return payment;
   }
 
-  async createPayment(tenantId: string, data: CreatePaymentDto, userId: string) {
-    const due = await this.getDue(tenantId, data.monthlyDueId);
-    const treasury = await this.getTreasury(tenantId, data.treasuryId);
+  // المنطق الفعلي لتسجيل دفعة — لازم يتنفذ جوه transaction معاها due/treasury مقفولين
+  // (forUpdate) قبل ما يتنادى. مستخدمة من createPayment (دفعة واحدة) وcollectMultiplePayments
+  // (أكتر من فاتورة مرة واحدة) عشان نتجنب تكرار نفس منطق التحقق والتحديث.
+  private async createPaymentInTx(
+    tenantId: string, data: CreatePaymentDto, userId: string, trx: Kysely<TenantDatabase>,
+  ): Promise<PaymentEntity> {
+    const due = await this.getDueLocked(tenantId, data.monthlyDueId, trx);
+    const treasury = await this.getTreasuryLocked(tenantId, data.treasuryId, trx);
 
+    if (!treasury.isActive) throw new AppError('TREASURY_INACTIVE', 'الخزينة متوقفة — لا يمكن التحصيل فيها', 400);
     if (due.status === 'paid') throw new AppError('ALREADY_PAID', 'الفاتورة مدفوعة بالكامل', 400);
     if (due.status === 'waived') throw new AppError('INVALID_STATUS', 'الفاتورة معفاة', 400);
     if (data.amount > due.remainingAmount) {
@@ -259,52 +311,58 @@ export class FinanceUseCase {
       paymentMethod: data.paymentMethod,
       notes: data.notes,
       createdBy: userId,
-    });
+    }, trx);
 
-    await Promise.all([
-      this.repo.saveTreasury(tenantId, treasury),
-      this.repo.saveDue(tenantId, due),
-      this.repo.createTransaction(tenantId, {
-        paymentId: payment.id,
-        treasuryId: treasury.id,
-        type: 'income',
-        amount: data.amount,
-        balanceBefore,
-        balanceAfter: treasury.balance,
-        createdBy: userId,
-      }),
-    ]);
+    await this.repo.saveTreasury(tenantId, treasury, trx);
+    await this.repo.saveDue(tenantId, due, trx);
+    await this.repo.createTransaction(tenantId, {
+      paymentId: payment.id,
+      treasuryId: treasury.id,
+      type: 'income',
+      amount: data.amount,
+      balanceBefore,
+      balanceAfter: treasury.balance,
+      createdBy: userId,
+    }, trx);
+
+    return payment;
+  }
+
+  async createPayment(tenantId: string, data: CreatePaymentDto, userId: string) {
+    const payment = await this.runInTransaction(tenantId, (trx) =>
+      this.createPaymentInTx(tenantId, data, userId, trx),
+    );
 
     this.logger.log(`Payment created: ${payment.id} — amount: ${data.amount} — receipt: #${payment.receiptNumber}`);
 
-    // WhatsApp notification — fire and forget
-    this.sendPaymentConfirmNotification(tenantId, due.studentId, data.amount, payment.receiptNumber)
+    // WhatsApp notification — fire and forget، وبعد ما الـ transaction اتأكدت ونجحت بالكامل
+    this.sendPaymentConfirmNotification(tenantId, payment.studentId, data.amount, payment.receiptNumber)
       .catch(err => this.logger.error('PAYMENT_CONFIRM WA failed: ' + err.message));
 
     return payment;
   }
 
   async cancelPayment(tenantId: string, id: string, data: CancelPaymentDto, userId: string) {
-    const payment = await this.getPayment(tenantId, id);
-    if (payment.status !== 'paid') throw new AppError('INVALID_STATUS', 'لا يمكن إلغاء هذا الإيصال', 400);
+    return this.runInTransaction(tenantId, async (trx) => {
+      const payment = await this.getPaymentInTx(tenantId, id, trx);
+      if (payment.status !== 'paid') throw new AppError('INVALID_STATUS', 'لا يمكن إلغاء هذا الإيصال', 400);
 
-    const due = await this.getDue(tenantId, payment.monthlyDueId);
-    const treasury = await this.getTreasury(tenantId, payment.treasuryId);
+      const due = await this.getDueLocked(tenantId, payment.monthlyDueId, trx);
+      const treasury = await this.getTreasuryLocked(tenantId, payment.treasuryId, trx);
 
-    if (payment.amount > treasury.balance) {
-      throw new AppError('INSUFFICIENT_BALANCE', `رصيد الخزينة الحالي (${treasury.balance} جنيه) أقل من مبلغ الإيصال — لا يمكن الإلغاء الآن`, 400);
-    }
+      if (payment.amount > treasury.balance) {
+        throw new AppError('INSUFFICIENT_BALANCE', `رصيد الخزينة الحالي (${treasury.balance} جنيه) أقل من مبلغ الإيصال — لا يمكن الإلغاء الآن`, 400);
+      }
 
-    const balanceBefore = treasury.balance;
-    treasury.debit(payment.amount);
-    due.reversePayment(payment.amount);
-    payment.cancel(data.reason);
+      const balanceBefore = treasury.balance;
+      treasury.debit(payment.amount);
+      due.reversePayment(payment.amount);
+      payment.cancel(data.reason);
 
-    await Promise.all([
-      this.repo.savePayment(tenantId, payment),
-      this.repo.saveDue(tenantId, due),
-      this.repo.saveTreasury(tenantId, treasury),
-      this.repo.createTransaction(tenantId, {
+      await this.repo.savePayment(tenantId, payment, trx);
+      await this.repo.saveDue(tenantId, due, trx);
+      await this.repo.saveTreasury(tenantId, treasury, trx);
+      await this.repo.createTransaction(tenantId, {
         paymentId: payment.id,
         treasuryId: treasury.id,
         type: 'cancellation',
@@ -313,50 +371,50 @@ export class FinanceUseCase {
         balanceAfter: treasury.balance,
         notes: data.reason,
         createdBy: userId,
-      }),
-    ]);
+      }, trx);
 
-    return payment;
+      return payment;
+    });
   }
 
   async refundPayment(tenantId: string, id: string, data: RefundPaymentDto, userId: string) {
-    const payment = await this.getPayment(tenantId, id);
-    if (payment.status === 'cancelled') throw new AppError('INVALID_STATUS', 'الإيصال ملغي', 400);
-    if (payment.status === 'refunded') throw new AppError('INVALID_STATUS', 'تم الاسترجاع بالكامل بالفعل', 400);
+    return this.runInTransaction(tenantId, async (trx) => {
+      const payment = await this.getPaymentInTx(tenantId, id, trx);
+      if (payment.status === 'cancelled') throw new AppError('INVALID_STATUS', 'الإيصال ملغي', 400);
+      if (payment.status === 'refunded') throw new AppError('INVALID_STATUS', 'تم الاسترجاع بالكامل بالفعل', 400);
 
-    // ─── Fix: منع تجاوز المبلغ المسترجع الفعلي في حالة partial_refund ───
-    // الإيصال ممكن يكون partial_refund من استرجاع سابق —
-    // لازم نحسب المتبقي القابل للاسترجاع بدل المقارنة بـ payment.amount كامل
-    const alreadyRefunded = payment.refundAmount ?? 0;
-    const maxRefundable = payment.amount - alreadyRefunded;
-    if (data.amount > maxRefundable) {
-      throw new AppError(
-        'AMOUNT_EXCEEDED',
-        `مبلغ الاسترجاع يتجاوز المتبقي القابل للاسترجاع (${maxRefundable} جنيه)`,
-        400,
-      );
-    }
+      // منع تجاوز المبلغ المسترجع الفعلي في حالة partial_refund —
+      // الإيصال ممكن يكون partial_refund من استرجاع سابق —
+      // لازم نحسب المتبقي القابل للاسترجاع بدل المقارنة بـ payment.amount كامل
+      const alreadyRefunded = payment.refundAmount ?? 0;
+      const maxRefundable = payment.amount - alreadyRefunded;
+      if (data.amount > maxRefundable) {
+        throw new AppError(
+          'AMOUNT_EXCEEDED',
+          `مبلغ الاسترجاع يتجاوز المتبقي القابل للاسترجاع (${maxRefundable} جنيه)`,
+          400,
+        );
+      }
 
-    const due = await this.getDue(tenantId, payment.monthlyDueId);
-    const treasury = await this.getTreasury(tenantId, payment.treasuryId);
+      const due = await this.getDueLocked(tenantId, payment.monthlyDueId, trx);
+      const treasury = await this.getTreasuryLocked(tenantId, payment.treasuryId, trx);
 
-    if (data.amount > treasury.balance) {
-      throw new AppError('INSUFFICIENT_BALANCE', `رصيد الخزينة الحالي (${treasury.balance} جنيه) أقل من مبلغ الاسترجاع المطلوب`, 400);
-    }
+      if (data.amount > treasury.balance) {
+        throw new AppError('INSUFFICIENT_BALANCE', `رصيد الخزينة الحالي (${treasury.balance} جنيه) أقل من مبلغ الاسترجاع المطلوب`, 400);
+      }
 
-    const balanceBefore = treasury.balance;
-    treasury.debit(data.amount);
-    due.reversePayment(data.amount);
+      const balanceBefore = treasury.balance;
+      treasury.debit(data.amount);
+      due.reversePayment(data.amount);
 
-    // نحدّث الـ refundAmount التراكمي وليس بس الأخير
-    const totalRefunded = alreadyRefunded + data.amount;
-    payment.refund(totalRefunded);
+      // نحدّث الـ refundAmount التراكمي وليس بس الأخير
+      const totalRefunded = alreadyRefunded + data.amount;
+      payment.refund(totalRefunded);
 
-    await Promise.all([
-      this.repo.savePayment(tenantId, payment),
-      this.repo.saveDue(tenantId, due),
-      this.repo.saveTreasury(tenantId, treasury),
-      this.repo.createTransaction(tenantId, {
+      await this.repo.savePayment(tenantId, payment, trx);
+      await this.repo.saveDue(tenantId, due, trx);
+      await this.repo.saveTreasury(tenantId, treasury, trx);
+      await this.repo.createTransaction(tenantId, {
         paymentId: payment.id,
         treasuryId: treasury.id,
         type: 'refund',
@@ -365,10 +423,10 @@ export class FinanceUseCase {
         balanceAfter: treasury.balance,
         notes: data.notes,
         createdBy: userId,
-      }),
-    ]);
+      }, trx);
 
-    return payment;
+      return payment;
+    });
   }
 
   // ─── Expenses ─────────────────────────────────────────────
@@ -383,27 +441,28 @@ export class FinanceUseCase {
   }
 
   async createExpense(tenantId: string, data: CreateExpenseDto, userId: string) {
-    const treasury = await this.getTreasury(tenantId, data.treasuryId);
-    if (data.amount > treasury.balance) {
-      throw new AppError('INSUFFICIENT_BALANCE', `رصيد الخزينة غير كافي (${treasury.balance} جنيه)`, 400);
-    }
+    return this.runInTransaction(tenantId, async (trx) => {
+      const treasury = await this.getTreasuryLocked(tenantId, data.treasuryId, trx);
+      if (!treasury.isActive) throw new AppError('TREASURY_INACTIVE', 'الخزينة متوقفة — لا يمكن تسجيل مصروف عليها', 400);
+      if (data.amount > treasury.balance) {
+        throw new AppError('INSUFFICIENT_BALANCE', `رصيد الخزينة غير كافي (${treasury.balance} جنيه)`, 400);
+      }
 
-    const balanceBefore = treasury.balance;
-    treasury.debit(data.amount);
+      const balanceBefore = treasury.balance;
+      treasury.debit(data.amount);
 
-    const expense = await this.repo.createExpense(tenantId, {
-      treasuryId: data.treasuryId,
-      category: data.category,
-      title: data.title,
-      amount: data.amount,
-      expenseDate: data.expenseDate ? new Date(data.expenseDate) : new Date(),
-      notes: data.notes,
-      createdBy: userId,
-    });
+      const expense = await this.repo.createExpense(tenantId, {
+        treasuryId: data.treasuryId,
+        category: data.category,
+        title: data.title,
+        amount: data.amount,
+        expenseDate: data.expenseDate ? new Date(data.expenseDate) : new Date(),
+        notes: data.notes,
+        createdBy: userId,
+      }, trx);
 
-    await Promise.all([
-      this.repo.saveTreasury(tenantId, treasury),
-      this.repo.createTransaction(tenantId, {
+      await this.repo.saveTreasury(tenantId, treasury, trx);
+      await this.repo.createTransaction(tenantId, {
         treasuryId: treasury.id,
         type: 'expense',
         amount: data.amount,
@@ -411,10 +470,10 @@ export class FinanceUseCase {
         balanceAfter: treasury.balance,
         notes: data.title,
         createdBy: userId,
-      }),
-    ]);
+      }, trx);
 
-    return expense;
+      return expense;
+    });
   }
 
   async updateExpense(tenantId: string, id: string, data: UpdateExpenseDto) {
@@ -452,17 +511,48 @@ export class FinanceUseCase {
     paymentMethod: string;
     notes?: string;
   }, userId: string) {
-    const results = [];
-    for (const p of data.payments) {
-      const payment = await this.createPayment(tenantId, {
-        monthlyDueId: p.monthlyDueId,
-        treasuryId: data.treasuryId,
-        amount: p.amount,
-        paymentMethod: data.paymentMethod as any,
-        notes: data.notes,
-      }, userId);
-      results.push(payment);
+    // ترتيب الفواتير حسب الـ id (مش ترتيب اختيار المستخدم) — عشان لو حصل طلبين
+    // تحصيل متزامنين شغالين على فواتير مشتركة، الاتنين يقفلوا الصفوف بنفس
+    // الترتيب فمايحصلش deadlock بينهم
+    const sortedPayments = [...data.payments].sort((a, b) => a.monthlyDueId.localeCompare(b.monthlyDueId));
+
+    // الكل في transaction واحدة — إما كل الفواتير المختارة تتحصّل مع بعض، أو ولا
+    // واحدة فيها تتسجل خالص. قبل كده كانت بتتحصّل واحدة واحدة في loop عادي —
+    // لو فاتورة في النص فشلت، اللي قبلها كانت بتفضل متحصّلة فعلياً من غير أي
+    // تراجع، والمستخدم كان بيشوف رسالة خطأ عامة من غير ما يعرف مين اتحصل فعلاً
+    const results = await this.runInTransaction(tenantId, async (trx) => {
+      const created: PaymentEntity[] = [];
+      for (let i = 0; i < sortedPayments.length; i++) {
+        const p = sortedPayments[i];
+        try {
+          const payment = await this.createPaymentInTx(tenantId, {
+            monthlyDueId: p.monthlyDueId,
+            treasuryId: data.treasuryId,
+            amount: p.amount,
+            paymentMethod: data.paymentMethod as any,
+            notes: data.notes,
+          }, userId, trx);
+          created.push(payment);
+        } catch (err: any) {
+          // الرسالة بتوضح بالظبط أي فاتورة فشلت — والـ transaction كلها هترجع
+          // (rollback) يعني ولا فاتورة من اللي "نجحت" قبلها هتتسجل فعلياً
+          const failedNames = created.length > 0 ? ` (بعد نجاح ${created.length} فاتورة تم التراجع عنها تلقائياً)` : '';
+          throw new AppError(
+            err.code || 'COLLECT_FAILED',
+            `فشل تحصيل الفاتورة رقم ${i + 1} من ${sortedPayments.length}: ${err.message}${failedNames}`,
+            err.statusCode || 400,
+          );
+        }
+      }
+      return created;
+    });
+
+    // WhatsApp — بعد ما الـ transaction اتأكدت ونجحت بالكامل بس
+    for (const payment of results) {
+      this.sendPaymentConfirmNotification(tenantId, payment.studentId, payment.amount, payment.receiptNumber)
+        .catch(err => this.logger.error('PAYMENT_CONFIRM WA failed: ' + err.message));
     }
+
     return results;
   }
 

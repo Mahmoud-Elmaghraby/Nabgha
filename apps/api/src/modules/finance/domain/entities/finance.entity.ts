@@ -146,6 +146,9 @@ export class PaymentEntity {
     public readonly subjectName?: string,
     public readonly month?: string,
     public readonly treasuryName?: string,
+    // خصم الفاتورة (monthly_dues.discount_applied) وقت الدفع — مفيد لعرضه في
+    // الإيصال المطبوع، رغم إنه مش عمود على payments نفسه (بيتم جلبه بـ join)
+    public readonly discountApplied?: number,
   ) {}
 
   cancel(reason: string): void {

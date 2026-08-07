@@ -55,3 +55,6 @@ apps/api/Nabgha/
 *.zip
 *.pem
 nabgha-setup1.exe 
+.claude/
+testdelete123.txt
+testdelete*.txt

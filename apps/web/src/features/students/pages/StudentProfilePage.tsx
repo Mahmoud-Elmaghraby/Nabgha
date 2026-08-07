@@ -25,7 +25,9 @@ export default function StudentProfilePage() {
   const { hasPermission } = usePermissions();
   const toast = useToast();
   const confirm = useConfirm();
-  const { addStudent, removeStudent } = useGroupMutations();
+  const { addStudent, removeStudent, updateDiscount } = useGroupMutations();
+  const [editingDiscountGroupId, setEditingDiscountGroupId] = useState<string | null>(null);
+  const [editingDiscountValue, setEditingDiscountValue] = useState(0);
   const { data: allGroups } = useGroups({ limit: 1000 });
   const { data: subjects = [] } = useSubjects();
 
@@ -34,7 +36,7 @@ export default function StudentProfilePage() {
   const [addingGroup, setAddingGroup] = useState(false);
   const [selectedGroupId, setSelectedGroupId] = useState('');
   const [discount, setDiscount] = useState(0);
-  const [activeTab, setActiveTab] = useState<'groups' | 'finance' | 'attendance'>('groups');
+  const [activeTab, setActiveTab] = useState<'groups' | 'finance' | 'attendance' | 'grades'>('groups');
 
   const { data: waStatus } = useQuery({
     queryKey: ['wa-status'],
@@ -63,8 +65,10 @@ export default function StudentProfilePage() {
     activeTab === 'finance' ? id! : ''
   );
 
+  // نفس الـ query بيتغذّى بيها تبويب "الحضور" وتبويب "الدرجات" مع بعض — الدرجات
+  // أصلاً هي عمود degree/outOf على نفس سجل الحضور، مفيش داعي لـ endpoint جديد
   const { data: attendanceRecords = [], isLoading: loadingAttendance } = useStudentAttendance(
-    id!, activeTab === 'attendance'
+    id!, activeTab === 'attendance' || activeTab === 'grades'
   );
 
   if (isLoading) return (
@@ -112,6 +116,13 @@ export default function StudentProfilePage() {
     }
   };
 
+  const handleSaveDiscount = (groupId: string) => {
+    updateDiscount.mutate({ groupId, studentId: id!, discount: editingDiscountValue }, {
+      onSuccess: () => setEditingDiscountGroupId(null),
+      onError: (err: any) => toast.error(err?.response?.data?.error?.message || 'حدث خطأ أثناء تعديل الخصم'),
+    });
+  };
+
   const handleRemoveFromGroup = async (groupId: string) => {
     if (!(await confirm('هل تريد إزالة الطالب من هذه المجموعة؟', { danger: true }))) return;
     try {
@@ -126,7 +137,7 @@ export default function StudentProfilePage() {
   const allPayments = paymentsData?.data ?? [];
   const totalDues = allDues.reduce((s: number, d: any) => s + d.dueAmount, 0);
   const totalPaid = allDues.reduce((s: number, d: any) => s + d.paidAmount, 0);
-  const totalRemaining = allDues.reduce((s: number, d: any) => s + (d.status === 'waived' ? 0 : d.dueAmount - d.discountApplied - d.paidAmount), 0);
+  const totalRemaining = allDues.reduce((s: number, d: any) => s + (d.status === 'waived' ? 0 : Math.max(0, d.dueAmount - d.discountApplied - d.paidAmount)), 0);
   const openDuesCount = allDues.filter((d: any) => d.status === 'unpaid' || d.status === 'partial').length;
 
   // إحصائيات الحضور
@@ -139,6 +150,15 @@ export default function StudentProfilePage() {
   };
   const attendanceRate = attendanceTotal > 0
     ? Math.round(((attendanceStats.present + attendanceStats.late) / attendanceTotal) * 100)
+    : null;
+
+  // درجات/امتحانات: نفس سجلات الحضور اللي ليها درجة مسجلة (degree/outOf) —
+  // بنفس منطق تقرير "درجات الطالب" الموجود في الـ reports، بس هنا كـ تبويب مباشر في البروفايل
+  const gradeRecords = attendanceRecords
+    .filter(r => r.degree !== null && r.outOf !== null && r.outOf > 0)
+    .map(r => ({ ...r, percentage: Math.round((r.degree! / r.outOf!) * 100) }));
+  const avgPercentage = gradeRecords.length > 0
+    ? Math.round(gradeRecords.reduce((s, r) => s + r.percentage, 0) / gradeRecords.length)
     : null;
 
   return (
@@ -290,6 +310,7 @@ export default function StudentProfilePage() {
               { key: 'groups', label: 'المجموعات', count: studentGroups.length },
               { key: 'finance', label: 'المالية', count: openDuesCount > 0 ? openDuesCount : null },
               { key: 'attendance', label: 'الحضور', count: attendanceTotal > 0 ? attendanceStats.absent : null },
+              { key: 'grades', label: 'الدرجات', count: null },
             ].map(tab => (
               <button key={tab.key} onClick={() => setActiveTab(tab.key as any)}
                 className={`flex-1 py-3 text-sm font-medium transition-colors relative ${
@@ -365,10 +386,30 @@ export default function StudentProfilePage() {
                           <p className="text-xs text-gray-400 mt-0.5">{g.subjectGradeLabel}</p>
                         )}
                         <div className="flex items-center gap-2 mt-0.5">
-                          {g.discount > 0 && (
-                            <span className="text-xs text-[#0E3B2E] bg-[#0E3B2E]/10 px-2 py-0.5 rounded-full">
-                              خصم: {g.discount} ج.م
-                            </span>
+                          {editingDiscountGroupId === g.groupId ? (
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="number" min={0} value={editingDiscountValue}
+                                onChange={e => setEditingDiscountValue(Number(e.target.value))}
+                                className="w-20 border border-gray-200 rounded px-2 py-0.5 text-xs"
+                                autoFocus
+                              />
+                              <button onClick={() => handleSaveDiscount(g.groupId)} className="text-xs text-green-600 font-medium">✓</button>
+                              <button onClick={() => setEditingDiscountGroupId(null)} className="text-xs text-gray-400">✕</button>
+                            </div>
+                          ) : hasPermission('groups.edit') ? (
+                            <button
+                              onClick={() => { setEditingDiscountGroupId(g.groupId); setEditingDiscountValue(g.discount); }}
+                              className="text-xs text-[#0E3B2E] bg-[#0E3B2E]/10 px-2 py-0.5 rounded-full hover:bg-[#0E3B2E]/20 transition-colors"
+                            >
+                              {g.discount > 0 ? `خصم: ${g.discount} ج.م` : 'بدون خصم'}
+                            </button>
+                          ) : (
+                            g.discount > 0 && (
+                              <span className="text-xs text-[#0E3B2E] bg-[#0E3B2E]/10 px-2 py-0.5 rounded-full">
+                                خصم: {g.discount} ج.م
+                              </span>
+                            )
                           )}
                           <span className="text-xs text-gray-400">
                             {g.schedule?.map((s: any) => `${DAY_LABELS[s.day as keyof typeof DAY_LABELS]} ${s.startTime}`).join(' · ')}
@@ -436,7 +477,7 @@ export default function StudentProfilePage() {
                       ) : (
                         <div className="space-y-2">
                           {allDues.map((due: any) => {
-                            const remaining = due.status === 'waived' ? 0 : due.dueAmount - due.discountApplied - due.paidAmount;
+                            const remaining = due.status === 'waived' ? 0 : Math.max(0, due.dueAmount - due.discountApplied - due.paidAmount);
                             return (
                               <div key={due.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl border border-gray-100">
                                 <div className="flex-1 min-w-0">
@@ -558,6 +599,70 @@ export default function StudentProfilePage() {
                             )}
                             <span className={`text-xs px-1.5 py-0.5 rounded-full border ${ATTENDANCE_STATUS_LABELS[record.status as AttendanceStatus]?.class}`}>
                               {ATTENDANCE_STATUS_LABELS[record.status as AttendanceStatus]?.label}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* ─── Tab: الدرجات ─── */}
+            {activeTab === 'grades' && (
+              <div className="space-y-4">
+                {loadingAttendance ? (
+                  <div className="space-y-2">
+                    {[1, 2, 3].map(i => <div key={i} className="h-14 bg-gray-100 rounded-xl animate-pulse" />)}
+                  </div>
+                ) : gradeRecords.length === 0 ? (
+                  <p className="text-sm text-gray-400 text-center py-6">لا يوجد درجات مسجلة لهذا الطالب بعد</p>
+                ) : (
+                  <>
+                    {/* إحصائيات الدرجات */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="bg-gray-50 rounded-xl p-3 text-center border border-gray-100">
+                        <p className="text-base font-bold text-gray-800">{gradeRecords.length}</p>
+                        <p className="text-xs text-gray-400">عدد الامتحانات</p>
+                      </div>
+                      <div className={`rounded-xl p-3 text-center border ${
+                        avgPercentage !== null && avgPercentage < 50 ? 'bg-red-50 border-red-100' : 'bg-emerald-50 border-emerald-100'
+                      }`}>
+                        <p className={`text-base font-bold ${avgPercentage !== null && avgPercentage < 50 ? 'text-red-600' : 'text-emerald-700'}`}>
+                          {avgPercentage}%
+                        </p>
+                        <p className={`text-xs ${avgPercentage !== null && avgPercentage < 50 ? 'text-red-500' : 'text-emerald-600'}`}>متوسط الدرجات</p>
+                      </div>
+                    </div>
+
+                    {/* سجل الدرجات */}
+                    <div className="space-y-2">
+                      {gradeRecords.map(record => (
+                        <div key={record.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl border border-gray-100">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-900 truncate">{record.sessionTitle}</p>
+                            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                              <span className="text-xs text-gray-400">
+                                {new Date(record.startDate).toLocaleDateString('ar-EG')}
+                              </span>
+                              {record.groupName && <span className="text-xs text-gray-400">· {record.groupName}</span>}
+                              {record.subjectName && <span className="text-xs text-gray-400">· {record.subjectName}</span>}
+                              <span className="text-xs text-gray-400">
+                                · {SESSION_TYPE_LABELS[record.sessionType as SessionType] ?? record.sessionType}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="text-left shrink-0 mr-2">
+                            <p className="text-sm font-bold text-gray-800">{record.degree}/{record.outOf}</p>
+                            <span className={`text-xs px-1.5 py-0.5 rounded-full border ${
+                              record.percentage < 50
+                                ? 'bg-red-50 text-red-600 border-red-200'
+                                : record.percentage < 75
+                                ? 'bg-amber-50 text-amber-600 border-amber-200'
+                                : 'bg-emerald-50 text-emerald-600 border-emerald-200'
+                            }`}>
+                              {record.percentage}%
                             </span>
                           </div>
                         </div>

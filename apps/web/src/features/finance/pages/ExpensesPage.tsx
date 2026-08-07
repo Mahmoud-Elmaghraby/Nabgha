@@ -5,7 +5,9 @@ import { useExpenses, useExpenseMutations, useTreasuries } from '../hooks/useFin
 import { EXPENSE_CATEGORY_LABELS } from '../types/finance.types';
 import { FinanceLayout } from '../components/FinanceLayout';
 import { usePermissions } from '@/shared/hooks/usePermissions';
-import type { ExpenseCategory } from '../types/finance.types';
+import { DataTable } from '@/shared/components/DataTable';
+import type { Column } from '@/shared/components/DataTable';
+import type { Expense, ExpenseCategory } from '../types/finance.types';
 
 const getCurrentMonthRange = () => {
   const now = new Date();
@@ -45,6 +47,65 @@ export default function ExpensesPage() {
       setForm({ treasuryId: treasuries[0]?.id || '', category: 'other', title: '', amount: '', expenseDate: new Date().toISOString().slice(0, 10), notes: '' });
     } catch (err: any) { toast.error(err?.response?.data?.error?.message || 'حدث خطأ'); }
   };
+
+  const handleRemove = async (e: Expense) => {
+    if (await confirm('حذف هذا المصروف؟', { danger: true })) {
+      try { await remove.mutateAsync(e.id); }
+      catch (err: any) { toast.error(err?.response?.data?.error?.message || 'خطأ'); }
+    }
+  };
+
+  const columns: Column<Expense>[] = [
+    {
+      key: 'title',
+      header: 'المصروف',
+      render: (e) => (
+        <div className="flex items-center gap-2">
+          <span className="text-lg shrink-0">{EXPENSE_CATEGORY_LABELS[e.category].icon}</span>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-gray-900 truncate">{e.title}</p>
+            <p className="text-xs text-gray-400">{EXPENSE_CATEGORY_LABELS[e.category].label}</p>
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: 'treasury',
+      header: 'الخزينة',
+      render: (e) => <span className="text-xs text-gray-500 whitespace-nowrap">{e.treasuryName}</span>,
+    },
+    {
+      key: 'date',
+      header: 'التاريخ',
+      render: (e) => (
+        <span className="text-xs text-gray-500 whitespace-nowrap">
+          {new Date(e.expenseDate).toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' })}
+        </span>
+      ),
+    },
+    {
+      key: 'amount',
+      header: 'المبلغ',
+      render: (e) => <span className="text-sm font-bold text-red-600 whitespace-nowrap">{e.amount.toLocaleString('ar-EG')} ج</span>,
+    },
+    {
+      key: 'actions',
+      header: '',
+      render: (e) => {
+        if (!canManage) return null;
+        return (
+          <div className="flex justify-end">
+            <button onClick={() => handleRemove(e)}
+              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-red-50 text-red-400 transition-colors">
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/>
+              </svg>
+            </button>
+          </div>
+        );
+      },
+    },
+  ];
 
   return (
     <FinanceLayout>
@@ -90,42 +151,16 @@ export default function ExpensesPage() {
         </div>
 
         {/* List */}
-        {isLoading ? (
-          <div className="space-y-2">{[1,2,3].map(i => <div key={i} className="h-16 bg-gray-100 rounded-2xl animate-pulse" />)}</div>
-        ) : expenses.length === 0 ? (
-          <div className="text-center py-16 text-gray-400">
-            <p className="text-5xl mb-4">📤</p>
-            <p className="font-medium">لا توجد مصروفات هذا الشهر</p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {expenses.map(e => (
-              <div key={e.id} className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center text-xl shrink-0">
-                    {EXPENSE_CATEGORY_LABELS[e.category].icon}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-gray-900 text-sm truncate">{e.title}</p>
-                    <p className="text-xs text-gray-400">{EXPENSE_CATEGORY_LABELS[e.category].label} • {e.treasuryName}</p>
-                    <p className="text-xs text-gray-400">{new Date(e.expenseDate).toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <p className="font-bold text-red-600">{e.amount.toLocaleString('ar-EG')} ج</p>
-                    {canManage && (
-                      <button onClick={async () => { if (await confirm('حذف هذا المصروف؟', { danger: true })) { try { await remove.mutateAsync(e.id); } catch(err: any) { toast.error(err?.response?.data?.error?.message || 'خطأ'); } } }}
-                        className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-red-50 text-red-400 transition-colors">
-                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/>
-                        </svg>
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+        <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+          <DataTable<Expense>
+            columns={columns}
+            data={expenses}
+            keyExtractor={(e) => e.id}
+            isLoading={isLoading}
+            emptyIcon="/Logo-icon-192.png"
+            emptyTitle="لا توجد مصروفات هذا الشهر"
+          />
+        </div>
       </div>
 
       {/* Form Modal */}

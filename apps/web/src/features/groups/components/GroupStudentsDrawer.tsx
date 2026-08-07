@@ -6,6 +6,7 @@ import { useSubjects } from '@/features/subjects/hooks/useSubjects';
 import { useStudents } from '@/features/students/hooks/useStudents';
 import { usePermissions } from '@/shared/hooks/usePermissions';
 import { useConfirm } from '@/shared/components/Confirm';
+import { useToast } from '@/shared/components/Toast';
 import { FormSheet } from '@/shared/components';
 import type { GroupDto, GroupStudentDto } from '../types/group.types';
 import { useDebounce } from '@/shared/hooks/useDebounce';
@@ -60,6 +61,7 @@ function DiscountEditor({ student, groupId }: { student: GroupStudentDto; groupI
 export function GroupStudentsDrawer({ group, onClose }: Props) {
   const { hasPermission } = usePermissions();
   const confirm = useConfirm();
+  const toast = useToast();
   const canEdit = hasPermission('groups.edit');
   const [search, setSearch] = useState('');
   const [discount, setDiscount] = useState(0);
@@ -117,13 +119,20 @@ export function GroupStudentsDrawer({ group, onClose }: Props) {
   const handleAdd = (studentId: string) => {
     if (!group) return;
     addStudent.mutate({ groupId: group.id, payload: { studentId, discount } },
-      { onSuccess: () => { setSearch(''); setDiscount(0); } }
+      {
+        onSuccess: () => { setSearch(''); setDiscount(0); },
+        // من غير الـ onError ده، خطأ زي "المجموعة وصلت للحد الأقصى" كان بيختفي
+        // بصمت — الزرار بس بيوقف اللودينج من غير أي رسالة توضح للمستخدم إيه اللي حصل
+        onError: (err: any) => toast.error(err?.response?.data?.error?.message || 'حدث خطأ أثناء إضافة الطالب'),
+      }
     );
   };
 
   const handleRemove = async (studentId: string) => {
     if (!group || !(await confirm('هل تريد إزالة هذا الطالب من المجموعة؟', { danger: true }))) return;
-    removeStudent.mutate({ groupId: group.id, studentId });
+    removeStudent.mutate({ groupId: group.id, studentId }, {
+      onError: (err: any) => toast.error(err?.response?.data?.error?.message || 'حدث خطأ أثناء إزالة الطالب'),
+    });
   };
 
   return (

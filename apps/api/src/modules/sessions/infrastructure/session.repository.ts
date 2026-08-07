@@ -336,6 +336,75 @@ export class SessionRepository {
     });
   }
 
+  /**
+   * المجموعات النشطة اللي عندها موعد في جدولها الأسبوعي (schedule) بيطابق يوم معين —
+   * بترجع كمان الميعاد (بداية/نهاية) بتاع نفس اليوم ده عشان نستخدمه في توليد الحصة تلقائي.
+   */
+  async findGroupsScheduledForDay(
+    tenantId: string, dayOfWeek: string,
+  ): Promise<Array<{ id: string; name: string; startTime: string; endTime: string }>> {
+    const db = this.kysely.getTenantDb(tenantId);
+    const rows = await db.selectFrom('groups')
+      .select(['groups.id', 'groups.name', 'groups.schedule'])
+      .where('groups.is_active', '=', true)
+      .where('groups.deleted_at', 'is', null)
+      .where(sql<boolean>`EXISTS (
+        SELECT 1 FROM jsonb_array_elements(groups.schedule) AS elem
+        WHERE elem->>'day' = ${dayOfWeek}
+      )`)
+      .execute();
+
+    return rows.map(r => {
+      const schedule = Array.isArray(r.schedule) ? r.schedule : JSON.parse((r.schedule as any) || '[]');
+      const match = (schedule as Array<{ day: string; startTime: string; endTime: string }>)
+        .find(s => s.day === dayOfWeek);
+      return { id: r.id, name: r.name, startTime: match?.startTime ?? '', endTime: match?.endTime ?? '' };
+    }).filter(g => g.startTime && g.endTime);
+  }
+
+  /**
+   * الحصص "المجدولة" اللي وصل معاد بدايتها (start_date + start_time <= دلوقتي) —
+   * علشان الـ cron يبدّلها "جارية" أوتوماتيك من غير ما المدرّس يضغط زرار "بدء".
+   * التاريخ والوقت مخزّنين في عمودين منفصلين (DATE و TIME)، وبوستجريس بيسمح
+   * بجمعهم مباشرة (DATE + TIME = TIMESTAMP) عشان نقارنه بـ now().
+   */
+  async findSessionsToAutoStart(tenantId: string): Promise<string[]> {
+    const db = this.kysely.getTenantDb(tenantId);
+    const rows = await db.selectFrom('sessions')
+      .select('id')
+      .where('status', '=', 'scheduled')
+      .where('start_time', 'is not', null)
+      .where('deleted_at', 'is', null)
+      .where(sql<boolean>`(sessions.start_date + sessions.start_time) <= now()`)
+      .execute();
+    return rows.map(r => r.id);
+  }
+
+  /** نفس الفكرة بس للحصص "الجارية" اللي وصل معاد نهايتها — تتحول "منتهية" أوتوماتيك */
+  async findSessionsToAutoComplete(tenantId: string): Promise<string[]> {
+    const db = this.kysely.getTenantDb(tenantId);
+    const rows = await db.selectFrom('sessions')
+      .select('id')
+      .where('status', '=', 'ongoing')
+      .where('end_time', 'is not', null)
+      .where('deleted_at', 'is', null)
+      .where(sql<boolean>`(sessions.start_date + sessions.end_time) <= now()`)
+      .execute();
+    return rows.map(r => r.id);
+  }
+
+  /** هل فيه حصة (مش محذوفة) موجودة بالفعل لمجموعة معينة في تاريخ معين؟ — لمنع تكرار التوليد */
+  async groupHasSessionOnDate(tenantId: string, groupId: string, date: string): Promise<boolean> {
+    const db = this.kysely.getTenantDb(tenantId);
+    const row = await db.selectFrom('sessions')
+      .select('id')
+      .where('group_id', '=', sql<string>`${groupId}::uuid`)
+      .where('start_date', '=', new Date(date) as any)
+      .where('deleted_at', 'is', null)
+      .executeTakeFirst();
+    return !!row;
+  }
+
   async getStudentsByGroup(tenantId: string, groupId: string): Promise<string[]> {
     const db = this.kysely.getTenantDb(tenantId);
     const rows = await db.selectFrom('group_students')

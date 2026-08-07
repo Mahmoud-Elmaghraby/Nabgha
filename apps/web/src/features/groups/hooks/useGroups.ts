@@ -71,8 +71,13 @@ export function useGroupMutations() {
   const updateDiscount = useMutation({
     mutationFn: ({ groupId, studentId, discount }: { groupId: string; studentId: string; discount: number }) =>
       groupsApi.updateStudentDiscount(groupId, studentId, discount),
-    onSuccess: (_, { groupId }) =>
-      qc.invalidateQueries({ queryKey: GROUP_KEYS.students(groupId) }),
+    onSuccess: (_, { groupId }) => {
+      qc.invalidateQueries({ queryKey: GROUP_KEYS.students(groupId) });
+      // لازم كمان نبطّل كاش بروفايل الطالب (['students', id, 'groups']) —
+      // ده الطريقة الوحيدة إن تعديل الخصم من داخل درج المجموعة ينعكس فورًا
+      // على تبويب المجموعات في صفحة بروفايل الطالب من غير ما يحتاج يعمل reload يدوي
+      qc.invalidateQueries({ queryKey: ['students'] });
+    },
   });
 
   const removeStudent = useMutation({

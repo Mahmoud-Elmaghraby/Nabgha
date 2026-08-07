@@ -21,11 +21,16 @@ export function FloatingFab() {
   const dragStart = useRef<{ mx: number; my: number; px: number; py: number } | null>(null);
   const moved = useRef(false);
 
+  // بنجيب حصص "اليوم" اللي جارية أو لسه مجدولة — مش بس الجارية. عشان لو المدرس
+  // لسه ماضغطش "بدء" على حصة النهاردة، الزرار العائم يقدر يوديه على شاشة
+  // التحضير بتاعتها مباشرة برضه، مش يتجاهلها لحد ما تتحول "جارية" يدوياً
   const { data: ongoingSessions = [] } = useQuery({
-    queryKey: ['ongoing-sessions-fab'],
+    queryKey: ['attendance-sessions-fab'],
     queryFn: async () => {
-      const res = await apiClient.get('/sessions?status=ongoing&limit=10');
-      return (res.data.data?.data ?? []) as OngoingSession[];
+      const today = new Date().toISOString().slice(0, 10);
+      const res = await apiClient.get(`/sessions?from=${today}&to=${today}&limit=50`);
+      const all = (res.data.data?.data ?? []) as OngoingSession[];
+      return all.filter((s) => s.status === 'ongoing' || s.status === 'scheduled');
     },
     refetchInterval: 30_000,
     retry: false,
@@ -98,7 +103,7 @@ export function FloatingFab() {
 
   const handleAttendance = () => {
     if (ongoingSessions.length === 0) {
-      toast.info('لا توجد حصص جارية الآن');
+      toast.info('لا توجد حصص اليوم');
       setOpen(false);
       return;
     }

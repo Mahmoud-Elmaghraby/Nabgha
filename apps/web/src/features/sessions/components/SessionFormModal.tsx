@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useGroups } from '@/features/groups/hooks/useGroups';
 import { getGroupSelectLabel } from '@/features/groups/utils/formatGroupLabel';
+import type { DayOfWeek } from '@/features/groups/types/group.types';
 import { useSubjects } from '@/features/subjects/hooks/useSubjects';
 import { GRADE_OPTIONS } from '@nabgha/types';
 import { useSessionMutations } from '../hooks/useSessions';
@@ -10,35 +11,63 @@ import { SESSION_TYPE_LABELS } from '../types/session.types';
 interface Props {
   open: boolean;
   onClose: () => void;
+  /** لفتح النموذج بمجموعة محددة مسبقاً (مثلاً من زرار "إنشاء" جمب حصة ناقصة في الداشبورد) */
+  initialGroupId?: string;
+  /** لفتح النموذج بتاريخ محدد مسبقاً — افتراضياً النهاردة */
+  initialStartDate?: string;
 }
 
 const TYPES_NEED_GROUP: SessionType[] = ['lesson', 'lesson_revision', 'lesson_exam', 'exam'];
 const TYPES_NEED_GRADES: SessionType[] = ['lesson_revision', 'lesson_exam', 'exam', 'grade_exam'];
 
-export function SessionFormModal({ open, onClose }: Props) {
+// ترتيب أيام JS Date.getDay() (0 = الأحد) بالمقابل لقيم DayOfWeek المستخدمة في جدول المجموعات
+const JS_DAY_TO_DAY_OF_WEEK: DayOfWeek[] = [
+  'sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday',
+];
+
+export function SessionFormModal({ open, onClose, initialGroupId, initialStartDate }: Props) {
   const { create } = useSessionMutations();
   const { data: groupsData } = useGroups({ limit: 1000 });
   const { data: subjects = [] } = useSubjects();
 
   const [type, setType] = useState<SessionType>('lesson');
   const [title, setTitle] = useState('');
-  const [groupId, setGroupId] = useState('');
+  const [groupId, setGroupId] = useState(initialGroupId ?? '');
   const [grade, setGrade] = useState('');
   const [subjectId, setSubjectId] = useState('');
   const [outOf, setOutOf] = useState('');
-  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [startDate, setStartDate] = useState(initialStartDate ?? new Date().toISOString().split('T')[0]);
   const [endDate, setEndDate] = useState('');
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
   const [notes, setNotes] = useState('');
   const [error, setError] = useState('');
 
-  if (!open) return null;
-
   const isGradeExam = type === 'grade_exam';
   const needsGroup = TYPES_NEED_GROUP.includes(type);
   const needsGrades = TYPES_NEED_GRADES.includes(type);
   const groups = groupsData?.data || [];
+  const selectedGroup = groups.find(g => g.id === groupId);
+
+  // بمجرد اختيار مجموعة (أو تغيير تاريخ البداية)، نجيب معاد بداية/نهاية الحصة
+  // تلقائياً من الجدول الأسبوعي المحفوظ في المجموعة — بدل ما المستخدم يكتبهم يدوي
+  // كل مرة. لو مفيش يوم في الجدول يطابق يوم startDate، نسيب الحقول زي ما هي.
+  useEffect(() => {
+    if (!needsGroup || !selectedGroup || !startDate) return;
+    const jsDay = new Date(`${startDate}T00:00:00`).getDay();
+    const dayOfWeek = JS_DAY_TO_DAY_OF_WEEK[jsDay];
+    const match = selectedGroup.schedule.find(s => s.day === dayOfWeek);
+    if (match) {
+      setStartTime(match.startTime);
+      setEndTime(match.endTime);
+    }
+    // groupsData مضافة في الـ deps عشان لو النموذج اتفتح بمجموعة مبدئية (initialGroupId)
+    // قبل ما بيانات المجموعات توصل من الـ API، الـ effect يتنفذ تاني أول ما توصل
+    // بدل ما يبطّل على الـ render الأول لما selectedGroup لسه undefined.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groupId, startDate, needsGroup, groupsData]);
+
+  if (!open) return null;
 
   const handleSubmit = async () => {
     setError('');

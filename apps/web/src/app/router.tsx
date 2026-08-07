@@ -1,9 +1,11 @@
 import { lazy, Suspense, ReactNode, useEffect } from 'react';
-import { createBrowserRouter, RouterProvider, Navigate, useLocation } from 'react-router-dom';
+import { createBrowserRouter, RouterProvider, Navigate, useLocation, useParams } from 'react-router-dom';
 import { useAuthStore } from '../shared/stores/auth.store';
 import { usePlatformAuthStore } from '../features/platform/stores/platform-auth.store';
+import { useParentAuthStore } from '../features/parent-portal/stores/parent-auth.store';
 import { AppLayout } from '../shared/components/layout/AppLayout';
 import { PlatformLayout } from '../features/platform/components/PlatformLayout';
+import { ParentPortalLayout } from '../features/parent-portal/components/ParentPortalLayout';
 import { ComingSoon } from '../shared/components/ComingSoon';
 
 // ===== Tenant Pages =====
@@ -55,6 +57,13 @@ const PlatformDashboardPage = lazy(() => import('../features/platform/pages/Plat
 const TenantsPage = lazy(() => import('../features/platform/pages/TenantsPage'));
 const PlansPage = lazy(() => import('../features/platform/pages/PlansPage'));
 
+// ===== Parent Portal Pages =====
+// بوابة أولياء الأمور — نظام مصادقة منفصل تمامًا (OTP واتساب) عن الموظفين،
+// ومحجوبة بالكامل في وضع Desktop عن طريق ParentPortalAvailabilityGuard في الباك إند.
+const ParentLoginPage = lazy(() => import('../features/parent-portal/pages/ParentLoginPage'));
+const ParentDashboardPage = lazy(() => import('../features/parent-portal/pages/ParentDashboardPage'));
+const ParentStudentDetailPage = lazy(() => import('../features/parent-portal/pages/ParentStudentDetailPage'));
+
 // ===== Loading =====
 const LoadingFallback = () => (
   <div className="min-h-screen flex items-center justify-center bg-[#F7F7F7]">
@@ -104,6 +113,27 @@ const protectedPage = (node: ReactNode) => (
 
 const platformPage = (node: ReactNode) => (
   <PlatformRoute>{page(node)}</PlatformRoute>
+);
+
+// ===== Parent Portal Guard =====
+// بيتحقق من الـ slug في الرابط نفسه (كل رابط بوابة أهالي محدد بمركز واحد)
+// عشان لو ولي أمر مسجل دخول لمركز وحاول يفتح رابط مركز تاني، نرجّعه لصفحة الدخول بتاعت المركز الصح.
+function ParentRoute({ children }: { children: ReactNode }) {
+  const { slug: urlSlug = '' } = useParams<{ slug: string }>();
+  const { isAuthenticated, slug: authSlug, initAuth } = useParentAuthStore();
+
+  useEffect(() => {
+    initAuth();
+  }, []);
+
+  if (!isAuthenticated || authSlug !== urlSlug) {
+    return <Navigate to={`/parent/${urlSlug}/login`} replace />;
+  }
+  return <ParentPortalLayout>{children}</ParentPortalLayout>;
+}
+
+const parentPage = (node: ReactNode) => (
+  <ParentRoute>{page(node)}</ParentRoute>
 );
 
 const router = createBrowserRouter([
@@ -187,6 +217,11 @@ const router = createBrowserRouter([
   { path: '/platform/dashboard', element: platformPage(<PlatformDashboardPage />) },
   { path: '/platform/tenants', element: platformPage(<TenantsPage />) },
   { path: '/platform/plans', element: platformPage(<PlansPage />) },
+
+  // ===== Parent Portal =====
+  { path: '/parent/:slug/login', element: page(<ParentLoginPage />) },
+  { path: '/parent/:slug/dashboard', element: parentPage(<ParentDashboardPage />) },
+  { path: '/parent/:slug/students/:studentId', element: parentPage(<ParentStudentDetailPage />) },
 
   // ===== 404 =====
   { path: '*', element: page(<NotFoundPage />) },

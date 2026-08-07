@@ -175,9 +175,9 @@ export function Navbar({ onToggleLayout, currentMode, splitMode, onSplitMode, on
         {/* ── Logo (Right) ── */}
         <div className="flex items-center gap-3 shrink-0">
           <img
-            src="/Logo.png"
+            src="/Logo-icon-512.png"
             alt="نبغة"
-            className="w-12 h-12 object-contain drop-shadow-md"
+            className="w-14 h-14 object-contain drop-shadow-md"
           />
           <div className="leading-tight hidden lg:block">
             <h1 className="text-white font-black text-2xl tracking-wider drop-shadow-sm">نبغة</h1>

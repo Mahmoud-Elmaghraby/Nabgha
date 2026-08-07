@@ -1,9 +1,11 @@
 import { Injectable, Logger, Inject } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { SendNotificationUseCase } from '../../../whatsapp/application/use-cases/send-notification.usecase';
 import { StorageService } from '../../../../shared/infrastructure/storage/storage.service';
 import { IWaBulkJobRepository, WA_BULK_JOB_REPOSITORY } from '../../../whatsapp/domain/repositories/wa.repository.interface';
 import { BrandingService } from '../../../settings/application/services/branding.service';
 import { KyselyService } from '../../../../shared/infrastructure/database/kysely.service';
+import { PrismaService } from '../../../../shared/infrastructure/database/prisma.service';
 import { sql } from 'kysely';
 import { SessionRepository } from '../../infrastructure/session.repository';
 import { SessionEntity, AttendanceEntity } from '../../domain/entities/session.entity';
@@ -23,6 +25,7 @@ export class SessionUseCase {
     private readonly kysely: KyselyService,
     private readonly branding: BrandingService,
     private readonly storage: StorageService,
+    private readonly prisma: PrismaService,
     @Inject(WA_BULK_JOB_REPOSITORY) private readonly bulkJobRepo: IWaBulkJobRepository,
   ) {}
 
@@ -47,6 +50,79 @@ export class SessionUseCase {
     await this.repo.initAttendance(tenantId, session.id, studentIds);
     this.logger.log(`Session created: ${session.id} — type: ${session.type} — ${studentIds.length} students`);
     return session;
+  }
+
+  // ترتيب أيام JS Date.getDay() (0 = الأحد) بالمقابل لقيمة day المخزنة في جدول المجموعات
+  private static readonly JS_DAY_TO_DAY_OF_WEEK = [
+    'sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday',
+  ];
+
+  /**
+   * توليد يدوي (بضغطة زرار) لحصص اليوم اللي المفروض تحصل حسب الجدول الأسبوعي
+   * المحفوظ في كل مجموعة نشطة — بيتجاهل أي مجموعة عندها حصة بالفعل في نفس
+   * التاريخ عشان يمنع التكرار لو اتضغط أكتر من مرة.
+   */
+  async generateToday(tenantId: string, userId: string, date?: string): Promise<{ created: number; skipped: number; total: number }> {
+    const targetDate = date ?? new Date().toISOString().slice(0, 10);
+    const jsDay = new Date(`${targetDate}T00:00:00`).getDay();
+    const dayOfWeek = SessionUseCase.JS_DAY_TO_DAY_OF_WEEK[jsDay];
+
+    const groups = await this.repo.findGroupsScheduledForDay(tenantId, dayOfWeek);
+    let created = 0, skipped = 0;
+
+    for (const group of groups) {
+      const exists = await this.repo.groupHasSessionOnDate(tenantId, group.id, targetDate);
+      if (exists) { skipped++; continue; }
+
+      await this.create(tenantId, {
+        type: 'lesson',
+        title: group.name,
+        groupId: group.id,
+        startDate: targetDate,
+        startTime: group.startTime,
+        endTime: group.endTime,
+      } as CreateSessionDto, userId);
+      created++;
+    }
+
+    this.logger.log(`generateToday(${targetDate}): ${created} created, ${skipped} skipped out of ${groups.length} scheduled groups`);
+    return { created, skipped, total: groups.length };
+  }
+
+  /**
+   * كل دقيقة: أي حصة "مجدولة" وصل معاد بدايتها تتحول "جارية" أوتوماتيك، وأي حصة
+   * "جارية" وصل معاد نهايتها تتحول "منتهية" أوتوماتيك — بنفس منطق زرار البدء/الإنهاء
+   * اليدوي بالظبط (بما فيه sweep رصيد التعويض عند الإنهاء)، من غير ما المدرّس
+   * يحتاج يضغط أي زرار. بتلف على كل الـ tenants النشطين زي كرون توليد الفواتير.
+   */
+  @Cron(CronExpression.EVERY_MINUTE)
+  async autoTransitionSessions(): Promise<void> {
+    try {
+      const tenants = await this.prisma.tenant.findMany({ where: { isActive: true } });
+      for (const tenant of tenants) {
+        try {
+          const toStart = await this.repo.findSessionsToAutoStart(tenant.id);
+          for (const id of toStart) {
+            try { await this.start(tenant.id, id); }
+            catch (err: any) { this.logger.error(`autoStart failed for session ${id}: ${err.message}`); }
+          }
+
+          const toComplete = await this.repo.findSessionsToAutoComplete(tenant.id);
+          for (const id of toComplete) {
+            try { await this.complete(tenant.id, id); }
+            catch (err: any) { this.logger.error(`autoComplete failed for session ${id}: ${err.message}`); }
+          }
+
+          if (toStart.length || toComplete.length) {
+            this.logger.log(`Tenant ${tenant.id}: auto-started ${toStart.length}, auto-completed ${toComplete.length}`);
+          }
+        } catch (err: any) {
+          this.logger.error(`autoTransitionSessions failed for tenant ${tenant.id}: ${err.message}`);
+        }
+      }
+    } catch (err: any) {
+      this.logger.error(`autoTransitionSessions cron failed: ${err.message}`);
+    }
   }
 
   async update(tenantId: string, id: string, data: UpdateSessionDto): Promise<SessionEntity> {

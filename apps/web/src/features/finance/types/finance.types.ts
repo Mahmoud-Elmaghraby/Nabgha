@@ -24,6 +24,7 @@ export interface TreasuryTransaction {
 }
 export interface TreasurySummary {
   totalIncome: number; totalExpenses: number; totalTransfersIn: number; totalTransfersOut: number;
+  totalCancellations: number; totalRefunds: number;
 }
 export interface TreasuryDetail {
   treasury: Treasury;
@@ -36,12 +37,13 @@ export interface TransferBetweenTreasuriesPayload {
   amount: number;
   notes?: string;
 }
-export type DueStatus = 'unpaid' | 'partial' | 'paid' | 'waived';
+export type DueStatus = 'unpaid' | 'partial' | 'paid' | 'waived' | 'cancelled';
 export const DUE_STATUS_LABELS: Record<DueStatus, { label: string; class: string }> = {
-  unpaid:  { label: 'غير مدفوع', class: 'bg-red-50 text-red-600 border-red-200' },
-  partial: { label: 'جزئي',      class: 'bg-amber-50 text-amber-600 border-amber-200' },
-  paid:    { label: 'مدفوع',     class: 'bg-emerald-50 text-emerald-600 border-emerald-200' },
-  waived:  { label: 'معفى',      class: 'bg-gray-50 text-gray-500 border-gray-200' },
+  unpaid:    { label: 'غير مدفوع', class: 'bg-red-50 text-red-600 border-red-200' },
+  partial:   { label: 'جزئي',      class: 'bg-amber-50 text-amber-600 border-amber-200' },
+  paid:      { label: 'مدفوع',     class: 'bg-emerald-50 text-emerald-600 border-emerald-200' },
+  waived:    { label: 'معفى',      class: 'bg-gray-50 text-gray-500 border-gray-200' },
+  cancelled: { label: 'ملغاة',     class: 'bg-gray-100 text-gray-400 border-gray-200' },
 };
 export interface MonthlyDue {
   id: string; studentId: string; subjectGradeId: string; month: string;
@@ -66,6 +68,7 @@ export interface Payment {
   cancelReason: string | null; refundAmount: number | null; notes: string | null;
   paidAt: string; createdAt: string;
   studentName?: string; studentCode?: string; subjectName?: string; month?: string; treasuryName?: string;
+  discountApplied?: number;
 }
 export type ExpenseCategory = 'electricity' | 'water' | 'gas' | 'rent' | 'salary' | 'maintenance' | 'supplies' | 'other';
 export const EXPENSE_CATEGORY_LABELS: Record<ExpenseCategory, { label: string; icon: string }> = {

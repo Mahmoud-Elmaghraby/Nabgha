@@ -59,6 +59,15 @@ export class StudentRepository {
           .where('sg3.subject_id', '=', sql<string>`${params.subjectId}::uuid`)
       ));
     }
+    if (params.groupId) {
+      base = base.where(eb => eb.exists(
+        eb.selectFrom('group_students as gs4')
+          .select('gs4.id')
+          .whereRef('gs4.student_id', '=', 'students.id')
+          .where('gs4.left_at', 'is', null)
+          .where('gs4.group_id', '=', sql<string>`${params.groupId}::uuid`)
+      ));
+    }
 
     const countResult = await base
       .select(db.fn.countAll<number>().as('count'))
@@ -124,6 +133,15 @@ export class StudentRepository {
           .where('gs3.left_at', 'is', null)
           .where('g3.deleted_at', 'is', null)
           .where('sg3.subject_id', '=', sql<string>`${params.subjectId}::uuid`)
+      ));
+    }
+    if (params.groupId) {
+      base = base.where(eb => eb.exists(
+        eb.selectFrom('group_students as gs4')
+          .select('gs4.id')
+          .whereRef('gs4.student_id', '=', 'students.id')
+          .where('gs4.left_at', 'is', null)
+          .where('gs4.group_id', '=', sql<string>`${params.groupId}::uuid`)
       ));
     }
 

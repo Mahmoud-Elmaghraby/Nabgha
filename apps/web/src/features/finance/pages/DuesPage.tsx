@@ -6,6 +6,9 @@ import { useDues, useDueMutations, useTreasuries, usePaymentMutations } from '..
 import { DUE_STATUS_LABELS } from '../types/finance.types';
 import { FinanceLayout } from '../components/FinanceLayout';
 import { usePermissions } from '@/shared/hooks/usePermissions';
+import { DataTable } from '@/shared/components/DataTable';
+import type { Column } from '@/shared/components/DataTable';
+import { ActionsDropdown } from '@/shared/components/ActionsDropdown';
 import type { MonthlyDue, DueStatus } from '../types/finance.types';
 
 const getCurrentMonth = () => new Date().toISOString().slice(0, 7);
@@ -73,6 +76,103 @@ export default function DuesPage() {
     } catch (err: any) { toast.error(err?.response?.data?.error?.message || 'حدث خطأ'); }
   };
 
+  const handleDelete = async (due: MonthlyDue) => {
+    if (await confirm('هل أنت متأكد من حذف هذه الفاتورة؟ لا يمكن التراجع عن هذا الإجراء.')) {
+      try { await remove.mutateAsync(due.id); }
+      catch (e: any) { toast.error(e?.response?.data?.error?.message || 'خطأ أثناء الحذف'); }
+    }
+  };
+
+  const handleWaive = async (due: MonthlyDue, remaining: number) => {
+    const confirmMsg = due.paidAmount > 0
+      ? `الفاتورة متحصل منها ${due.paidAmount.toLocaleString('ar-EG')} ج بالفعل — الإعفاء هيسامح بس في المتبقي (${remaining.toLocaleString('ar-EG')} ج). تأكيد؟`
+      : 'إعفاء هذه الفاتورة؟';
+    if (await confirm(confirmMsg)) {
+      try { await waive.mutateAsync({ id: due.id }); }
+      catch (e: any) { toast.error(e?.response?.data?.error?.message || 'خطأ'); }
+    }
+  };
+
+  const columns: Column<MonthlyDue>[] = [
+    {
+      key: 'student',
+      header: 'الطالب',
+      render: (due) => (
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-sm font-semibold text-gray-900">{due.studentName}</span>
+          <span className="text-xs text-gray-400 font-mono">{due.studentCode}</span>
+          <span className={`text-xs px-2 py-0.5 rounded-full border whitespace-nowrap ${DUE_STATUS_LABELS[due.status].class}`}>
+            {DUE_STATUS_LABELS[due.status].label}
+          </span>
+        </div>
+      ),
+    },
+    {
+      key: 'subject',
+      header: 'المادة',
+      render: (due) => (
+        <div className="text-xs text-gray-500 whitespace-nowrap">
+          {due.subjectName} — {due.gradeName} · {due.month}
+          {due.discountApplied > 0 && (
+            <span className="block text-amber-600 mt-0.5">خصم: {due.discountApplied.toLocaleString('ar-EG')} ج</span>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: 'amount',
+      header: 'المبلغ',
+      render: (due) => (
+        <span className="text-sm font-bold text-gray-900 whitespace-nowrap">
+          {(due.dueAmount - due.discountApplied).toLocaleString('ar-EG')} ج
+        </span>
+      ),
+    },
+    {
+      key: 'remaining',
+      header: 'المتبقي/المدفوع',
+      render: (due) => {
+        const remaining = due.dueAmount - due.discountApplied - due.paidAmount;
+        return (
+          <div className="text-xs whitespace-nowrap">
+            {remaining > 0 && due.status !== 'waived' && (
+              <p className="text-red-500">متبقي: {remaining.toLocaleString('ar-EG')}</p>
+            )}
+            {due.paidAmount > 0 && due.status !== 'paid' && (
+              <p className="text-emerald-500">مدفوع: {due.paidAmount.toLocaleString('ar-EG')}</p>
+            )}
+            {remaining <= 0 && due.paidAmount <= 0 && <span className="text-gray-300">—</span>}
+          </div>
+        );
+      },
+    },
+    {
+      key: 'actions',
+      header: '',
+      render: (due) => {
+        const remaining = due.dueAmount - due.discountApplied - due.paidAmount;
+        const isOpen = due.status === 'unpaid' || due.status === 'partial';
+        if (!isOpen || (!canCollect && !canManage)) return null;
+        return (
+          <div className="flex items-center gap-1.5 justify-end">
+            {canCollect && (
+              <button onClick={() => handlePay(due)}
+                className="text-xs px-3 py-1.5 bg-[#0E3B2E] text-white rounded-lg hover:bg-[#1F6B4E] transition-colors whitespace-nowrap">
+                💰 تسجيل دفعة
+              </button>
+            )}
+            {canManage && (
+              <ActionsDropdown items={[
+                { label: 'إعفاء', onClick: () => handleWaive(due, remaining) },
+                { label: 'حذف', onClick: () => handleDelete(due), variant: 'danger', hidden: due.status !== 'unpaid' },
+              ]} />
+            )}
+          </div>
+        );
+      },
+    },
+  ];
+
   return (
     <FinanceLayout>
       <div className="space-y-4">
@@ -123,84 +223,17 @@ export default function DuesPage() {
         </div>
 
         {/* List */}
-        {isLoading ? (
-          <div className="space-y-2">{[1,2,3,4,5].map(i => <div key={i} className="h-20 bg-gray-100 rounded-2xl animate-pulse" />)}</div>
-        ) : dues.length === 0 ? (
-          <div className="text-center py-16 text-gray-400">
-            <p className="text-5xl mb-4">📋</p>
-            <p className="font-medium">{search ? 'لا نتائج للبحث' : 'لا توجد فواتير'}</p>
-            {!search && <p className="text-sm mt-1">اضغط "توليد الفواتير" لإنشائها</p>}
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {dues.map(due => {
-              const remaining = due.dueAmount - due.discountApplied - due.paidAmount;
-              const isOpen = due.status === 'unpaid' || due.status === 'partial';
-              return (
-                <div key={due.id} className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="font-semibold text-gray-900 text-sm">{due.studentName}</p>
-                        <span className="text-xs text-gray-400 font-mono">{due.studentCode}</span>
-                        <span className={`text-xs px-2 py-0.5 rounded-full border ${DUE_STATUS_LABELS[due.status].class}`}>
-                          {DUE_STATUS_LABELS[due.status].label}
-                        </span>
-                      </div>
-                      <p className="text-xs text-gray-500 mt-1">{due.subjectName} — {due.gradeName} · {due.month}</p>
-                      {due.discountApplied > 0 && (
-                        <p className="text-xs text-amber-600 mt-0.5">خصم: {due.discountApplied.toLocaleString('ar-EG')} ج</p>
-                      )}
-                    </div>
-                    <div className="text-left shrink-0">
-                      <p className="text-base font-bold text-gray-900">{(due.dueAmount - due.discountApplied).toLocaleString('ar-EG')} ج</p>
-                      {remaining > 0 && due.status !== 'waived' && (
-                        <p className="text-xs text-red-500">متبقي: {remaining.toLocaleString('ar-EG')}</p>
-                      )}
-                      {due.paidAmount > 0 && due.status !== 'paid' && (
-                        <p className="text-xs text-emerald-500">مدفوع: {due.paidAmount.toLocaleString('ar-EG')}</p>
-                      )}
-                    </div>
-                  </div>
-                  {isOpen && (canCollect || canManage) && (
-                    <div className="flex gap-2 mt-3 pt-3 border-t border-gray-50">
-                      {canCollect && (
-                        <button onClick={() => handlePay(due)}
-                          className="flex-1 bg-[#0E3B2E] text-white rounded-xl py-2 text-xs font-bold hover:bg-[#1a5c44] transition-colors">
-                          💰 تسجيل دفعة
-                        </button>
-                      )}
-                      {canManage && (
-                        <>
-                          {due.status === 'unpaid' && (
-                            <button onClick={async () => {
-                              if (await confirm('هل أنت متأكد من حذف هذه الفاتورة؟ لا يمكن التراجع عن هذا الإجراء.')) {
-                                try { await remove.mutateAsync(due.id); }
-                                catch(e: any) { toast.error(e?.response?.data?.error?.message || 'خطأ أثناء الحذف'); }
-                              }
-                            }}
-                              className="px-3 border border-red-200 text-red-500 rounded-xl py-2 text-xs hover:bg-red-50">
-                              حذف
-                            </button>
-                          )}
-                          <button onClick={async () => {
-                            const confirmMsg = due.paidAmount > 0
-                              ? `الفاتورة متحصل منها ${due.paidAmount.toLocaleString('ar-EG')} ج بالفعل — الإعفاء هيسامح بس في المتبقي (${remaining.toLocaleString('ar-EG')} ج). تأكيد؟`
-                              : 'إعفاء هذه الفاتورة؟';
-                            if (await confirm(confirmMsg)) { try { await waive.mutateAsync({ id: due.id }); } catch(e: any) { toast.error(e?.response?.data?.error?.message || 'خطأ'); } }
-                          }}
-                            className="px-3 border border-gray-200 rounded-xl py-2 text-xs text-gray-500 hover:bg-gray-50">
-                            إعفاء
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
+        <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+          <DataTable<MonthlyDue>
+            columns={columns}
+            data={dues}
+            keyExtractor={(d) => d.id}
+            isLoading={isLoading}
+            emptyIcon="/Logo-icon-192.png"
+            emptyTitle={search ? 'لا نتائج للبحث' : 'لا توجد فواتير'}
+            emptySubtitle={search ? 'جرّب تعديل كلمة البحث أو الفلاتر' : 'اضغط "توليد الفواتير" لإنشائها'}
+          />
+        </div>
 
         {/* Pagination */}
         {!isLoading && totalPages > 1 && (

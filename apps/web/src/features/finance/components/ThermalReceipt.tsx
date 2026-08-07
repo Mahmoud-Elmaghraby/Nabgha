@@ -14,6 +14,7 @@ interface ReceiptData {
   paidAt: string;
   notes?: string;
   monthlyDueId?: string;
+  discountApplied?: number;
 }
 
 interface ThermalReceiptProps {
@@ -149,6 +150,12 @@ export function ThermalReceipt({ receipt, onClose, autoPrint = false }: ThermalR
             <span className="value">{receipt.month}</span>
           </div>
         )}
+        {!!receipt.discountApplied && receipt.discountApplied > 0 && (
+          <div className="row">
+            <span className="label">الخصم:</span>
+            <span className="value">{receipt.discountApplied.toLocaleString('ar-EG')} جنيه</span>
+          </div>
+        )}
         <div className="line-dashed"/>
 
         {/* Amount */}
@@ -212,6 +219,9 @@ export function ThermalReceipt({ receipt, onClose, autoPrint = false }: ThermalR
             <div className="flex justify-between text-xs"><span className="text-gray-500">الكود:</span><span className="font-mono">{receipt.studentCode}</span></div>
             {receipt.subjectName && <div className="flex justify-between text-xs"><span className="text-gray-500">المادة:</span><span className="font-bold">{receipt.subjectName}</span></div>}
             {receipt.month && <div className="flex justify-between text-xs"><span className="text-gray-500">الشهر:</span><span className="font-bold">{receipt.month}</span></div>}
+            {!!receipt.discountApplied && receipt.discountApplied > 0 && (
+              <div className="flex justify-between text-xs"><span className="text-gray-500">الخصم:</span><span className="font-bold text-amber-600">{receipt.discountApplied.toLocaleString('ar-EG')} ج</span></div>
+            )}
             <div className="border-t border-dashed border-gray-300 my-2"/>
 
             {/* Amount */}

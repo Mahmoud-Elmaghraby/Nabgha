@@ -202,15 +202,24 @@ export default function CollectPage() {
         monthlyDueId: d.id,
         amount: d.dueAmount - d.discountApplied - d.paidAmount,
       }));
-      await apiClient.post('/finance/collect/multi', {
+      const res = await apiClient.post('/finance/collect/multi', {
         payments, treasuryId, paymentMethod, notes: notes || undefined,
       });
-      setSuccess('✅ تم تحصيل ' + selectedDuesList.length + ' فاتورة بإجمالي ' + totalAmount.toLocaleString('ar-EG') + ' جنيه');
+      // بنستخدم استجابة السيرفر الفعلية (المبلغ + رقم الإيصال الحقيقي من الـ
+      // sequence) بدل ما نعتمد على قيم محسوبة في الفرونت أو Date.now() كرقم
+      // إيصال وهمي — ده المصدر الوحيد الموثوق فيه لأي حاجة بتتطبع على الإيصال
+      const createdPayments: { amount: number; receiptNumber: number }[] = res.data?.data ?? [];
+      const actualTotal = createdPayments.length > 0
+        ? createdPayments.reduce((s, p) => s + p.amount, 0)
+        : totalAmount;
+      const totalDiscount = selectedDuesList.reduce((s, d) => s + d.discountApplied, 0);
+      setSuccess('✅ تم تحصيل ' + selectedDuesList.length + ' فاتورة بإجمالي ' + actualTotal.toLocaleString('ar-EG') + ' جنيه');
       setPrintData({
-        receiptNumber: Date.now(),
+        receiptNumber: createdPayments[0]?.receiptNumber ?? Date.now(),
         studentName: selectedStudent.studentName,
         studentCode: selectedStudent.studentCode,
-        amount: totalAmount,
+        amount: actualTotal,
+        discountApplied: totalDiscount,
         paymentMethod,
         subjectName: selectedDuesList.map(d => d.subjectName).filter(Boolean).join(' / '),
         month: selectedDuesList.map(d => d.month).filter(Boolean).join(' / '),

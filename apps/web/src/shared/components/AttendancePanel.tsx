@@ -1,8 +1,6 @@
 import { useState, useRef } from 'react';
 import { normaliseScannerInput } from '@/shared/lib/normaliseScannerInput';
-import { useQuery } from '@tanstack/react-query';
-import { apiClient } from '../lib/api/client';
-import { useSessionAttendance, useAttendanceMutations, usePreviousAbsent, useUnpaidStudents } from '../../features/sessions/hooks/useSessions';
+import { useSessions, useSessionAttendance, useAttendanceMutations, usePreviousAbsent, useUnpaidStudents } from '../../features/sessions/hooks/useSessions';
 import { ATTENDANCE_STATUS_LABELS } from '../../features/sessions/types/session.types';
 import { QrCameraScanner } from '../../features/sessions/components/QrCameraScanner';
 import { checkAttendanceWarnings, buildAttendanceMessage, playAttendanceWarningAlarm } from '../../features/sessions/lib/attendanceAlerts';
@@ -199,16 +197,15 @@ function SessionBlock({ session }: { session: Session }) {
 }
 
 export function AttendancePanel({ onClose }: Props) {
-  const { data: sessionsData } = useQuery({
-    queryKey: ['panel-sessions'],
-    queryFn: async () => {
-      const res = await apiClient.get('/sessions?limit=20');
-      return res.data.data?.data ?? [];
-    },
-    refetchInterval: 15_000,
-  });
+  // نفس الـ hook والـ query key المستخدمين في باقي شاشات الحصص (useSessions) —
+  // بدل query منفصلة (['panel-sessions']) كانت معزولة عن نظام الـ invalidation
+  // العام. أي إنشاء/تعديل/حذف حصة في أي مكان تاني في التطبيق كان بيعمل
+  // invalidate لـ ['sessions'] بس مش بيوصل للوحة دي خالص، فكانت بتفضل تعرض
+  // بيانات قديمة لحد ما الـ polling (كل 15 ثانية) يلحقها. دلوقتي بقت بتتحدث
+  // فوراً مع أي تغيير حصص تاني في التطبيق، والـ polling القصير باقي كـ fallback.
+  const { data: sessionsData } = useSessions({ limit: 20 });
 
-  const sessions = (sessionsData ?? []).filter((s: Session) =>
+  const sessions = (sessionsData?.data ?? []).filter((s: Session) =>
     s.status === 'ongoing' || s.status === 'scheduled'
   );
 

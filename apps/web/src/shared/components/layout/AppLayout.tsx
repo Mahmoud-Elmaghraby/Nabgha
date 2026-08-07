@@ -107,18 +107,17 @@ export function AppLayout({ children }: AppLayoutProps) {
       <main
         className={[
           'min-h-screen transition-all duration-300',
-          isNavbar  ? 'md:pt-[72px]'                               : '',
-          isSidebar ? `md:mr-64 ${splitMode ? 'md:ml-80' : ''}`  : '',
+          isNavbar  ? 'md:pt-[72px]' : '',
+          isSidebar ? 'md:mr-64'     : '',
+          // بانل الحضور (Split Screen) ثابت على يسار الشاشة بعرض 320px في الوضعين
+          // (Navbar و Sidebar) على حد سواء — فمساحة المحتوى لازم تتزاح بنفس القيمة
+          // في الحالتين، مش بس في وضع Sidebar زي ما كان قبل كده (وده اللي كان بيبوظ
+          // الشكل في وضع Navbar لما تفتح Split Screen: البانل كان بيتراكب فوق المحتوى).
+          splitMode ? 'md:ml-80' : '',
         ].join(' ')}
       >
         {isSidebar && (
-          <div className="sticky top-0 z-40 bg-white border-b border-gray-100 px-6 py-4 hidden md:flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-[#0E3B2E] rounded-lg flex items-center justify-center">
-                <span className="text-[#D4AB53] text-sm font-black">ن</span>
-              </div>
-              <h1 className="text-[#0E3B2E] font-bold text-lg">نبغة</h1>
-            </div>
+          <div className="sticky top-0 z-40 bg-white border-b border-gray-100 px-6 py-4 hidden md:flex items-center justify-end">
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setSplitMode(p => !p)}

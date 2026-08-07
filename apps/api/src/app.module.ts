@@ -23,6 +23,7 @@ import { UploadModule } from './modules/upload/upload.module';
 import { TelegramModule } from './modules/telegram/telegram.module';
 import { PlatformModule } from './modules/platform/platform.module';
 import { ReportsModule } from './modules/reports/reports.module';
+import { ParentPortalModule } from './modules/parent-portal/parent-portal.module';
 
 @Module({
   imports: [
@@ -57,6 +58,7 @@ import { ReportsModule } from './modules/reports/reports.module';
     TelegramModule,
     PlatformModule,
     ReportsModule,
+    ParentPortalModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: ZodValidationFilter },

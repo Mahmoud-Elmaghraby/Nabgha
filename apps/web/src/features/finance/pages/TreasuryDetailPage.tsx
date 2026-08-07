@@ -65,7 +65,7 @@ export default function TreasuryDetailPage() {
         </div>
 
         {/* إحصائيات */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
           <div className="bg-emerald-50 rounded-xl p-3 text-center border border-emerald-100">
             <p className="text-xs text-emerald-600 mb-1">إجمالي الإيرادات</p>
             <p className="text-base font-bold text-emerald-700">{summary.totalIncome.toLocaleString('ar-EG')}</p>
@@ -81,6 +81,14 @@ export default function TreasuryDetailPage() {
           <div className="bg-purple-50 rounded-xl p-3 text-center border border-purple-100">
             <p className="text-xs text-purple-600 mb-1">تحويلات صادرة</p>
             <p className="text-base font-bold text-purple-700">{summary.totalTransfersOut.toLocaleString('ar-EG')}</p>
+          </div>
+          <div className="bg-gray-50 rounded-xl p-3 text-center border border-gray-200">
+            <p className="text-xs text-gray-500 mb-1">إيصالات ملغاة</p>
+            <p className="text-base font-bold text-gray-600">{summary.totalCancellations.toLocaleString('ar-EG')}</p>
+          </div>
+          <div className="bg-orange-50 rounded-xl p-3 text-center border border-orange-100">
+            <p className="text-xs text-orange-600 mb-1">مبالغ مسترجعة</p>
+            <p className="text-base font-bold text-orange-700">{summary.totalRefunds.toLocaleString('ar-EG')}</p>
           </div>
         </div>
 

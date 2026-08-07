@@ -344,6 +344,16 @@ export interface ExpensesTable {
 }
 
 // ─── TenantDatabase ───────────────────────────────────────
+export interface ParentOtpCodesTable {
+  id: Generated<string>;
+  phone: string;
+  code_hash: string;
+  attempts: Generated<number>;
+  consumed_at: Date | null;
+  expires_at: Date;
+  created_at: Generated<Date>;
+}
+
 export interface TenantDatabase {
   users: UsersTable;
   subjects: SubjectsTable;
@@ -369,6 +379,7 @@ export interface TenantDatabase {
   payments: PaymentsTable;
   payment_transactions: PaymentTransactionsTable;
   expenses: ExpensesTable;
+  parent_otp_codes: ParentOtpCodesTable;
 }
 
 export type User = Selectable<UsersTable>;

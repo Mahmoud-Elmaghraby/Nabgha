@@ -5,6 +5,9 @@ import { PAYMENT_METHOD_LABELS, PAYMENT_STATUS_LABELS } from '../types/finance.t
 import { FinanceLayout } from '../components/FinanceLayout';
 import { ThermalReceipt } from '../components/ThermalReceipt';
 import { usePermissions } from '@/shared/hooks/usePermissions';
+import { DataTable } from '@/shared/components/DataTable';
+import type { Column } from '@/shared/components/DataTable';
+import { ActionsDropdown } from '@/shared/components/ActionsDropdown';
 import type { Payment, PaymentStatus } from '../types/finance.types';
 
 const PAGE_SIZE = 30;
@@ -60,6 +63,80 @@ export default function PaymentsPage() {
     } catch (err: any) { toast.error(err?.response?.data?.error?.message || 'حدث خطأ'); }
   };
 
+  const columns: Column<Payment>[] = [
+    {
+      key: 'receipt',
+      header: 'الإيصال',
+      render: (p) => (
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-sm font-semibold text-gray-900">إيصال #{p.receiptNumber}</span>
+          <span className={`text-xs px-2 py-0.5 rounded-full border whitespace-nowrap ${PAYMENT_STATUS_LABELS[p.status].class}`}>
+            {PAYMENT_STATUS_LABELS[p.status].label}
+          </span>
+          {p.cancelReason && <span className="text-xs text-red-400">سبب الإلغاء: {p.cancelReason}</span>}
+        </div>
+      ),
+    },
+    {
+      key: 'student',
+      header: 'الطالب',
+      render: (p) => (
+        <div className="text-xs text-gray-500 whitespace-nowrap">
+          <p className="text-gray-700 font-medium">{p.studentName}</p>
+          <p>{p.subjectName} — {p.month}</p>
+        </div>
+      ),
+    },
+    {
+      key: 'method',
+      header: 'طريقة الدفع',
+      render: (p) => (
+        <span className="text-xs text-gray-500 whitespace-nowrap">
+          {PAYMENT_METHOD_LABELS[p.paymentMethod]} • {p.treasuryName}
+        </span>
+      ),
+    },
+    {
+      key: 'date',
+      header: 'التاريخ',
+      render: (p) => (
+        <span className="text-xs text-gray-500 whitespace-nowrap">
+          {new Date(p.paidAt).toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' })}
+        </span>
+      ),
+    },
+    {
+      key: 'amount',
+      header: 'المبلغ',
+      render: (p) => (
+        <span className="text-sm font-bold text-gray-900 whitespace-nowrap">{p.amount.toLocaleString('ar-EG')} ج</span>
+      ),
+    },
+    {
+      key: 'actions',
+      header: '',
+      render: (p) => (
+        <div className="flex items-center gap-1.5 justify-end">
+          <button onClick={() => setPrintReceipt(p)}
+            className="text-xs px-3 py-1.5 border border-[#0E3B2E]/30 text-[#0E3B2E] rounded-lg hover:bg-[#0E3B2E]/5 transition-colors flex items-center gap-1 whitespace-nowrap">
+            <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polyline points="6 9 6 2 18 2 18 9"/>
+              <path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/>
+              <rect x="6" y="14" width="12" height="8"/>
+            </svg>
+            طباعة
+          </button>
+          {canManage && p.status === 'paid' && (
+            <ActionsDropdown items={[
+              { label: 'استرجاع', onClick: () => { setRefundModal(p); setRefundAmount(String(p.amount)); }, variant: 'warning' },
+              { label: 'إلغاء', onClick: () => { setCancelModal(p); setCancelReason(''); }, variant: 'danger' },
+            ]} />
+          )}
+        </div>
+      ),
+    },
+  ];
+
   return (
     <FinanceLayout>
       <div className="space-y-4">
@@ -87,63 +164,16 @@ export default function PaymentsPage() {
         </div>
 
         {/* List */}
-        {isLoading ? (
-          <div className="space-y-2">{[1,2,3].map(i => <div key={i} className="h-24 bg-gray-100 rounded-2xl animate-pulse" />)}</div>
-        ) : payments.length === 0 ? (
-          <div className="text-center py-16 text-gray-400">
-            <p className="text-5xl mb-4">💰</p>
-            <p className="font-medium">{search ? 'لا نتائج للبحث' : 'لا توجد إيصالات'}</p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {payments.map(p => (
-              <div key={p.id} className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="font-semibold text-gray-900 text-sm">إيصال #{p.receiptNumber}</p>
-                      <span className={`text-xs px-2 py-0.5 rounded-full border ${PAYMENT_STATUS_LABELS[p.status].class}`}>
-                        {PAYMENT_STATUS_LABELS[p.status].label}
-                      </span>
-                    </div>
-                    <p className="text-xs text-gray-600 mt-1 font-medium">{p.studentName}</p>
-                    <p className="text-xs text-gray-400">{p.subjectName} — {p.month}</p>
-                    <p className="text-xs text-gray-400">{PAYMENT_METHOD_LABELS[p.paymentMethod]} • {p.treasuryName}</p>
-                    <p className="text-xs text-gray-400">{new Date(p.paidAt).toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
-                    {p.cancelReason && <p className="text-xs text-red-400 mt-1">سبب الإلغاء: {p.cancelReason}</p>}
-                  </div>
-                  <div className="text-left shrink-0">
-                    <p className="text-lg font-bold text-gray-900">{p.amount.toLocaleString('ar-EG')} ج</p>
-                    <div className="flex flex-col gap-1 mt-2">
-                      {/* زرار طباعة دايماً */}
-                      <button onClick={() => setPrintReceipt(p)}
-                        className="text-xs px-2 py-1 border border-[#0E3B2E]/30 text-[#0E3B2E] rounded-lg hover:bg-[#0E3B2E]/5 transition-colors flex items-center gap-1 justify-center">
-                        <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <polyline points="6 9 6 2 18 2 18 9"/>
-                          <path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/>
-                          <rect x="6" y="14" width="12" height="8"/>
-                        </svg>
-                        طباعة
-                      </button>
-                      {canManage && p.status === 'paid' && (
-                        <>
-                          <button onClick={() => { setRefundModal(p); setRefundAmount(String(p.amount)); }}
-                            className="text-xs px-2 py-1 border border-orange-200 text-orange-600 rounded-lg hover:bg-orange-50 transition-colors">
-                            استرجاع
-                          </button>
-                          <button onClick={() => { setCancelModal(p); setCancelReason(''); }}
-                            className="text-xs px-2 py-1 border border-red-200 text-red-500 rounded-lg hover:bg-red-50 transition-colors">
-                            إلغاء
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+        <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+          <DataTable<Payment>
+            columns={columns}
+            data={payments}
+            keyExtractor={(p) => p.id}
+            isLoading={isLoading}
+            emptyIcon="/Logo-icon-192.png"
+            emptyTitle={search ? 'لا نتائج للبحث' : 'لا توجد إيصالات'}
+          />
+        </div>
 
         {/* Pagination */}
         {!isLoading && totalPages > 1 && (
@@ -175,6 +205,7 @@ export default function PaymentsPage() {
             treasuryName: printReceipt.treasuryName ?? undefined,
             paidAt: printReceipt.paidAt,
             monthlyDueId: printReceipt.monthlyDueId,
+            discountApplied: printReceipt.discountApplied,
           }}
           onClose={() => setPrintReceipt(null)}
         />

@@ -54,6 +54,17 @@ export class SessionController {
     return { success: true, data };
   }
 
+  // توليد يدوي لحصص اليوم بناءً على الجدول الأسبوعي للمجموعات — بديل زرار "توليد
+  // الفواتير" الموجود في المالية، بس للحصص. لازم يتحط قبل @Get(':id') منطقياً
+  // بس هو POST فمفيش تعارض مسارات فعلي.
+  @Post('generate-today')
+  @RequirePermission('sessions.create')
+  async generateToday(@Request() req: any, @Body() body: any) {
+    const date = typeof body?.date === 'string' && body.date ? body.date : undefined;
+    const result = await this.useCase.generateToday(req.user.tenantId, req.user.sub, date);
+    return { success: true, data: result };
+  }
+
   @Put(':id')
   @RequirePermission('sessions.edit')
   async update(@Request() req: any, @Param('id') id: string, @Body() body: any) {

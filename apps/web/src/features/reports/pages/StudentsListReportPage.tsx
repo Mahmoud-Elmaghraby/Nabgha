@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { useSubjects } from '@/features/subjects/hooks/useSubjects';
+import { useGroups } from '@/features/groups/hooks/useGroups';
 import { reportsApi } from '../api/reports.api';
 import { downloadBlob } from '@/shared/lib/downloadBlob';
 import { useToast } from '@/shared/components/Toast';
@@ -9,15 +10,45 @@ import { SectionDataTable } from '../components/SectionDataTable';
 
 export default function StudentsListReportPage() {
   const { data: subjects = [] } = useSubjects();
+  const { data: groupsData } = useGroups({ limit: 1000 });
+  const allGroups = groupsData?.data ?? [];
   const toast = useToast();
   const [grade, setGrade] = useState('');
   const [subjectId, setSubjectId] = useState('');
+  const [groupId, setGroupId] = useState('');
   const [isActive, setIsActive] = useState('');
   const [downloadLoading, setDownloadLoading] = useState<'xlsx' | 'pdf' | null>(null);
+
+  // المجموعات المتاحة تتفلتر حسب الصف و/أو المادة المختارين — عن طريق حساب
+  // كل subjectGradeId اللي بيطابق الاختيار الحالي (من بيانات المواد اللي فيها
+  // كل صف مرتبط بمادة)، وبعدين نستبعد أي مجموعة مش مرتبطة بأي واحد منهم.
+  const computeGroups = (gradeVal: string, subjectVal: string) => {
+    if (!gradeVal && (!subjectVal || subjectVal === 'none')) return allGroups;
+    const matchingIds = new Set(
+      subjects
+        .filter(s => !subjectVal || subjectVal === 'none' || s.subject.id === subjectVal)
+        .flatMap(s => s.grades.filter(g => !gradeVal || g.grade === gradeVal).map(g => g.id))
+    );
+    return allGroups.filter(g => g.subjectGradeId && matchingIds.has(g.subjectGradeId));
+  };
+  const groups = computeGroups(grade, subjectId);
+
+  // لو الصف/المادة اتغيروا وبقت المجموعة المختارة مش ضمن الخيارات المتاحة، نفضّيها
+  const handleGradeChange = (v: string) => {
+    setGrade(v);
+    const next = computeGroups(v, subjectId);
+    if (groupId && !next.some(g => g.id === groupId)) setGroupId('');
+  };
+  const handleSubjectChange = (v: string) => {
+    setSubjectId(v);
+    const next = computeGroups(grade, v);
+    if (groupId && !next.some(g => g.id === groupId)) setGroupId('');
+  };
 
   const params = {
     grade: grade || undefined,
     subjectId: subjectId || undefined,
+    groupId: groupId || undefined,
     isActive: isActive || undefined,
   };
 
@@ -47,7 +78,7 @@ export default function StudentsListReportPage() {
           <div className="bg-white rounded-xl border border-gray-100 p-4 flex flex-wrap items-end gap-3">
             <div className="flex-1 min-w-[140px]">
               <label className="text-xs text-gray-500 mb-1 block">المرحلة الدراسية</label>
-              <select value={grade} onChange={e => setGrade(e.target.value)}
+              <select value={grade} onChange={e => handleGradeChange(e.target.value)}
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0E3B2E]/20">
                 <option value="">كل المراحل</option>
                 {GRADE_OPTIONS.map(g => <option key={g} value={g}>{g}</option>)}
@@ -55,11 +86,19 @@ export default function StudentsListReportPage() {
             </div>
             <div className="flex-1 min-w-[140px]">
               <label className="text-xs text-gray-500 mb-1 block">المادة</label>
-              <select value={subjectId} onChange={e => setSubjectId(e.target.value)}
+              <select value={subjectId} onChange={e => handleSubjectChange(e.target.value)}
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0E3B2E]/20">
                 <option value="">كل المواد</option>
                 <option value="none">بدون مجموعة</option>
                 {subjects.map(s => <option key={s.subject.id} value={s.subject.id}>{s.subject.name}</option>)}
+              </select>
+            </div>
+            <div className="flex-1 min-w-[140px]">
+              <label className="text-xs text-gray-500 mb-1 block">المجموعة</label>
+              <select value={groupId} onChange={e => setGroupId(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0E3B2E]/20">
+                <option value="">كل المجموعات</option>
+                {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
               </select>
             </div>
             <div className="flex-1 min-w-[120px]">

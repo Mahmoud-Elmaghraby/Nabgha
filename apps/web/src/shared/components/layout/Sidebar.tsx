@@ -116,7 +116,7 @@ export function Sidebar({ onToggleLayout, currentMode }: SidebarProps) {
       {/* Logo */}
       <div className="p-5 border-b border-white/10">
         <div className="flex items-center gap-3">
-          <img src="/Logo.png" alt="نبغة" className="w-14 h-14 object-contain drop-shadow-md" />
+          <img src="/Logo-icon-512.png" alt="نبغة" className="w-16 h-16 object-contain drop-shadow-md" />
           <div>
             <h1 className="text-white font-black text-xl leading-none">نبغة</h1>
             <p className="text-white/50 text-xs mt-0.5">إدارة الدروس الخصوصية</p>
