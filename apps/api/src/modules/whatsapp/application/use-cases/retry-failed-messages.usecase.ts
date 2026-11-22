@@ -164,9 +164,7 @@ export class RetryFailedMessagesUseCase {
         this.logger.error(`Retry failed for message ${msg.id}: ${err.message}`);
       }
 
-      // delay بين كل رسالة من الـ settings لتجنب الحظر (نفس السلوك في sendNotification و sendBulk)
-      const delay = this.randomDelay(settings.delayMinSeconds, settings.delayMaxSeconds);
-      await this.sleep(delay);
+      // الفاصل بين الرسايل بيتطبق جوه طابور الإرسال (BaileysProvider)
     }
   }
 

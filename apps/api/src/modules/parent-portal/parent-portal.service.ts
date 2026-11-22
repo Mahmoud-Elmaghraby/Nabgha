@@ -70,7 +70,8 @@ export class ParentPortalService {
     // إرسال مباشر عبر الـ provider — عمدًا من غير المرور بنظام القوالب/حدود الإرسال
     // اليومية (SendNotificationUseCase)، لأن كود دخول لازم يوصل فورًا بصرف النظر
     // عن ساعات الإرسال المسموحة أو سقف الرسائل اليومي المخصص للتنبيهات العادية.
-    const result = await this.waProvider.sendMessage(tenant.id, phone, message);
+    // كود الدخول عاجل — ولي الأمر مستنيه على الشاشة، فمايستناش الفاصل بين الرسايل
+    const result = await this.waProvider.sendMessage(tenant.id, phone, message, { priority: true });
     if (!result.success) {
       throw AppError.internal('OTP_SEND_FAILED', 'تعذر إرسال كود الدخول، حاول مرة أخرى لاحقًا');
     }

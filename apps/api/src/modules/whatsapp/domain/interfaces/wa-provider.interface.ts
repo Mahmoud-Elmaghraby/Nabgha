@@ -16,7 +16,8 @@ export interface IWaProvider {
   disconnect(tenantId: string): Promise<void>;
   logout(tenantId: string): Promise<void>;
   getConnectionState(tenantId: string): Promise<WaConnectionState>;
-  sendMessage(tenantId: string, phone: string, body: string): Promise<WaSendResult>;
+  /** priority: يتخطى فترة الانتظار بين الرسايل (لرسايل عاجلة زي كود دخول ولي الأمر) — بس لسه في نفس الطابور */
+  sendMessage(tenantId: string, phone: string, body: string, opts?: { priority?: boolean }): Promise<WaSendResult>;
   sendDocument(
     tenantId: string,
     phone: string,
@@ -35,6 +36,8 @@ export interface IWaProvider {
   onConnected(tenantId: string, callback: (phone: string) => void): void;
   onDisconnected(tenantId: string, callback: (reason: string) => void): void;
   onMessage(tenantId: string, callback: (phone: string, body: string) => void): void;
+  /** فيه إعادة اتصال تلقائي متجدولة (عشان مراقب الصحة مايبدأش اتصال تاني فوقها) */
+  isReconnecting(tenantId: string): boolean;
 }
 
 export const WA_PROVIDER = Symbol('IWaProvider');

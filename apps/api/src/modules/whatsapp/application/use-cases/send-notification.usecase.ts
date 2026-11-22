@@ -152,9 +152,8 @@ export class SendNotificationUseCase {
       status: 'pending', bulkJobId: bulkJobId ?? null,
     });
 
-    const delay = this.randomDelay(settings.delayMinSeconds, settings.delayMaxSeconds);
-    await this.sleep(delay);
-
+    // الفاصل بين الرسايل بيتحسب جوه طابور الإرسال نفسه (BaileysProvider) من وقت آخر
+    // رسالة اتبعتت فعلاً — مش هنا، عشان الإشعارات المتوازية ماتخلصش انتظار مع بعض
     const result = imageBuffer
       ? await this.provider.sendImage(tenantId, phone, imageBuffer, body)
       : await this.provider.sendMessage(tenantId, phone, body);

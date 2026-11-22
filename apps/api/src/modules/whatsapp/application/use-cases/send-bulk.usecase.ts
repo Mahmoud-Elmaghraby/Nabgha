@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { IWaBulkJobRepository, WA_BULK_JOB_REPOSITORY } from '../../domain/repositories/wa.repository.interface';
 import { IWaMessageRepository, WA_MESSAGE_REPOSITORY } from '../../domain/repositories/wa.repository.interface';
@@ -6,6 +6,7 @@ import { IWaSessionRepository, WA_SESSION_REPOSITORY } from '../../domain/reposi
 import { IWaSettingsRepository, WA_SETTINGS_REPOSITORY } from '../../domain/repositories/wa.repository.interface';
 import { IWaProvider, WA_PROVIDER } from '../../domain/interfaces/wa-provider.interface';
 import { WaSettingsEntity } from '../../domain/entities/wa-settings.entity';
+import { KyselyService } from '../../../../shared/infrastructure/database/kysely.service';
 import { PrismaService } from '../../../../shared/infrastructure/database/prisma.service';
 
 export interface SendBulkInput {
@@ -28,7 +29,7 @@ export interface BulkProgress {
 }
 
 @Injectable()
-export class SendBulkUseCase {
+export class SendBulkUseCase implements OnApplicationBootstrap {
   private readonly logger = new Logger(SendBulkUseCase.name);
   private activeJobs = new Map<string, boolean>();
 
@@ -39,7 +40,30 @@ export class SendBulkUseCase {
     @Inject(WA_MESSAGE_REPOSITORY) private readonly messageRepo: IWaMessageRepository,
     @Inject(WA_BULK_JOB_REPOSITORY) private readonly bulkJobRepo: IWaBulkJobRepository,
     private readonly prisma: PrismaService,
+    private readonly kysely: KyselyService,
   ) {}
+
+  /**
+   * أي إرسال جماعي كان شغال وقت ما البرنامج اتقفل بيفضل "running" في قاعدة البيانات
+   * للأبد — والفحص اللي بيمنع إرسالين في نفس الوقت كان بيرفض أي إرسال جماعي جديد
+   * بعدها. عند التشغيل بنعلّمهم "فشل" (الحلقة اللي كانت بتبعتهم ماتت مع البرنامج).
+   */
+  async onApplicationBootstrap(): Promise<void> {
+    try {
+      const tenants = await this.prisma.tenant.findMany({ where: { isActive: true }, select: { id: true } });
+      for (const t of tenants) {
+        const res = await this.kysely.getTenantDb(t.id)
+          .updateTable('wa_bulk_jobs')
+          .set({ status: 'failed', completed_at: new Date(), updated_at: new Date() } as any)
+          .where('status', '=', 'running')
+          .executeTakeFirst();
+        const n = Number(res?.numUpdatedRows ?? 0);
+        if (n) this.logger.warn(`Tenant ${t.id}: ${n} interrupted bulk job(s) marked failed after restart`);
+      }
+    } catch (err: any) {
+      this.logger.error(`Interrupted bulk jobs cleanup failed: ${err.message}`);
+    }
+  }
 
   // ─── Cron: Scheduled Jobs Runner ────────────────────────────
   /**
@@ -217,9 +241,7 @@ export class SendBulkUseCase {
         body, status: 'pending', bulkJobId: jobId,
       });
 
-      const delay = this.randomDelay(delayMin, delayMax);
-      await this.sleep(delay);
-
+      // الفاصل بين الرسايل بيتطبق جوه طابور الإرسال (BaileysProvider)
       const result = await this.provider.sendMessage(tenantId, phone, body);
 
       if (result.success) {

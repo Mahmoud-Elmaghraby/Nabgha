@@ -34,6 +34,11 @@ const ERROR_LABELS: Record<string, string> = {
   template_not_found:   'القالب غير موجود',
   notification_disabled: 'الإشعار معطل من الإعدادات',
   session_banned:       'الجلسة محظورة',
+  phone_not_on_whatsapp: 'الرقم ده مش عليه واتساب',
+  invalid_phone:        'رقم غير صحيح',
+  circuit_open:         'الإرسال متوقف مؤقتًا بعد أخطاء متكررة',
+  expired_stale:        'اتلغت — عدّى وقتها',
+  duplicate_recent:     'مكررة — اتبعتت من دقايق',
 };
 
 const STATUS_FILTER_OPTIONS = [

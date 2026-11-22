@@ -11,7 +11,19 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as qrcode from 'qrcode';
 import type { IWaProvider, WaConnectionState, WaSendResult } from '../domain/interfaces/wa-provider.interface';
+import { IWaSettingsRepository, WA_SETTINGS_REPOSITORY } from '../domain/repositories/wa.repository.interface';
 import { normalizePhone } from '../../../shared/utils/phone.util';
+
+// ─── Pacing (الفاصل بين الرسايل) ───────────────────────────
+/** لو الإعدادات مش متاحة لأي سبب، أقل فاصل آمن بين رسالتين */
+const DEFAULT_GAP_MIN_S = 30;
+const DEFAULT_GAP_MAX_S = 60;
+const PACING_CACHE_MS = 60_000;
+
+// ─── فحص الرقم على واتساب ──────────────────────────────────
+/** الرقم الموجود على واتساب بيتفحص تاني بعد 30 يوم، والمش موجود بعد 3 أيام */
+const ON_WA_TTL_EXISTS_MS = 30 * 24 * 60 * 60 * 1000;
+const ON_WA_TTL_MISSING_MS = 3 * 24 * 60 * 60 * 1000;
 
 // ─── Circuit Breaker Config ────────────────────────────────
 /** عدد الفشل المتتالي قبل إغلاق الدائرة */
@@ -62,8 +74,143 @@ export class BaileysProvider implements IWaProvider, OnModuleDestroy {
    * (اكتُشف Aug 31 2026 في حلقة إشعارات "معذور" عند إنهاء حصة فيها عدة غيابات).
    */
   private sendQueues            = new Map<string, Promise<unknown>>();
+  /** وقت آخر رسالة اتبعتت فعلاً لكل tenant — أساس الفاصل بين الرسايل */
+  private lastSendAt            = new Map<string, number>();
+  private pacingCache           = new Map<string, { min: number; max: number; at: number }>();
+  /** نتيجة فحص "الرقم ده عليه واتساب؟" — tenantId:phone */
+  private onWaCache             = new Map<string, { exists: boolean; at: number }>();
+  /** مؤقتات إعادة الاتصال المتجدولة — عشان نلغيها لو حد عمل قطع/خروج يدوي */
+  private reconnectTimers       = new Map<string, NodeJS.Timeout>();
+  /** tenants اتعمل لهم قطع أو خروج يدوي — مايتعملش لهم إعادة اتصال تلقائي */
+  private manuallyStopped       = new Set<string>();
 
-  constructor(@Inject('REDIS_CLIENT') private readonly redis: Redis) {}
+  constructor(
+    @Inject('REDIS_CLIENT') private readonly redis: Redis,
+    @Inject(WA_SETTINGS_REPOSITORY) private readonly settingsRepo: IWaSettingsRepository,
+  ) {}
+
+  // ═══════════════════════════════════════════════════════════
+  // Pacing — فاصل حقيقي بين كل رسالتين
+  // ═══════════════════════════════════════════════════════════
+  // قبل كده كل مكان بيبعت كان بيستنى الفاصل لوحده *قبل* ما يدخل الطابور. لو 20 إشعار
+  // اتنادوا مع بعض (إنهاء حصة فيها غيابات كتير) كانوا بيستنوا بالتوازي ويخلصوا في نفس
+  // الوقت تقريبًا، فيتبعتوا ورا بعض بثواني — بالظبط النمط اللي بيعرّض الرقم للحظر.
+  // دلوقتي الفاصل بيتحسب جوه الطابور نفسه من وقت آخر رسالة اتبعتت فعلاً.
+
+  private async getGap(tenantId: string): Promise<number> {
+    let p = this.pacingCache.get(tenantId);
+    if (!p || Date.now() - p.at > PACING_CACHE_MS) {
+      try {
+        const s = await this.settingsRepo.findByTenantId(tenantId);
+        p = {
+          min: Math.max(1, s?.delayMinSeconds ?? DEFAULT_GAP_MIN_S),
+          max: Math.max(1, s?.delayMaxSeconds ?? DEFAULT_GAP_MAX_S),
+          at: Date.now(),
+        };
+      } catch {
+        p = { min: DEFAULT_GAP_MIN_S, max: DEFAULT_GAP_MAX_S, at: Date.now() };
+      }
+      if (p.max < p.min) p.max = p.min;
+      this.pacingCache.set(tenantId, p);
+    }
+    return (p.min + Math.random() * (p.max - p.min)) * 1000;
+  }
+
+  private async waitForTurn(tenantId: string, priority: boolean): Promise<void> {
+    if (priority) return;
+    const last = this.lastSendAt.get(tenantId);
+    if (!last) return;
+    const wait = last + (await this.getGap(tenantId)) - Date.now();
+    if (wait > 0) await this.sleep(wait);
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // هل الرقم عليه واتساب؟
+  // ═══════════════════════════════════════════════════════════
+  // الإرسال لأرقام مش على واتساب (رقم أرضي، رقم غلط، رقم قديم) من أقوى علامات
+  // البوت عند واتساب، وكانت الرسالة بتتسجل "اتبعتت" وهي ماوصلتش لحد.
+
+  private async isOnWhatsApp(tenantId: string, sock: ReturnType<typeof makeWASocket>, normalized: string): Promise<boolean> {
+    const key = `${tenantId}:${normalized}`;
+    const cached = this.onWaCache.get(key);
+    if (cached) {
+      const ttl = cached.exists ? ON_WA_TTL_EXISTS_MS : ON_WA_TTL_MISSING_MS;
+      if (Date.now() - cached.at < ttl) return cached.exists;
+    }
+    try {
+      const results = await sock.onWhatsApp(normalized);
+      const exists = !!results?.[0]?.exists;
+      this.onWaCache.set(key, { exists, at: Date.now() });
+      return exists;
+    } catch (err: any) {
+      // لو الفحص نفسه فشل مانمنعش الإرسال — المشكلة غالبًا في الاتصال مش في الرقم
+      this.logger.debug(`onWhatsApp check failed for ${normalized}: ${err.message}`);
+      return true;
+    }
+  }
+
+  /**
+   * الخطوات المشتركة لأي إرسال: الطابور → فحص الرقم → الفاصل → محاكاة الكتابة → الإرسال.
+   */
+  private sendPipeline(
+    tenantId: string,
+    phone: string,
+    typingLength: number,
+    content: (jid: string) => Record<string, unknown>,
+    label: string,
+    priority = false,
+  ): Promise<WaSendResult> {
+    if (this.isCircuitOpen(tenantId)) {
+      return Promise.resolve({ success: false, error: 'circuit_open' });
+    }
+    if (!this.sockets.get(tenantId)) {
+      return Promise.resolve({ success: false, error: 'not_connected' });
+    }
+
+    return this.enqueueSend(tenantId, async () => {
+      const sock = this.sockets.get(tenantId);
+      if (!sock) return { success: false, error: 'not_connected' };
+      try {
+        const normalizedPhone = this.normalizePhone(phone);
+        if (!normalizedPhone || normalizedPhone.length < 8) {
+          return { success: false, error: 'invalid_phone' };
+        }
+        if (!(await this.isOnWhatsApp(tenantId, sock, normalizedPhone))) {
+          // مش فشل في الاتصال — مايتحسبش على الـ circuit breaker
+          return { success: false, error: 'phone_not_on_whatsapp' };
+        }
+        const jid = `${normalizedPhone}@s.whatsapp.net`;
+
+        await this.waitForTurn(tenantId, priority);
+        // ممكن الاتصال يكون قطع وإحنا مستنيين دورنا
+        const live = this.sockets.get(tenantId);
+        if (!live) return { success: false, error: 'not_connected' };
+
+        await this.simulateHumanTyping(live, jid, typingLength);
+        this.logger.debug(`Sending WA ${label} to ${jid} for tenant ${tenantId}`);
+        const result = await live.sendMessage(jid, content(jid) as any);
+        this.lastSendAt.set(tenantId, Date.now());
+
+        this.recordSendSuccess(tenantId);
+        return { success: true, messageId: result?.key?.id ?? undefined };
+      } catch (err: any) {
+        this.lastSendAt.set(tenantId, Date.now());
+        this.logger.error(`Send ${label} failed for tenant ${tenantId}: ${err.message}`);
+        this.recordSendFailure(tenantId, err.message);
+        return { success: false, error: err.message };
+      }
+    });
+  }
+
+  isReconnecting(tenantId: string): boolean {
+    return this.reconnectTimers.has(tenantId);
+  }
+
+  private clearReconnect(tenantId: string): void {
+    const t = this.reconnectTimers.get(tenantId);
+    if (t) clearTimeout(t);
+    this.reconnectTimers.delete(tenantId);
+  }
 
   // ═══════════════════════════════════════════════════════════
   // Circuit Breaker
@@ -213,6 +360,8 @@ export class BaileysProvider implements IWaProvider, OnModuleDestroy {
   }
 
   async connect(tenantId: string): Promise<void> {
+    this.manuallyStopped.delete(tenantId);
+    this.clearReconnect(tenantId);
     const currentState = this.states.get(tenantId);
     if (currentState?.status === 'connected') {
       this.logger.log(`Already connected for tenant ${tenantId}`);
@@ -276,6 +425,8 @@ export class BaileysProvider implements IWaProvider, OnModuleDestroy {
       }
 
       if (connection === 'close') {
+        // حدث إغلاق من socket قديم اتبدّل خلاص بواحد جديد — مالوش لازمة
+        if (this.sockets.get(tenantId) && this.sockets.get(tenantId) !== sock) return;
         const statusCode  = (lastDisconnect?.error as any)?.output?.statusCode;
         const isBanned    = statusCode === DisconnectReason.forbidden;   // 403
         const isLoggedOut = statusCode === DisconnectReason.loggedOut;   // 401
@@ -304,6 +455,8 @@ export class BaileysProvider implements IWaProvider, OnModuleDestroy {
         }
 
         // ─── انقطاع مؤقت — إعادة اتصال بتصاعد أُسّي ──────────
+        // لو المستخدم قطع الاتصال بنفسه، أو فيه إعادة اتصال متجدولة بالفعل، مانعملش واحدة تانية
+        if (this.manuallyStopped.has(tenantId) || this.reconnectTimers.has(tenantId)) return;
         this.disconnectedCallbacks.get(tenantId)?.('reconnecting');
         const attempts = (this.reconnectAttempts.get(tenantId) ?? 0) + 1;
         this.reconnectAttempts.set(tenantId, attempts);
@@ -312,14 +465,29 @@ export class BaileysProvider implements IWaProvider, OnModuleDestroy {
           `Tenant ${tenantId} disconnected (code: ${statusCode}) — ` +
           `reconnecting in ${Math.round(delay / 1000)}s (attempt ${attempts})`,
         );
-        setTimeout(() => this.connect(tenantId), delay);
+        const timer = setTimeout(() => {
+          this.reconnectTimers.delete(tenantId);
+          if (this.manuallyStopped.has(tenantId)) return;
+          this.connect(tenantId).catch((err) =>
+            this.logger.error(`Reconnect failed for tenant ${tenantId}: ${err.message}`));
+        }, delay);
+        this.reconnectTimers.set(tenantId, timer);
       }
     });
 
-    sock.ev.on('messages.upsert', ({ messages }) => {
+    sock.ev.on('messages.upsert', ({ messages, type }) => {
+      // 'append' = رسايل قديمة بتتزامن بعد إعادة الاتصال — مش رسايل جديدة
+      if (type !== 'notify') return;
       for (const msg of messages) {
         if (!msg.key.fromMe && msg.message) {
-          const phone = msg.key.remoteJid?.split('@')[0] ?? '';
+          // بنقبل بس محادثات فردية برقم تليفون: مش جروبات (@g.us)، ولا حالات الواتساب
+          // (status@broadcast)، ولا قنوات (@newsletter). في Baileys 7 المحادثة ممكن تيجي
+          // بمعرّف خصوصية (@lid) والرقم الحقيقي في remoteJidAlt.
+          const key: any = msg.key;
+          const pnJid = [key.remoteJid, key.remoteJidAlt, key.senderPn]
+            .find((j: string | undefined) => typeof j === 'string' && j.endsWith('@s.whatsapp.net'));
+          if (!pnJid) continue;
+          const phone = pnJid.split('@')[0].split(':')[0];
           const body  =
             msg.message.conversation ??
             msg.message.extendedTextMessage?.text ??
@@ -334,6 +502,8 @@ export class BaileysProvider implements IWaProvider, OnModuleDestroy {
 
   /** قطع الاتصال بدون حذف ملفات الجلسة — يُستخدم عند restart أو انقطاع مؤقت */
   async disconnect(tenantId: string): Promise<void> {
+    this.manuallyStopped.add(tenantId);
+    this.clearReconnect(tenantId);
     const sock = this.sockets.get(tenantId);
     if (sock) {
       try { sock.end(undefined); } catch {}
@@ -345,6 +515,8 @@ export class BaileysProvider implements IWaProvider, OnModuleDestroy {
 
   /** تسجيل خروج كامل — يحذف ملفات الجلسة ويحتاج إعادة مسح QR */
   async logout(tenantId: string): Promise<void> {
+    this.manuallyStopped.add(tenantId);
+    this.clearReconnect(tenantId);
     const sock = this.sockets.get(tenantId);
     if (sock) {
       try { await sock.logout(); } catch {}
@@ -374,37 +546,12 @@ export class BaileysProvider implements IWaProvider, OnModuleDestroy {
   // Sending — Anti-Ban Pipeline
   // ═══════════════════════════════════════════════════════════
 
-  async sendMessage(tenantId: string, phone: string, body: string): Promise<WaSendResult> {
-    if (this.isCircuitOpen(tenantId)) {
-      return { success: false, error: 'circuit_open' };
-    }
-
-    const sock = this.sockets.get(tenantId);
-    if (!sock) return { success: false, error: 'not_connected' };
-
-    // ── Anti-Ban: طابور تسلسلي لكل tenant — راجع توثيق sendQueues/enqueueSend ──
-    return this.enqueueSend(tenantId, async () => {
-      try {
-        const normalizedPhone = this.normalizePhone(phone);
-        const jid = `${normalizedPhone}@s.whatsapp.net`;
-
-        // ── Anti-Ban: Typing simulation ──────────────────────
-        await this.simulateHumanTyping(sock, jid, body.length);
-
-        // ── Anti-Ban: Text variation ──────────────────────────
-        const variedBody = this.addTextVariation(body);
-
-        this.logger.debug(`Sending WA message to ${jid} for tenant ${tenantId}`);
-        const result = await sock.sendMessage(jid, { text: variedBody });
-
-        this.recordSendSuccess(tenantId);
-        return { success: true, messageId: result?.key?.id ?? undefined };
-      } catch (err: any) {
-        this.logger.error(`Send failed for tenant ${tenantId}: ${err.message}`);
-        this.recordSendFailure(tenantId, err.message);
-        return { success: false, error: err.message };
-      }
-    });
+  async sendMessage(tenantId: string, phone: string, body: string, opts?: { priority?: boolean }): Promise<WaSendResult> {
+    return this.sendPipeline(
+      tenantId, phone, body.length,
+      () => ({ text: this.addTextVariation(body) }),
+      'message', opts?.priority ?? false,
+    );
   }
 
   async sendDocument(
@@ -414,38 +561,14 @@ export class BaileysProvider implements IWaProvider, OnModuleDestroy {
     fileName: string,
     caption?: string,
   ): Promise<WaSendResult> {
-    if (this.isCircuitOpen(tenantId)) {
-      return { success: false, error: 'circuit_open' };
-    }
-
-    const sock = this.sockets.get(tenantId);
-    if (!sock) return { success: false, error: 'not_connected' };
-
-    // ── Anti-Ban: طابور تسلسلي لكل tenant — راجع توثيق sendQueues/enqueueSend ──
-    return this.enqueueSend(tenantId, async () => {
-      try {
-        const normalizedPhone = this.normalizePhone(phone);
-        const jid = `${normalizedPhone}@s.whatsapp.net`;
-
-        // ── Anti-Ban: Typing simulation (بناءً على طول الـ caption) ──
-        await this.simulateHumanTyping(sock, jid, caption?.length ?? 30);
-
-        this.logger.debug(`Sending WA document to ${jid} for tenant ${tenantId}`);
-        const result = await sock.sendMessage(jid, {
-          document,
-          fileName,
-          mimetype: 'application/pdf',
-          caption: caption ? this.addTextVariation(caption) : undefined,
-        });
-
-        this.recordSendSuccess(tenantId);
-        return { success: true, messageId: result?.key?.id ?? undefined };
-      } catch (err: any) {
-        this.logger.error(`Send document failed for tenant ${tenantId}: ${err.message}`);
-        this.recordSendFailure(tenantId, err.message);
-        return { success: false, error: err.message };
-      }
-    });
+    return this.sendPipeline(
+      tenantId, phone, caption?.length ?? 30,
+      () => ({
+        document, fileName, mimetype: 'application/pdf',
+        caption: caption ? this.addTextVariation(caption) : undefined,
+      }),
+      'document',
+    );
   }
 
   async sendImage(
@@ -454,36 +577,11 @@ export class BaileysProvider implements IWaProvider, OnModuleDestroy {
     image: Buffer,
     caption?: string,
   ): Promise<WaSendResult> {
-    if (this.isCircuitOpen(tenantId)) {
-      return { success: false, error: 'circuit_open' };
-    }
-
-    const sock = this.sockets.get(tenantId);
-    if (!sock) return { success: false, error: 'not_connected' };
-
-    // ── Anti-Ban: طابور تسلسلي لكل tenant — راجع توثيق sendQueues/enqueueSend ──
-    return this.enqueueSend(tenantId, async () => {
-      try {
-        const normalizedPhone = this.normalizePhone(phone);
-        const jid = `${normalizedPhone}@s.whatsapp.net`;
-
-        // ── Anti-Ban: Typing simulation ──────────────────────
-        await this.simulateHumanTyping(sock, jid, caption?.length ?? 20);
-
-        this.logger.debug(`Sending WA image to ${jid} for tenant ${tenantId}`);
-        const result = await sock.sendMessage(jid, {
-          image,
-          caption: caption ? this.addTextVariation(caption) : undefined,
-        });
-
-        this.recordSendSuccess(tenantId);
-        return { success: true, messageId: result?.key?.id ?? undefined };
-      } catch (err: any) {
-        this.logger.error(`Send image failed for tenant ${tenantId}: ${err.message}`);
-        this.recordSendFailure(tenantId, err.message);
-        return { success: false, error: err.message };
-      }
-    });
+    return this.sendPipeline(
+      tenantId, phone, caption?.length ?? 20,
+      () => ({ image, caption: caption ? this.addTextVariation(caption) : undefined }),
+      'image',
+    );
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -534,6 +632,8 @@ export class BaileysProvider implements IWaProvider, OnModuleDestroy {
       this.logger.log(`Closing socket for tenant ${tenantId}`);
       try { sock.end(undefined); } catch {}
     }
+    for (const t of this.reconnectTimers.values()) clearTimeout(t);
+    this.reconnectTimers.clear();
     this.sockets.clear();
     this.circuitBreakers.clear();
     this.sendQueues.clear();

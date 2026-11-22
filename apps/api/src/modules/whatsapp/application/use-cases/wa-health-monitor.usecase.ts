@@ -60,7 +60,8 @@ export class WaHealthMonitorUseCase {
 
       session.lastHealthCheck = new Date();
 
-      if (state.status === 'disconnected' && session.status === 'connected') {
+      // لو فيه إعادة اتصال تلقائي متجدولة بالفعل، مانبدأش واحدة تانية فوقها
+      if (state.status === 'disconnected' && session.status === 'connected' && !this.provider.isReconnecting(tenantId)) {
         this.logger.warn(`Health check: tenant ${tenantId} disconnected — attempting reconnect`);
         session.markDisconnected();
         await this.sessionRepo.save(session);

@@ -161,8 +161,7 @@ export class SendMonthlyReportsUseCase {
         body: caption, status: 'pending', bulkJobId: jobId,
       });
 
-      const delay = (Math.random() * (delayMax - delayMin) + delayMin) * 1000;
-      await new Promise((resolve) => setTimeout(resolve, delay));
+      // الفاصل بين الرسايل بيتطبق جوه طابور الإرسال (BaileysProvider)
 
       try {
         if (!reportDef) throw new Error('report_not_registered');

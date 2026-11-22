@@ -34,8 +34,11 @@ export class WaSessionEntity {
     const warmupCurve = [10, 10, 25, 25, 25, 50, 50, 50, 50, 50];
     const elapsedMs = Date.now() - this.warmupStartedAt.getTime();
     const elapsedDays = Math.max(0, Math.floor(elapsedMs / (24 * 60 * 60 * 1000)));
-    const day = Math.min(elapsedDays, warmupCurve.length - 1);
-    return Math.min(warmupCurve[day], targetLimit);
+    // بعد ما التسخين يخلص، الحد هو اللي المستخدم اختاره — قبل كده كان بيفضل
+    // متثبّت على 50 للأبد مهما الإعداد كان أكبر، فمدرس عنده 150 طالب كانت
+    // رسايل الغياب بتقف في نص اليوم وتنتهي صلاحيتها من غير ما توصل
+    if (elapsedDays >= warmupCurve.length) return targetLimit;
+    return Math.min(warmupCurve[elapsedDays], targetLimit);
   }
 
   get isWarmingUp(): boolean {
