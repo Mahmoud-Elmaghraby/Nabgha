@@ -54,7 +54,15 @@ apps/api/Nabgha/
 *.rar
 *.zip
 *.pem
-nabgha-setup1.exe 
 .claude/
 testdelete123.txt
 testdelete*.txt
+
+# Installer builds (كل الإصدارات في releases/ برة git)
+releases/
+nabgha-setup*.exe
+nabgha-setup*/
+
+# أسرار ودوكمنتيشن محلية
+*.local.md
+!.env.example

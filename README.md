@@ -1,159 +1,61 @@
-# Turborepo starter
+# نبغة (Nabgha)
 
-This Turborepo starter is maintained by the Turborepo core team.
+نظام إدارة متكامل للسناتر والمراكز التعليمية: الطلاب، المجموعات، الحصص والحضور، الدرجات والامتحانات، المالية والتحصيل، التقارير، وإشعارات أولياء الأمور عبر واتساب وتليجرام.
 
-## Using this example
+## أوضاع التشغيل
 
-Run the following command:
+| الوضع | `DEPLOY_MODE` | الوصف |
+|---|---|---|
+| Desktop | `desktop` | تطبيق Electron على جهاز العميل + PostgreSQL محلي. بيتثبّت بـ installer (NSIS). |
+| LAN | `local` | سيرفر محلي في السنتر + nginx HTTPS، الأجهزة توصل عبر الشبكة. |
+| SaaS | `saas` | سيرفر سحابي متعدد المراكز. |
 
-```sh
-npx create-turbo@latest
+كل مركز (tenant) له PostgreSQL schema منفصلة في كل الأوضاع.
+
+## المكونات
+
+```
+apps/
+  api/        NestJS 11 — Prisma (public schema) + Kysely (tenant schemas)
+  web/        React 18 + Vite + Tailwind + shadcn/ui (RTL)
+  desktop/    Electron 29 — يشغّل الـ API كـ child process
+packages/
+  db/         Prisma schema + SQL migrations (packages/db/src/migrations)
+  types/      أنواع وصلاحيات مشتركة
+  config/, eslint-config/, typescript-config/
+infra/docker/ PostgreSQL + Redis + MinIO لبيئة التطوير
 ```
 
-## What's inside?
+الموديولات: auth, users, settings, upload, subjects, teachers, students, groups, sessions/attendance, exams, finance, reports, backup, whatsapp, telegram, parent-portal, platform.
 
-This Turborepo includes the following packages/apps:
+## التشغيل للتطوير
 
-### Apps and Packages
+المتطلبات: Node 20+، pnpm 10، Docker (أو PostgreSQL محلي).
 
-- `docs`: a [Next.js](https://nextjs.org/) app
-- `web`: another [Next.js](https://nextjs.org/) app
-- `@repo/ui`: a stub React component library shared by both `web` and `docs` applications
-- `@repo/eslint-config`: `eslint` configurations (includes `eslint-config-next` and `eslint-config-prettier`)
-- `@repo/typescript-config`: `tsconfig.json`s used throughout the monorepo
+```bash
+pnpm install
+cp apps/api/.env.example apps/api/.env      # وعدّل القيم
+cp packages/db/.env.example packages/db/.env
+docker compose -f infra/docker/docker-compose.yml up -d
 
-Each package/app is 100% [TypeScript](https://www.typescriptlang.org/).
-
-### Utilities
-
-This Turborepo has some additional tools already setup for you:
-
-- [TypeScript](https://www.typescriptlang.org/) for static type checking
-- [ESLint](https://eslint.org/) for code linting
-- [Prettier](https://prettier.io) for code formatting
-
-### Build
-
-To build all apps and packages, run the following command:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo build
+pnpm --filter api build && node apps/api/dist/main.js
+pnpm --filter web dev
 ```
 
-Without global `turbo`, use your package manager:
+تفاصيل التشغيل على ويندوز ووضع Desktop في `docs/DEVELOPER_GUIDE.md`.
 
-```sh
-cd my-turborepo
-npx turbo build
-pnpm dlx turbo build
-pnpm exec turbo build
-```
+## بناء الـ Installer (ويندوز)
 
-You can build a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
+شغّل `build-installer.bat` كـ Administrator. الناتج يتحط في `releases/` (متجاهل في git).
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
+## الدوكمنتيشن
 
-```sh
-turbo build --filter=docs
-```
+| الملف | المحتوى |
+|---|---|
+| `docs/MASTER_DOC.md` | المعمارية، قاعدة البيانات، القرارات التقنية |
+| `docs/DEVELOPER_GUIDE.md` | دليل المطور وتشغيل البيئات |
+| `docs/INSTALLER_DEEP_DIVE_v2.md` | الـ installer ومشاكل التثبيت عند العملاء |
+| `docs/PROGRESS_TRACKER_updated.md` | حالة كل موديول والخطوات الجاية |
+| `ISSUES.md` | المشاكل المعروفة من مراجعة الكود |
 
-Without global `turbo`:
-
-```sh
-npx turbo build --filter=docs
-pnpm exec turbo build --filter=docs
-pnpm exec turbo build --filter=docs
-```
-
-### Develop
-
-To develop all apps and packages, run the following command:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo dev
-```
-
-Without global `turbo`, use your package manager:
-
-```sh
-cd my-turborepo
-npx turbo dev
-pnpm exec turbo dev
-pnpm exec turbo dev
-```
-
-You can develop a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo dev --filter=web
-```
-
-Without global `turbo`:
-
-```sh
-npx turbo dev --filter=web
-pnpm exec turbo dev --filter=web
-pnpm exec turbo dev --filter=web
-```
-
-### Remote Caching
-
-> [!TIP]
-> Vercel Remote Cache is free for all plans. Get started today at [vercel.com](https://vercel.com/signup?utm_source=remote-cache-sdk&utm_campaign=free_remote_cache).
-
-Turborepo can use a technique known as [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching) to share cache artifacts across machines, enabling you to share build caches with your team and CI/CD pipelines.
-
-By default, Turborepo will cache locally. To enable Remote Caching you will need an account with Vercel. If you don't have an account you can [create one](https://vercel.com/signup?utm_source=turborepo-examples), then enter the following commands:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo login
-```
-
-Without global `turbo`, use your package manager:
-
-```sh
-cd my-turborepo
-npx turbo login
-pnpm exec turbo login
-pnpm exec turbo login
-```
-
-This will authenticate the Turborepo CLI with your [Vercel account](https://vercel.com/docs/concepts/personal-accounts/overview).
-
-Next, you can link your Turborepo to your Remote Cache by running the following command from the root of your Turborepo:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo link
-```
-
-Without global `turbo`:
-
-```sh
-npx turbo link
-pnpm exec turbo link
-pnpm exec turbo link
-```
-
-## Useful Links
-
-Learn more about the power of Turborepo:
-
-- [Tasks](https://turborepo.dev/docs/crafting-your-repository/running-tasks)
-- [Caching](https://turborepo.dev/docs/crafting-your-repository/caching)
-- [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching)
-- [Filtering](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters)
-- [Configuration Options](https://turborepo.dev/docs/reference/configuration)
-- [CLI Usage](https://turborepo.dev/docs/reference/command-line-reference)
+بيانات الدخول والتوكنات في `docs/CREDENTIALS.local.md` على جهاز المطور فقط، ومش بتترفع على git.
