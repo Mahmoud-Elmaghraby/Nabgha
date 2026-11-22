@@ -3,17 +3,15 @@ import { PageHeader } from '@/shared/components';
 import { CenterSettingsForm } from '../components/CenterSettingsForm';
 import { SubjectsManager } from '../../subjects/components/SubjectsManager';
 import { CardDesignerForm } from '../components/CardDesignerForm';
-import { TelegramSettingsForm } from '../components/TelegramSettingsForm';
 import { BrandingSettingsForm } from '../components/BrandingSettingsForm';
 import { BackupSettingsForm } from '../components/BackupSettingsForm';
 
-type Tab = 'center' | 'subjects' | 'card' | 'telegram' | 'branding' | 'backup';
+type Tab = 'center' | 'subjects' | 'card' | 'branding' | 'backup';
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'center', label: 'بيانات المركز' },
   { key: 'subjects', label: 'المواد الدراسية' },
   { key: 'card', label: 'إعداد الكارت' },
-  { key: 'telegram', label: 'تليجرام' },
   { key: 'branding', label: 'الهوية في الرسائل' },
   { key: 'backup', label: 'النسخ الاحتياطي' },
 ];
@@ -51,7 +49,6 @@ export default function SettingsPage() {
           {tab === 'center' && <CenterSettingsForm />}
           {tab === 'subjects' && <SubjectsManager />}
           {tab === 'card' && <CardDesignerForm />}
-          {tab === 'telegram' && <TelegramSettingsForm />}
           {tab === 'branding' && <BrandingSettingsForm />}
           {tab === 'backup' && <BackupSettingsForm />}
         </div>

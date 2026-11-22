@@ -10,9 +10,6 @@ export function CenterSettingsForm() {
   const [form, setForm] = useState<UpdateCenterSettingsPayload>({});
   const [logoUrl, setLogoUrl] = useState<string>('');
   const [saved, setSaved] = useState(false);
-  const [telegramToken, setTelegramToken] = useState('');
-  const [telegramSaved, setTelegramSaved] = useState(false);
-  const [botInfo, setBotInfo] = useState<{username: string; name: string} | null>(null);
   const [logoInitialized, setLogoInitialized] = useState(false);
 
   useEffect(() => {
