@@ -486,6 +486,8 @@ async function setup() {
         notify_group_added      BOOLEAN NOT NULL DEFAULT true,
         notify_group_removed    BOOLEAN NOT NULL DEFAULT false,
         notify_student_card     BOOLEAN NOT NULL DEFAULT false,
+        notify_absence_excused  BOOLEAN NOT NULL DEFAULT true,
+        notify_grade_recorded   BOOLEAN NOT NULL DEFAULT true,
         created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
@@ -566,7 +568,108 @@ async function setup() {
     console.log('  ✓ wa_inbound_messages');
 
     // ══════════════════════════════════════════════════════════════
-    // 12. Default Data — admin user + خزينة رئيسية
+    // 12. Telegram Tables
+    // ══════════════════════════════════════════════════════════════
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS telegram_links (
+        id          UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+        entity_type VARCHAR(20)  NOT NULL,
+        entity_id   UUID         NOT NULL,
+        chat_id     VARCHAR(50)  NOT NULL,
+        linked_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        UNIQUE(entity_type, entity_id)
+      )
+    `);
+    await client.query(`GRANT ALL ON TABLE telegram_links TO nabgha`);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_telegram_links_chat_id ON telegram_links(chat_id)
+    `);
+    console.log('  ✓ telegram_links');
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS telegram_settings (
+        id                     UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id              UUID        NOT NULL UNIQUE,
+        telegram_enabled       BOOLEAN     NOT NULL DEFAULT false,
+        send_hours_from        VARCHAR(5)  NOT NULL DEFAULT '08:00',
+        send_hours_to          VARCHAR(5)  NOT NULL DEFAULT '22:00',
+        notify_absent          BOOLEAN     NOT NULL DEFAULT true,
+        notify_present         BOOLEAN     NOT NULL DEFAULT false,
+        notify_late            BOOLEAN     NOT NULL DEFAULT true,
+        notify_3_absences      BOOLEAN     NOT NULL DEFAULT true,
+        notify_payment_confirm BOOLEAN     NOT NULL DEFAULT true,
+        notify_payment_due_7d  BOOLEAN     NOT NULL DEFAULT true,
+        notify_payment_due_1d  BOOLEAN     NOT NULL DEFAULT true,
+        notify_payment_overdue BOOLEAN     NOT NULL DEFAULT true,
+        notify_new_student     BOOLEAN     NOT NULL DEFAULT true,
+        notify_group_added     BOOLEAN     NOT NULL DEFAULT true,
+        notify_group_removed   BOOLEAN     NOT NULL DEFAULT false,
+        notify_absence_excused BOOLEAN     NOT NULL DEFAULT true,
+        notify_grade_recorded  BOOLEAN     NOT NULL DEFAULT true,
+        created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at             TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await client.query(`GRANT ALL ON TABLE telegram_settings TO nabgha`);
+    console.log('  ✓ telegram_settings');
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS telegram_templates (
+        id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id   UUID        NOT NULL,
+        key         VARCHAR(50) NOT NULL,
+        body        TEXT        NOT NULL,
+        is_default  BOOLEAN     NOT NULL DEFAULT true,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (tenant_id, key)
+      )
+    `);
+    await client.query(`GRANT ALL ON TABLE telegram_templates TO nabgha`);
+    console.log('  ✓ telegram_templates');
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS telegram_messages (
+        id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id     UUID        NOT NULL,
+        chat_id       VARCHAR(64) NOT NULL,
+        entity_type   VARCHAR(20) NOT NULL,
+        entity_id     UUID        NOT NULL,
+        template_key  VARCHAR(50),
+        body          TEXT        NOT NULL,
+        status        VARCHAR(20) NOT NULL DEFAULT 'pending',
+        error_message TEXT,
+        sent_at       TIMESTAMPTZ,
+        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await client.query(`GRANT ALL ON TABLE telegram_messages TO nabgha`);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_telegram_messages_tenant ON telegram_messages(tenant_id)
+    `);
+    console.log('  ✓ telegram_messages');
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS telegram_inbound_messages (
+        id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id   UUID        NOT NULL,
+        chat_id     VARCHAR(64) NOT NULL,
+        body        TEXT        NOT NULL,
+        entity_type VARCHAR(20),
+        entity_id   UUID,
+        is_read     BOOLEAN     NOT NULL DEFAULT false,
+        received_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await client.query(`GRANT ALL ON TABLE telegram_inbound_messages TO nabgha`);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_telegram_inbound_tenant ON telegram_inbound_messages(tenant_id)
+    `);
+    console.log('  ✓ telegram_inbound_messages');
+
+    // ══════════════════════════════════════════════════════════════
+    // 13. Default Data — admin user + خزينة رئيسية
     // ══════════════════════════════════════════════════════════════
     const hash = await bcrypt.hash(ADMIN_PASS, 10);
 

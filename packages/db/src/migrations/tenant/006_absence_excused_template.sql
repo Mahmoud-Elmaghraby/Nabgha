@@ -5,7 +5,7 @@
 
 INSERT INTO wa_templates (tenant_id, key, body, is_default)
 SELECT DISTINCT tenant_id, 'ABSENCE_EXCUSED',
-  'نبغة: تم إعفاء {student_name} من غياب {subject} بتاريخ {date} — حضر حصة بديلة ✅',
+  '{center_name}: تم اعتبار غياب الطالب {student_name} عن حصة {subject} بتاريخ {date} معذوراً نظراً لحضوره حصة بديلة',
   true
 FROM wa_templates
 ON CONFLICT (tenant_id, key) DO NOTHING;

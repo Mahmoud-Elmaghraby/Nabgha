@@ -8,6 +8,24 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 const MIGRATIONS_DIR = path.join(__dirname, 'migrations');
 
+// إعادة محاولة الاتصال بقاعدة البيانات بدل الفشل الفوري — لو Postgres لسه بيبدأ
+// (مثلاً فور فتح الجهاز، أو خدمة Windows لسه بتقوم) كان pool.connect() بيرمي
+// ECONNREFUSED على طول، والسكريبت بيخرج بـ exit code=1، وده كان بيخلي تطبيق
+// سطح المكتب (main.ts) يقفل البرنامج كله فورًا بدل ما يستنى — وده السبب اللي
+// كان بيخلي المستخدم يحتاج يفتح البرنامج أكتر من مرة لحد ما Postgres يخلص
+// بدء تشغيله. دلوقتي بنستنى لحد 30 ثانية (محاولة كل ثانية) قبل ما نستسلم فعلاً.
+async function connectWithRetry(dbPool, { retries = 30, delayMs = 1000 } = {}) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      return await dbPool.connect();
+    } catch (err) {
+      if (attempt === retries) throw err;
+      console.log(`  ⏳ قاعدة البيانات لسه مش جاهزة (محاولة ${attempt}/${retries}): ${err.message} — هعيد المحاولة بعد ثانية...`);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+}
+
 const PLATFORM_ADMIN = {
   email: 'admin@nabgha.com',
   password: 'Nabgha@Admin2026',
@@ -129,7 +147,7 @@ async function provisionTenant(client, tenantId, adminData) {
 
 // ── Main ──────────────────────────────────────────────────────
 async function main() {
-  const client = await pool.connect();
+  const client = await connectWithRetry(pool);
   try {
     await runPublicMigrations(client);
 

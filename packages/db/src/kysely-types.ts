@@ -122,6 +122,7 @@ export interface AttendanceTable {
   created_at: Generated<Date>;
   updated_at: Generated<Date>;
   grade_notified_at: Date | null;
+  telegram_grade_notified_at: Date | null;
 }
 
 export interface AttendanceCreditsTable {
@@ -210,6 +211,8 @@ export interface WaSettingsTable {
   notify_group_added: Generated<boolean>;
   notify_group_removed: Generated<boolean>;
   notify_student_card: Generated<boolean>;
+  notify_absence_excused: Generated<boolean>;
+  notify_grade_recorded: Generated<boolean>;
   created_at: Generated<Date>;
   updated_at: Generated<Date>;
 }
@@ -354,6 +357,75 @@ export interface ParentOtpCodesTable {
   created_at: Generated<Date>;
 }
 
+// entity_type: 'student' حاليًا، قابل للتوسع مستقبلاً (مثلاً 'teacher') من غير
+// أي تعديل في هذا الجدول أو في طبقة النقل (Polling) نفسها.
+export interface TelegramLinksTable {
+  id: Generated<string>;
+  entity_type: string;
+  entity_id: string;
+  chat_id: string;
+  linked_at: Generated<Date>;
+}
+
+export interface TelegramSettingsTable {
+  id: Generated<string>;
+  tenant_id: string;
+  telegram_enabled: Generated<boolean>;
+  send_hours_from: Generated<string>;
+  send_hours_to: Generated<string>;
+  notify_absent: Generated<boolean>;
+  notify_present: Generated<boolean>;
+  notify_late: Generated<boolean>;
+  notify_3_absences: Generated<boolean>;
+  notify_payment_confirm: Generated<boolean>;
+  notify_payment_due_7d: Generated<boolean>;
+  notify_payment_due_1d: Generated<boolean>;
+  notify_payment_overdue: Generated<boolean>;
+  notify_new_student: Generated<boolean>;
+  notify_group_added: Generated<boolean>;
+  notify_group_removed: Generated<boolean>;
+  notify_absence_excused: Generated<boolean>;
+  notify_grade_recorded: Generated<boolean>;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+export interface TelegramTemplatesTable {
+  id: Generated<string>;
+  tenant_id: string;
+  key: string;
+  body: string;
+  is_default: Generated<boolean>;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+export interface TelegramMessagesTable {
+  id: Generated<string>;
+  tenant_id: string;
+  chat_id: string;
+  entity_type: string;
+  entity_id: string;
+  template_key: string | null;
+  body: string;
+  status: string;
+  error_message: string | null;
+  sent_at: Date | null;
+  created_at: Generated<Date>;
+}
+
+export interface TelegramInboundMessagesTable {
+  id: Generated<string>;
+  tenant_id: string;
+  chat_id: string;
+  body: string;
+  entity_type: string | null;
+  entity_id: string | null;
+  is_read: Generated<boolean>;
+  received_at: Generated<Date>;
+  created_at: Generated<Date>;
+}
+
 export interface TenantDatabase {
   users: UsersTable;
   subjects: SubjectsTable;
@@ -380,6 +452,87 @@ export interface TenantDatabase {
   payment_transactions: PaymentTransactionsTable;
   expenses: ExpensesTable;
   parent_otp_codes: ParentOtpCodesTable;
+  telegram_links: TelegramLinksTable;
+  telegram_settings: TelegramSettingsTable;
+  telegram_templates: TelegramTemplatesTable;
+  telegram_messages: TelegramMessagesTable;
+  telegram_inbound_messages: TelegramInboundMessagesTable;
+  // ─── Question Bank ────────────────────────────────────────
+  exam_questions: ExamQuestionsTable;
+  exams: ExamsTable;
+  exam_items: ExamItemsTable;
+}
+
+// ============================================================
+// Question Bank Types
+// ============================================================
+export type ExamQuestionType = 'mcq' | 'true_false' | 'fill' | 'essay';
+export type ExamDifficulty   = 'easy' | 'medium' | 'hard';
+
+export interface ExamQuestionsTable {
+  id:               Generated<string>;
+  teacher_id:       string | null;
+  subject_id:       string | null;
+  grade:            string | null;
+  type:             ExamQuestionType;
+  question_text:    string;
+  image_url:        string | null;
+  options:          string[] | null;        // JSON array — للـ MCQ
+  correct_answer:   string | null;
+  model_answer:     string | null;
+  difficulty:       Generated<ExamDifficulty>;
+  tags:             Generated<string[]>;
+  default_degree:   Generated<number>;
+  times_used:       Generated<number>;
+  created_by:       string | null;
+  created_at:       Generated<Date>;
+  updated_at:       Generated<Date>;
+  deleted_at:       Date | null;
+}
+
+export interface ExamDesignConfig {
+  header_color:       string;
+  font_family:        string;
+  show_logo:          boolean;
+  show_student_name:  boolean;
+  show_date:          boolean;
+  show_degree:        boolean;
+  logo_position:      'right' | 'left' | 'center';
+  custom_header_text: string | null;
+}
+
+export interface ExamsTable {
+  id:              Generated<string>;
+  teacher_id:      string | null;
+  subject_id:      string | null;
+  grade:           string | null;
+  title:           string;
+  exam_date:       Date | null;
+  duration_mins:   number | null;
+  total_degree:    Generated<number>;
+  instructions:    string | null;
+  design_config:   Generated<ExamDesignConfig>;
+  is_template:     Generated<boolean>;
+  created_by:      string | null;
+  created_at:      Generated<Date>;
+  updated_at:      Generated<Date>;
+  deleted_at:      Date | null;
+}
+
+export interface ExamItemsTable {
+  id:              Generated<string>;
+  exam_id:         string;
+  question_id:     string | null;
+  question_text:   string;
+  type:            ExamQuestionType;
+  options:         string[] | null;
+  correct_answer:  string | null;
+  model_answer:    string | null;
+  image_url:       string | null;
+  degree:          Generated<number>;
+  sort_order:      Generated<number>;
+  section_title:   string | null;
+  created_at:      Generated<Date>;
 }
 
 export type User = Selectable<UsersTable>;
@@ -404,3 +557,13 @@ export type UpdateSubject = Updateable<SubjectsTable>;
 export type UpdateSubjectGrade = Updateable<SubjectGradesTable>;
 export type UpdateGroup = Updateable<GroupsTable>;
 export type UpdatePayment = Updateable<PaymentsTable>;
+
+// Question Bank
+export type ExamQuestion    = Selectable<ExamQuestionsTable>;
+export type Exam            = Selectable<ExamsTable>;
+export type ExamItem        = Selectable<ExamItemsTable>;
+export type NewExamQuestion = Insertable<ExamQuestionsTable>;
+export type NewExam         = Insertable<ExamsTable>;
+export type NewExamItem     = Insertable<ExamItemsTable>;
+export type UpdateExamQuestion = Updateable<ExamQuestionsTable>;
+export type UpdateExam         = Updateable<ExamsTable>;
