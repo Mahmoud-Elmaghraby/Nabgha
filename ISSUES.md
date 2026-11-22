@@ -1,6 +1,6 @@
 # 🐛 ISSUES — مشاكل مشروع نابغة
 
-> آخر تحديث: 2026-11-14
+> آخر تحديث: 2026-11-22
 > تم الكشف عنها بالمراجعة الكاملة للكود (Code Review)
 
 ---
@@ -40,7 +40,7 @@ if (isAuthEndpoint) {
 
 ---
 
-### [AUTH-002] 🔴 `AppError.unauthorized` — ترتيب المعاملات مقلوب في `teachers`
+### [AUTH-002] 🔴 `AppError.unauthorized` — ترتيب المعاملات مقلوب في `teachers` ✅ **تم الإصلاح**
 
 **الموديول:** `teachers` — Backend  
 **الملف:** `apps/api/src/modules/teachers/application/use-cases/teacher.usecase.ts`  
@@ -63,7 +63,7 @@ throw new AppError('NOT_FOUND', 'المدرس غير موجود', 404);
 
 ---
 
-### [AUTH-003] 🔴 `initDesktopSetup` — Raw SQL بدون Migrations
+### [AUTH-003] 🔴 `initDesktopSetup` — Raw SQL بدون Migrations ✅ **تم الإصلاح**
 
 **الموديول:** `auth` — Backend  
 **الملف:** `apps/api/src/modules/auth/auth.service.ts` (السطور 59–103)
@@ -76,7 +76,7 @@ throw new AppError('NOT_FOUND', 'المدرس غير موجود', 404);
 
 ---
 
-### [AUTH-004] 🔴 `initDesktopSetup` — بدون Validation
+### [AUTH-004] 🔴 `initDesktopSetup` — بدون Validation ✅ **تم الإصلاح**
 
 **الموديول:** `auth` — Backend  
 **الملف:** `apps/api/src/modules/auth/auth.service.ts` (السطر 29)
@@ -186,7 +186,7 @@ private readonly pendingAttendanceNotifications = new Map<string, NodeJS.Timeout
 
 ---
 
-### [GROUPS-001] 🟡 حذف مجموعة بدون التحقق من وجود طلاب
+### [GROUPS-001] 🟡 حذف مجموعة بدون التحقق من وجود طلاب ✅ **تم الإصلاح**
 
 **الموديول:** `groups` — Backend  
 **الملف:** `apps/api/src/modules/groups/application/use-cases/group.usecase.ts` (السطر 51)
@@ -226,7 +226,7 @@ return this.config.get('JWT_ACCESS_EXPIRY') || '8h';  // ← الفعلي
 
 ---
 
-### [AUTH-010] 🟢 `bcrypt` Import مكرر
+### [AUTH-010] 🟢 `bcrypt` Import مكرر ✅ **تم الإصلاح**
 
 **الموديول:** `auth` — Backend  
 **الملف:** `apps/api/src/modules/auth/auth.service.ts`
@@ -281,3 +281,8 @@ async autoTransitionSessions()
 | الـ ID | الوصف | التاريخ |
 |--------|-------|---------|
 | AUTH-001 | تعليق صفحة اللوجين عند بيانات غلط | 2026-11-14 |
+| AUTH-002 | ترتيب معاملات `AppError` مقلوب — اتصلح في teachers و platform (20 مكان) | 2026-11-22 |
+| AUTH-003 | إعداد Desktop بقى يستخدم نفس الـ migrations عبر `tenant-provisioner.ts` المشترك مع لوحة المنصة | 2026-11-22 |
+| AUTH-004 | Zod validation على `/auth/setup/init` + منع تكرار الإعداد لو فيه مركز موجود (409) + throttle | 2026-11-22 |
+| AUTH-010 | شيل `require('bcrypt')` و`require('uuid')` و`require('pg')` من `initDesktopSetup` | 2026-11-22 |
+| GROUPS-001 | منع حذف مجموعة فيها طلاب نشطين أو حصص مفتوحة + رسالة خطأ ظاهرة في الواجهة | 2026-11-22 |
