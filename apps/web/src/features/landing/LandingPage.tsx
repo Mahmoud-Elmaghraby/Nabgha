@@ -6,7 +6,8 @@ import {
   MonitorSmartphone, Repeat, ShieldCheck, ChevronDown, CheckCircle2, XCircle,
   Sparkles, Clock, Send, BookOpenCheck,
 } from 'lucide-react';
-import { CONTACT_WHATSAPP, CONTACT_MESSAGE, CONTACT_EMAIL } from './landing.config';
+import { CONTACT_WHATSAPP, CONTACT_MESSAGE, CONTACT_EMAIL, TESTIMONIALS } from './landing.config';
+import { Testimonials } from './Testimonials';
 
 // ─── المحتوى ───────────────────────────────────────────────
 // كل النصوص هنا — أي تعديل في الكلام بيبقى في المكان ده بس.
@@ -191,6 +192,9 @@ export default function LandingPage() {
           </a>
           <nav className="flex items-center gap-1 sm:gap-2">
             <a href="#features" className="hidden md:inline text-white/80 hover:text-white text-sm px-3 py-2">المميزات</a>
+            {TESTIMONIALS.length > 0 && (
+              <a href="#teachers" className="hidden md:inline text-white/80 hover:text-white text-sm px-3 py-2">آراء المدرسين</a>
+            )}
             <a href="#how" className="hidden md:inline text-white/80 hover:text-white text-sm px-3 py-2">إزاي نبدأ</a>
             <a href="#faq" className="hidden md:inline text-white/80 hover:text-white text-sm px-3 py-2">أسئلة</a>
             <Link to="/auth/login" className="text-white/90 hover:text-white text-sm font-bold px-3 py-2">دخول</Link>
@@ -334,6 +338,9 @@ export default function LandingPage() {
           <div className="lg:order-1 max-w-md mx-auto w-full"><FinanceMock /></div>
         </div>
       </section>
+
+      {/* ── مدرسين بيشتغلوا بنبغة (بيختفي لو مفيش بيانات) ── */}
+      <Testimonials />
 
       {/* ── لمين ── */}
       <section className="bg-white border-y border-gray-100">
