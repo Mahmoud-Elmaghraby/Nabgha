@@ -1,3 +1,4 @@
+import { BrandMark } from '@/shared/components/brand/BrandLogo';
 import { useState, useRef, useEffect } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -180,11 +181,7 @@ export function Navbar({ onToggleLayout, currentMode, splitMode, onSplitMode, on
       <div className="flex items-center justify-between h-[72px] px-6 gap-4">
         {/* ── Logo (Right) ── */}
         <div className="flex items-center gap-3 shrink-0">
-          <img
-            src="/Logo-icon-512.png"
-            alt="نبغة"
-            className="w-14 h-14 object-contain drop-shadow-md"
-          />
+          <BrandMark size="md" glow />
           <div className="leading-tight hidden lg:block">
             <h1 className="text-white font-black text-2xl tracking-wider drop-shadow-sm">نبغة</h1>
           </div>

@@ -134,7 +134,7 @@ export function UsersList({ users, onEdit, isLoading }: UsersListProps) {
       data={users}
       keyExtractor={(u) => u.id}
       isLoading={isLoading}
-      emptyIcon="/Logo.png"
+      emptyIcon="/Logo-icon-192.png"
       emptyTitle="لا يوجد مستخدمون"
       emptySubtitle='اضغط "إضافة مستخدم" لإنشاء أول مستخدم'
     />

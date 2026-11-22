@@ -227,7 +227,7 @@ export function StudentsList({ students, onEdit, onViewQr, isLoading, visibleKey
         keyExtractor={s => s.id}
         isLoading={isLoading}
         onRowClick={s => navigate(`/students/${s.id}`)}
-        emptyIcon="/Logo.png"
+        emptyIcon="/Logo-icon-192.png"
         emptyTitle="لا يوجد طلاب"
         emptySubtitle='اضغط "إضافة طالب" لإضافة أول طالب'
       />

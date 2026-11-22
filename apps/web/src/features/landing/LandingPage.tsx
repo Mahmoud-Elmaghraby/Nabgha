@@ -1,3 +1,4 @@
+import { BrandLogo } from '@/shared/components/brand/BrandLogo';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
@@ -184,10 +185,9 @@ export default function LandingPage() {
     <div className="min-h-screen bg-[#F7F7F5] text-gray-800 font-cairo" dir="rtl">
       {/* ── Header ── */}
       <header className="bg-[#0E3B2E]/95 backdrop-blur sticky top-0 z-40 shadow-md">
-        <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
-          <a href="#top" className="flex items-center gap-2">
-            <img src="/Logo-icon-192.png" alt="نبغة" className="w-10 h-10 object-contain" />
-            <span className="text-white font-black text-xl">نبغة</span>
+        <div className="max-w-6xl mx-auto px-4 h-[84px] flex items-center justify-between">
+          <a href="#top" className="flex items-center">
+            <BrandLogo size="lg" glow />
           </a>
           <nav className="flex items-center gap-1 sm:gap-2">
             <a href="#features" className="hidden md:inline text-white/80 hover:text-white text-sm px-3 py-2">المميزات</a>
@@ -416,8 +416,7 @@ export default function LandingPage() {
       <footer className="bg-[#0E3B2E] text-white/60 text-sm">
         <div className="max-w-6xl mx-auto px-4 py-8 flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <img src="/Logo-icon-192.png" alt="" className="w-8 h-8 object-contain" />
-            <span className="text-white font-bold">نبغة</span>
+            <BrandLogo size="sm" />
             <span>— نظام إدارة المدرسين والمراكز التعليمية</span>
           </div>
           <div className="flex items-center gap-4">

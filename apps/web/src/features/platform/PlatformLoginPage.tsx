@@ -1,3 +1,4 @@
+import { BrandLogo } from '@/shared/components/brand/BrandLogo';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -33,8 +34,8 @@ export default function PlatformLoginPage() {
     <div className="min-h-screen bg-gray-900 flex items-center justify-center" dir="rtl">
       <div className="bg-white rounded-2xl shadow-lg w-full max-w-md p-8">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">نبغة</h1>
-          <p className="text-gray-500 mt-1 text-sm">لوحة تحكم المنصة</p>
+          <BrandLogo size="lg" tone="dark" layout="stack" />
+          <p className="text-gray-500 mt-2 text-sm">لوحة تحكم المنصة</p>
         </div>
 
         {error && (

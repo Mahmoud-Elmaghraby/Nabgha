@@ -1,3 +1,4 @@
+import { BrandMark } from '@/shared/components/brand/BrandLogo';
 import { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LogOut } from 'lucide-react';
@@ -18,7 +19,7 @@ export function ParentPortalLayout({ children }: { children: ReactNode }) {
       <header className="bg-[#0E3B2E] text-white sticky top-0 z-10">
         <div className="max-w-lg mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <img src="/Logo.png" alt="نبغة" className="w-8 h-8 object-contain" />
+            <BrandMark size="sm" glow />
             <div>
               <p className="text-sm font-bold leading-none">نبغة</p>
               <p className="text-white/60 text-[11px] leading-none mt-0.5">بوابة أولياء الأمور</p>

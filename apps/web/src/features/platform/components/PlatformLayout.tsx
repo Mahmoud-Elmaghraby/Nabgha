@@ -1,3 +1,4 @@
+import { BrandLogo } from '@/shared/components/brand/BrandLogo';
 import { ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { usePlatformAuthStore } from '../stores/platform-auth.store';
@@ -25,8 +26,8 @@ export function PlatformLayout({ children }: { children: ReactNode }) {
       <aside className="w-64 bg-gray-900 text-white flex flex-col fixed h-full">
         {/* Logo */}
         <div className="p-6 border-b border-gray-700">
-          <h1 className="text-xl font-bold text-white">نبغة</h1>
-          <p className="text-gray-400 text-xs mt-1">لوحة تحكم المنصة</p>
+          <BrandLogo size="md" />
+          <p className="text-gray-400 text-xs mt-2">لوحة تحكم المنصة</p>
         </div>
 
         {/* Nav */}

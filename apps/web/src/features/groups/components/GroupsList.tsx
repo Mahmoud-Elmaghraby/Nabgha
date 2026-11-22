@@ -126,7 +126,7 @@ export function GroupsList({ groups, onEdit, onViewStudents, isLoading }: Props)
       data={groups}
       keyExtractor={g => g.id}
       isLoading={isLoading}
-      emptyIcon="/Logo.png"
+      emptyIcon="/Logo-icon-192.png"
       emptyTitle="لا توجد مجموعات"
       emptySubtitle='اضغط "إضافة مجموعة" لإنشاء أول مجموعة'
     />

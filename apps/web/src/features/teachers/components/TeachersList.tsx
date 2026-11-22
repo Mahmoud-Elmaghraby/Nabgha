@@ -102,7 +102,7 @@ export function TeachersList({ teachers, onEdit, isLoading }: TeachersListProps)
       data={teachers}
       keyExtractor={(t) => t.id}
       isLoading={isLoading}
-      emptyIcon="/Logo.png"
+      emptyIcon="/Logo-icon-192.png"
       emptyTitle="لا يوجد مدرسون"
       emptySubtitle='اضغط "إضافة مدرس" لإضافة أول مدرس'
     />

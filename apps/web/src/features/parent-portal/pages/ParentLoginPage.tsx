@@ -1,3 +1,4 @@
+import { BrandLogo } from '@/shared/components/brand/BrandLogo';
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useRequestOtp, useVerifyOtp } from '../hooks/useParentAuth';
@@ -37,8 +38,7 @@ export default function ParentLoginPage() {
     <div className="min-h-screen flex items-center justify-center p-6 bg-[#F7F7F7]" dir="rtl">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <img src="/Logo.png" alt="نبغة" className="w-20 h-20 object-contain mx-auto" />
-          <h1 className="text-2xl font-black text-[#0E3B2E] mt-1">نبغة</h1>
+          <BrandLogo size="xl" tone="dark" layout="stack" />
           <p className="text-gray-500 text-sm mt-1">بوابة أولياء الأمور</p>
         </div>
 

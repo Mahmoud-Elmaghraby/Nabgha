@@ -1,3 +1,4 @@
+import { BrandLogo } from '@/shared/components/brand/BrandLogo';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/shared/lib/api/client';
@@ -129,13 +130,7 @@ export function Sidebar({ onToggleLayout, currentMode }: SidebarProps) {
     <aside className="fixed top-0 right-0 h-full w-64 bg-[#0E3B2E] flex flex-col z-50">
       {/* Logo */}
       <div className="p-5 border-b border-white/10">
-        <div className="flex items-center gap-3">
-          <img src="/Logo-icon-512.png" alt="نبغة" className="w-16 h-16 object-contain drop-shadow-md" />
-          <div>
-            <h1 className="text-white font-black text-xl leading-none">نبغة</h1>
-            <p className="text-white/50 text-xs mt-0.5">إدارة الدروس الخصوصية</p>
-          </div>
-        </div>
+        <BrandLogo size="lg" tagline glow />
       </div>
 
       {/* Navigation */}

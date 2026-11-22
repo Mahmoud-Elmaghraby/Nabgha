@@ -1,3 +1,4 @@
+import { BrandMark } from '@/shared/components/brand/BrandLogo';
 import { Component, ReactNode } from 'react';
 
 interface Props {
@@ -24,7 +25,7 @@ export class ErrorBoundary extends Component<Props, State> {
       return (
         <div className="min-h-screen bg-[#F7F7F7] flex items-center justify-center" dir="rtl">
           <div className="text-center max-w-md">
-            <img src="/Logo.png" alt="نبغة" className="w-24 h-24 object-contain mx-auto mb-6 opacity-50" />
+            <BrandMark size="xl" className="mx-auto mb-6 opacity-60" />
             <h1 className="text-2xl font-bold text-[#0E3B2E] mb-2">حدث خطأ غير متوقع</h1>
             <p className="text-gray-500 text-sm mb-6">نعتذر عن هذا الخطأ. يرجى تحديث الصفحة أو المحاولة مرة أخرى.</p>
             <button

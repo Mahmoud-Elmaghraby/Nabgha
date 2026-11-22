@@ -1,3 +1,4 @@
+import { BrandLogo } from '@/shared/components/brand/BrandLogo';
 import { useState } from 'react';
 import { apiClient } from '@/shared/lib/api/client';
 
@@ -63,8 +64,7 @@ export default function SetupPage() {
       <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
         {/* Header */}
         <div className="bg-[#0E3B2E] px-8 py-8 text-center">
-          <h1 className="text-4xl font-black text-[#C9A227] mb-1">نبغة</h1>
-          <p className="text-white/70 text-sm">إدارة الدروس الخصوصية</p>
+          <BrandLogo size="xl" layout="stack" tagline glow />
         </div>
 
         {/* Content */}

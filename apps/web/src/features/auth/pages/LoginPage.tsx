@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
+import { Building2, User, Lock, Eye, EyeOff, ScanLine, MessageCircle, Wallet, WifiOff, ArrowLeft, Loader2 } from 'lucide-react';
 import { useLogin } from '../hooks/useLogin';
+import { BrandLogo, BRAND_MARK_SRC } from '@/shared/components/brand/BrandLogo';
+import { CONTACT_WHATSAPP } from '@/features/landing/landing.config';
 
 // بيحدد رسالة الخطأ المناسبة: لو السيرفر رد فعلاً برفض (بيانات غلط، أو تروتلينج)
 // نعرض رسالة واضحة، ولو الطلب أصلاً معرفش يوصل للسيرفر (مشكلة شبكة/فايروول —
@@ -11,8 +14,7 @@ function getLoginErrorMessage(error: unknown): string {
     if (!error.response) {
       // بنضيف كود وتفاصيل الخطأ التقنية (زي ERR_NETWORK أو ERR_CONNECTION_REFUSED)
       // في نص الرسالة نفسها عشان لو المشكلة حصلت من موبايل بعيد، يقدر المستخدم
-      // ياخد screenshot ويبعته من غير ما يحتاج يوصل الجهاز بالكمبيوتر أو يفتح
-      // أدوات المطورين (DevTools) عشان يشوف الخطأ الحقيقي.
+      // ياخد screenshot ويبعته من غير ما يحتاج أدوات المطورين.
       const detail = [error.code, error.message].filter(Boolean).join(' — ');
       return `تعذر الاتصال بالسيرفر — تأكد إن الجهاز على نفس شبكة الواي فاي، وإن الجدار الناري (Firewall) مش حاجب البرنامج${detail ? `
 
@@ -26,6 +28,21 @@ function getLoginErrorMessage(error: unknown): string {
   }
   return 'بيانات الدخول غير صحيحة';
 }
+
+// نسخة الديسكتوب/الشبكة الداخلية مالهاش صفحة هبوط ولا تواصل تسويقي
+function isPrivateHost(host: string): boolean {
+  return (
+    host === 'localhost' || host === '127.0.0.1' || host.endsWith('.local') ||
+    /^10\./.test(host) || /^192\.168\./.test(host) || /^172\.(1[6-9]|2\d|3[01])\./.test(host)
+  );
+}
+
+const HIGHLIGHTS = [
+  { icon: ScanLine, label: 'حضور بالباركود' },
+  { icon: MessageCircle, label: 'رسائل لأولياء الأمور' },
+  { icon: Wallet, label: 'حسابات دقيقة' },
+  { icon: WifiOff, label: 'يشتغل من غير إنترنت' },
+];
 
 export default function LoginPage() {
   // تحقق من الـ setup في Desktop mode
@@ -47,6 +64,11 @@ export default function LoginPage() {
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const { mutate: login, isPending, error } = useLogin();
 
+  const isPublic = !isPrivateHost(window.location.hostname);
+  const waLink = isPublic && CONTACT_WHATSAPP
+    ? `https://wa.me/${CONTACT_WHATSAPP}?text=${encodeURIComponent('أهلاً، عايز أشترك في نبغة')}`
+    : null;
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const errors: Record<string, string> = {};
@@ -56,126 +78,164 @@ export default function LoginPage() {
     setFormErrors(errors);
     if (Object.keys(errors).length > 0) return;
     // كيبورد الموبايل (خصوصًا مع اقتراحات الكلمات) بيضيف مسافة زيادة في الآخر
-    // أحيانًا من غير ما المستخدم يحس — لو بعتنا القيمة زي ما هي من غير trim()،
-    // البيانات بتبقى مختلفة عن المخزّن فعليًا ويترفض تسجيل الدخول بـ"بيانات غير
-    // صحيحة" حتى لو المستخدم كاتب البيانات صح بالظبط. كان بيحصل هنا بس على
-    // الموبايل مش على الكمبيوتر، لأن كيبورد الكمبيوتر مبيضيفش المسافة دي.
+    // أحيانًا من غير ما المستخدم يحس — من غير trim() البيانات بتبقى مختلفة عن
+    // المخزّن ويترفض الدخول بـ"بيانات غير صحيحة" حتى لو المستخدم كاتب صح.
     login({ slug: slug.trim(), username: username.trim(), password: password.trim() });
   };
 
-  const inputClass = 'w-full border border-gray-200 rounded-xl pr-11 pl-4 py-3 text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#0E3B2E]/30 focus:border-[#0E3B2E] focus:bg-white transition-all';
-
-  const formContent = (
-    <div className="w-full max-w-sm">
-      <div className="lg:hidden text-center mb-8">
-        <img src="/Logo.png" alt="نبغة" className="w-24 h-24 object-contain mx-auto" />
-        <h1 className="text-3xl font-black text-[#0E3B2E] -mt-1">نبغة</h1>
-      </div>
-      <div className="mb-7 text-center lg:text-right">
-        <h2 className="text-3xl font-bold text-[#0E3B2E]">مرحباً بك في نبغة</h2>
-        <p className="text-gray-500 text-sm mt-2">أدخل بياناتك للوصول إلى لوحة التحكم</p>
-      </div>
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-red-600 rounded-xl px-4 py-3 mb-5 text-sm text-center whitespace-pre-wrap break-words">
-          {getLoginErrorMessage(error)}
-        </div>
-      )}
-      <form onSubmit={handleSubmit} className="space-y-4" autoComplete="on">
-        {/* اسم المركز */}
-        <div>
-          <label className="block text-sm font-semibold text-gray-700 mb-1.5">اسم المركز</label>
-          <div className="relative">
-            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
-              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-            </span>
-            <input
-              type="text"
-              name="slug"
-              placeholder="test-center"
-              value={slug}
-              onChange={e => setSlug(e.target.value)}
-              autoComplete="organization"
-              autoCapitalize="none"
-              autoCorrect="off"
-              spellCheck={false}
-              className={inputClass}
-            />
-          </div>
-          {formErrors.slug && <p className="text-red-500 text-xs mt-1">{formErrors.slug}</p>}
-        </div>
-
-        {/* اسم المستخدم */}
-        <div>
-          <label className="block text-sm font-semibold text-gray-700 mb-1.5">اسم المستخدم</label>
-          <div className="relative">
-            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
-              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-            </span>
-            <input
-              type="text"
-              name="username"
-              placeholder="admin"
-              value={username}
-              onChange={e => setUsername(e.target.value)}
-              autoComplete="username"
-              autoCapitalize="none"
-              autoCorrect="off"
-              spellCheck={false}
-              className={inputClass}
-            />
-          </div>
-          {formErrors.username && <p className="text-red-500 text-xs mt-1">{formErrors.username}</p>}
-        </div>
-
-        {/* كلمة المرور */}
-        <div>
-          <label className="block text-sm font-semibold text-gray-700 mb-1.5">كلمة المرور</label>
-          <div className="relative">
-            <button type="button" onClick={() => setShowPassword(!showPassword)}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-              {showPassword
-                ? <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
-                : <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-              }
-            </button>
-            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
-              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-            </span>
-            <input
-              type={showPassword ? 'text' : 'password'}
-              name="password"
-              placeholder="••••••••"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              autoComplete="current-password"
-              className={inputClass}
-            />
-          </div>
-          {formErrors.password && <p className="text-red-500 text-xs mt-1">{formErrors.password}</p>}
-        </div>
-
-        <button type="submit" disabled={isPending}
-          className="w-full bg-[#0E3B2E] text-white rounded-xl py-3.5 text-sm font-bold hover:bg-[#1F6B4E] transition-colors disabled:opacity-60 mt-2">
-          {isPending ? 'جاري تسجيل الدخول...' : 'تسجيل الدخول'}
-        </button>
-      </form>
-    </div>
-  );
+  const fieldWrap = (hasError: boolean) =>
+    `group flex items-center gap-3 rounded-2xl border bg-white px-4 h-14 transition-all
+     focus-within:border-[#1F6B4E] focus-within:ring-4 focus-within:ring-[#1F6B4E]/10
+     ${hasError ? 'border-red-300' : 'border-gray-200 hover:border-gray-300'}`;
+  const iconCls = 'w-5 h-5 text-gray-400 group-focus-within:text-[#1F6B4E] transition-colors shrink-0';
+  const inputCls = 'flex-1 min-w-0 bg-transparent text-[15px] text-gray-900 placeholder:text-gray-300 focus:outline-none';
 
   return (
-    <div className="min-h-screen flex" dir="rtl">
-      {/* يسار — فورم */}
-      <div className="flex-1 flex items-center justify-center p-8 bg-white">
-        {formContent}
-      </div>
-      {/* يمين — براندينج (desktop فقط) */}
-      <div className="hidden lg:flex flex-1 bg-[#0E3B2E] items-center justify-center p-12 relative overflow-hidden">
-        <div className="text-center text-white z-10">
-          <img src="/Logo.png" alt="نبغة" className="w-32 h-32 object-contain mx-auto mb-6" />
-          <h1 className="text-5xl font-black mb-3">نبغة</h1>
-          <p className="text-white/70 text-lg">إدارة الدروس الخصوصية</p>
+    <div className="min-h-screen flex bg-[#F6F7F5] font-cairo" dir="rtl">
+      {/* ═══ الفورم ═══ */}
+      <main className="relative flex-1 flex flex-col">
+        {/* هيدر الموبايل */}
+        <div className="lg:hidden relative bg-[#0E3B2E] overflow-hidden pt-10 pb-16 px-6 text-center">
+          <div className="absolute inset-0 opacity-[0.08]"
+            style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, #D4AB53 1px, transparent 0)', backgroundSize: '18px 18px' }} />
+          <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-80 h-80 rounded-full bg-[#D4AB53]/15 blur-3xl" />
+          <BrandLogo size="xl" layout="stack" tagline glow className="relative" />
+          <svg className="absolute -bottom-px left-0 w-full h-10 text-[#F6F7F5]" viewBox="0 0 400 40" preserveAspectRatio="none">
+            <path d="M0 40 C120 0 280 0 400 40 Z" fill="currentColor" />
+            <path d="M0 40 C120 0 280 0 400 40" fill="none" stroke="#D4AB53" strokeWidth="1.5" opacity="0.7" />
+          </svg>
         </div>
-      </div>
+
+        <div className="flex-1 flex items-center justify-center px-5 py-10 sm:px-8">
+          <div className="w-full max-w-[420px]">
+            <div className="mb-8 text-center lg:text-right">
+              <h1 className="text-[28px] sm:text-3xl font-black text-[#0E3B2E]">أهلاً بيك في نبغة</h1>
+              <p className="text-gray-500 mt-2">سجّل دخولك عشان تكمّل شغلك</p>
+            </div>
+
+            {error && (
+              <div className="flex gap-3 bg-red-50 border border-red-100 text-red-700 rounded-2xl px-4 py-3 mb-6 text-sm whitespace-pre-wrap break-words">
+                <span className="mt-0.5 w-1.5 shrink-0 rounded-full bg-red-400" />
+                <span>{getLoginErrorMessage(error)}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSubmit} className="space-y-5" autoComplete="on" noValidate>
+              <div>
+                <label htmlFor="slug" className="block text-sm font-bold text-gray-700 mb-2">كود المركز</label>
+                <div className={fieldWrap(!!formErrors.slug)}>
+                  <Building2 className={iconCls} />
+                  <input id="slug" type="text" name="slug" placeholder="my-center" dir="ltr"
+                    value={slug} onChange={e => setSlug(e.target.value)}
+                    autoComplete="organization" autoCapitalize="none" autoCorrect="off" spellCheck={false}
+                    className={`${inputCls} text-right`} />
+                </div>
+                {formErrors.slug && <p className="text-red-500 text-xs mt-1.5 mr-1">{formErrors.slug}</p>}
+              </div>
+
+              <div>
+                <label htmlFor="username" className="block text-sm font-bold text-gray-700 mb-2">اسم المستخدم</label>
+                <div className={fieldWrap(!!formErrors.username)}>
+                  <User className={iconCls} />
+                  <input id="username" type="text" name="username" placeholder="اسم المستخدم" dir="ltr"
+                    value={username} onChange={e => setUsername(e.target.value)}
+                    autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false}
+                    className={`${inputCls} text-right`} />
+                </div>
+                {formErrors.username && <p className="text-red-500 text-xs mt-1.5 mr-1">{formErrors.username}</p>}
+              </div>
+
+              <div>
+                <label htmlFor="password" className="block text-sm font-bold text-gray-700 mb-2">كلمة المرور</label>
+                <div className={fieldWrap(!!formErrors.password)}>
+                  <Lock className={iconCls} />
+                  <input id="password" type={showPassword ? 'text' : 'password'} name="password" placeholder="••••••••" dir="ltr"
+                    value={password} onChange={e => setPassword(e.target.value)}
+                    autoComplete="current-password"
+                    className={`${inputCls} text-right`} />
+                  <button type="button" onClick={() => setShowPassword(!showPassword)}
+                    aria-label={showPassword ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور'}
+                    className="text-gray-400 hover:text-[#0E3B2E] transition-colors p-1 -m-1">
+                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  </button>
+                </div>
+                {formErrors.password && <p className="text-red-500 text-xs mt-1.5 mr-1">{formErrors.password}</p>}
+              </div>
+
+              <button type="submit" disabled={isPending}
+                className="relative w-full h-14 rounded-2xl bg-gradient-to-l from-[#0E3B2E] to-[#1F6B4E] text-white text-base font-bold shadow-lg shadow-[#0E3B2E]/20 hover:shadow-xl hover:shadow-[#0E3B2E]/25 hover:brightness-110 active:scale-[0.99] transition-all disabled:opacity-70 disabled:cursor-wait flex items-center justify-center gap-2">
+                {isPending ? (<><Loader2 className="w-5 h-5 animate-spin" /> جاري الدخول…</>) : (<>تسجيل الدخول <ArrowLeft className="w-5 h-5" /></>)}
+              </button>
+            </form>
+
+            {waLink && (
+              <div className="mt-8 pt-6 border-t border-gray-200/80 text-center text-sm text-gray-500">
+                لسه مش مشترك؟{' '}
+                <a href={waLink} target="_blank" rel="noopener noreferrer" className="font-bold text-[#1F6B4E] hover:text-[#0E3B2E] underline-offset-4 hover:underline">
+                  اطلب عرض تجريبي مجاني
+                </a>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <footer className="pb-6 px-6 flex items-center justify-center lg:justify-between gap-4 text-xs text-gray-400">
+          <span>© {new Date().getFullYear()} نبغة</span>
+          {isPublic && <a href="/" className="hidden lg:inline hover:text-[#0E3B2E]">الصفحة الرئيسية</a>}
+        </footer>
+      </main>
+
+      {/* ═══ البراند (ديسكتوب) ═══ */}
+      <aside className="hidden lg:flex relative w-[46%] max-w-[760px] overflow-hidden bg-[#0B3326] text-white">
+        {/* خلفية: تدرّج + نقط + توهّج ذهبي */}
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_35%,#1F6B4E_0%,#0E3B2E_45%,#082519_100%)]" />
+        <div className="absolute inset-0 opacity-[0.07]"
+          style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, #D4AB53 1px, transparent 0)', backgroundSize: '22px 22px' }} />
+        <div className="absolute top-[18%] left-1/2 -translate-x-1/2 w-[420px] h-[420px] rounded-full bg-[#D4AB53]/10 blur-3xl" />
+        <img src={BRAND_MARK_SRC} alt="" aria-hidden className="absolute -bottom-10 -left-10 h-[420px] w-auto opacity-[0.05] rotate-12 select-none pointer-events-none" />
+
+        {/* الحافة المنحنية ناحية الفورم */}
+        <svg className="absolute inset-y-0 -right-px h-full w-24 text-[#F6F7F5]" viewBox="0 0 100 1000" preserveAspectRatio="none">
+          <path d="M100 0 L40 0 C95 220 -10 420 45 620 C80 760 20 880 55 1000 L100 1000 Z" fill="currentColor" />
+          <path d="M40 0 C95 220 -10 420 45 620 C80 760 20 880 55 1000" fill="none" stroke="#D4AB53" strokeWidth="2.5" vectorEffect="non-scaling-stroke" opacity="0.85" />
+        </svg>
+
+        <div className="relative z-10 flex flex-col items-center justify-center w-full px-14 pl-20 text-center">
+          <BrandLogo size="2xl" layout="stack" tagline glow />
+
+          <h2 className="mt-12 text-[34px] font-black leading-snug">
+            حيث تنمو المعرفة
+            <br />
+            <span className="text-[#D4AB53]">وتثمر النجاحات</span>
+          </h2>
+          <p className="mt-4 text-white/65 max-w-sm leading-relaxed">
+            منصة متكاملة لإدارة مجموعاتك وطلابك وحساباتك، وتواصل تلقائي مع أولياء الأمور.
+          </p>
+
+          <div className="mt-10 grid grid-cols-4 gap-3 w-full max-w-md">
+            {HIGHLIGHTS.map(({ icon: Icon, label }) => (
+              <div key={label} className="flex flex-col items-center gap-2">
+                <div className="w-12 h-12 rounded-2xl border border-[#D4AB53]/40 bg-white/[0.04] flex items-center justify-center text-[#D4AB53]">
+                  <Icon className="w-5 h-5" />
+                </div>
+                <span className="text-[11px] text-white/70 leading-tight">{label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* موجة ذهبية تحت */}
+        <svg className="absolute bottom-0 inset-x-0 w-full h-28 opacity-60" viewBox="0 0 600 120" preserveAspectRatio="none">
+          <path d="M0 95 C150 40 300 120 600 55" fill="none" stroke="url(#gold)" strokeWidth="1.5" />
+          <defs>
+            <linearGradient id="gold" x1="0" x2="1">
+              <stop offset="0" stopColor="#D4AB53" stopOpacity="0" />
+              <stop offset="0.5" stopColor="#E9CF8E" />
+              <stop offset="1" stopColor="#D4AB53" stopOpacity="0" />
+            </linearGradient>
+          </defs>
+        </svg>
+      </aside>
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import { BrandMark } from '@/shared/components/brand/BrandLogo';
 import { lazy, Suspense, ReactNode, useEffect } from 'react';
 import { createBrowserRouter, RouterProvider, Navigate, useLocation, useParams } from 'react-router-dom';
 import { useAuthStore } from '../shared/stores/auth.store';
@@ -72,7 +73,7 @@ const ParentStudentDetailPage = lazy(() => import('../features/parent-portal/pag
 const LoadingFallback = () => (
   <div className="min-h-screen flex items-center justify-center bg-[#F7F7F7]">
     <div className="flex flex-col items-center gap-3">
-      <img src="/Logo.png" alt="نبغة" className="w-16 h-16 object-contain animate-pulse" />
+      <BrandMark size="xl" className="animate-pulse" />
       <p className="text-gray-400 text-sm">جاري التحميل...</p>
     </div>
   </div>
