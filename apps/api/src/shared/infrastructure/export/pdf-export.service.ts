@@ -59,6 +59,42 @@ export class PdfExportService implements OnModuleDestroy {
     await this.browser?.close();
   }
 
+  /**
+   * يحوّل HTML جاهز لـ PDF باستخدام نفس المتصفح المشترك ونفس حد الحمل المتزامن.
+   * لأي موديول بيبني الـ HTML بنفسه (زي الامتحانات) — المسؤول عن الـ escaping هو اللي بيبني.
+   */
+  async renderHtml(
+    html: string,
+    opts: { landscape?: boolean; margin?: { top: string; bottom: string; left: string; right: string } } = {},
+  ): Promise<Buffer> {
+    const browser = await this.getBrowser();
+    while (this.activeJobs >= MAX_CONCURRENT_JOBS) {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+    this.activeJobs++;
+    const page = await browser.newPage();
+    try {
+      // مفيش أي طلبات شبكة مسموحة — كل الخطوط والصور لازم تكون مضمّنة (data:)
+      await page.setRequestInterception(true);
+      page.on('request', (req) => {
+        if (req.url().startsWith('data:')) void req.continue();
+        else void req.abort();
+      });
+      await page.setContent(html, { waitUntil: 'load', timeout: 30_000 });
+      await page.evaluate(() => (document as any).fonts?.ready);
+      const pdfUint8 = await page.pdf({
+        format: 'A4',
+        landscape: !!opts.landscape,
+        printBackground: true,
+        margin: opts.margin ?? { top: '15mm', bottom: '15mm', left: '12mm', right: '12mm' },
+      });
+      return Buffer.from(pdfUint8);
+    } finally {
+      await page.close();
+      this.activeJobs--;
+    }
+  }
+
   async generate<T extends Record<string, any>>(
     rows: T[],
     columns: ExportColumn<T>[],

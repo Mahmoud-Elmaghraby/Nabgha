@@ -6,6 +6,12 @@ import { z } from 'zod';
 export const QuestionTypeEnum = z.enum(['mcq', 'true_false', 'fill', 'essay']);
 export const DifficultyEnum   = z.enum(['easy', 'medium', 'hard']);
 
+// صور الأسئلة بترجع من /upload/image كرابط نسبي (/storage/...) — z.url() كان بيرفضها
+export const ImageUrlSchema = z.string().max(1000).refine(
+  (v) => v.startsWith('/storage/') || /^https?:\/\//i.test(v),
+  { message: 'رابط الصورة غير صالح' },
+);
+
 // ─────────────────────────────────────────────────────────────
 // بنك الأسئلة
 // ─────────────────────────────────────────────────────────────
@@ -30,7 +36,7 @@ export const QuestionBaseSchema = z.object({
   options:       z.array(z.string()).optional().nullable(),
   correctAnswer: z.string().optional().nullable(),
   modelAnswer:   z.string().optional().nullable(),
-  imageUrl:      z.string().url().optional().nullable(),
+  imageUrl:      ImageUrlSchema.optional().nullable(),
   difficulty:    DifficultyEnum.default('medium'),
   tags:          z.array(z.string()).default([]),
   defaultDegree: z.coerce.number().positive().default(1),
@@ -92,7 +98,7 @@ export const SaveExamItemSchema = z.object({
   options:       z.array(z.string()).optional().nullable(),
   correctAnswer: z.string().optional().nullable(),
   modelAnswer:   z.string().optional().nullable(),
-  imageUrl:      z.string().url().optional().nullable(),
+  imageUrl:      ImageUrlSchema.optional().nullable(),
   degree:        z.coerce.number().nonnegative().default(1),
   sortOrder:     z.coerce.number().int().nonnegative().default(0),
   sectionTitle:  z.string().optional().nullable(),
@@ -112,7 +118,8 @@ export const GenerateExamSchema = z.object({
   count:         z.coerce.number().int().positive().max(100).default(10),
   difficulty:    DifficultyEnum.optional(),
   questionTypes: z.array(QuestionTypeEnum).optional(),
-  degreePerQuestion: z.coerce.number().positive().default(1),
+  // اختياري: لو مش محدد كل سؤال بياخد درجته الافتراضية من البنك
+  degreePerQuestion: z.coerce.number().positive().optional(),
 });
 
 // ─────────────────────────────────────────────────────────────

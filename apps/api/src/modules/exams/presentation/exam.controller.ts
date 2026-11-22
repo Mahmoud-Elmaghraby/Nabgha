@@ -148,7 +148,14 @@ export class ExamController {
 
   @Post(':id/pdf')
   @RequirePermission('exams.export')
-  async generatePdf(@Request() req: any, @Param('id') id: string, @Res() res: Response) {
-    await this.useCase.generatePdf(req.user.tenantId, req.user.sub, id, res);
+  async generatePdf(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Query('answers') answers: string | undefined,
+    @Res() res: Response,
+  ) {
+    // ?answers=1 → نموذج الإجابة (نفس الامتحان مع تعليم الإجابات الصحيحة)
+    const answerKey = answers === '1' || answers === 'true';
+    await this.useCase.generatePdf(req.user.tenantId, req.user.sub, id, res, { answerKey });
   }
 }

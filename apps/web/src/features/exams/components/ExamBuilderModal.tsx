@@ -112,14 +112,15 @@ export function ExamBuilderModal({ open, onClose, examId }: Props) {
   };
 
   // تصدير PDF مباشر
-  const handleExportPdf = async () => {
+  const handleExportPdf = async (answerKey = false) => {
     if (!examId) return;
     setIsExporting(true);
     try {
       // حفظ الأسئلة أولاً لضمان أحدث نسخة
       await saveItems.mutateAsync({ examId, items });
-      const blob = await examsApi.exportPdf(examId);
-      downloadBlob(blob, `${examData?.exam.title || 'exam'}.pdf`);
+      const blob = await examsApi.exportPdf(examId, answerKey);
+      const base = examData?.exam.title || 'exam';
+      downloadBlob(blob, answerKey ? `${base} - نموذج الإجابة.pdf` : `${base}.pdf`);
     } finally {
       setIsExporting(false);
     }
@@ -137,7 +138,7 @@ export function ExamBuilderModal({ open, onClose, examId }: Props) {
       footer={
         <div className="flex gap-2 justify-between items-center w-full">
           <button
-            onClick={handleExportPdf}
+            onClick={() => handleExportPdf(false)}
             disabled={isExporting || items.length === 0}
             className="flex items-center gap-1.5 px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors font-medium"
           >
@@ -149,6 +150,13 @@ export function ExamBuilderModal({ open, onClose, examId }: Props) {
               <polyline points="10 9 9 9 8 9" />
             </svg>
             {isExporting ? 'جاري التحميل...' : 'تصدير PDF'}
+          </button>
+          <button
+            onClick={() => handleExportPdf(true)}
+            disabled={isExporting || items.length === 0}
+            className="px-3 py-2 text-sm bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-lg hover:bg-emerald-100 disabled:opacity-50 transition-colors font-medium"
+          >
+            ✓ نموذج الإجابة
           </button>
 
           <div className="flex gap-2">

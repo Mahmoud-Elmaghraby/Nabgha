@@ -67,13 +67,13 @@ export interface CreateExamItemData {
 
 export interface IExamRepository {
   // ─── بنك الأسئلة ───────────────────────────────────────────
-  findQuestions(tenantId: string, teacherId: string, params: ListQuestionsParams): Promise<{ data: ExamQuestionEntity[]; total: number }>;
+  findQuestions(tenantId: string, params: ListQuestionsParams): Promise<{ data: ExamQuestionEntity[]; total: number }>;
   findQuestionById(tenantId: string, id: string): Promise<ExamQuestionEntity | null>;
   createQuestion(tenantId: string, data: CreateQuestionData): Promise<ExamQuestionEntity>;
   saveQuestion(tenantId: string, question: ExamQuestionEntity): Promise<void>;
 
   // ─── الامتحانات ─────────────────────────────────────────────
-  findExams(tenantId: string, teacherId: string, params: ListExamsParams): Promise<{ data: ExamEntity[]; total: number }>;
+  findExams(tenantId: string, params: ListExamsParams): Promise<{ data: ExamEntity[]; total: number }>;
   findExamById(tenantId: string, id: string): Promise<ExamEntity | null>;
   createExam(tenantId: string, data: CreateExamData): Promise<ExamEntity>;
   saveExam(tenantId: string, exam: ExamEntity): Promise<void>;
@@ -87,7 +87,6 @@ export interface IExamRepository {
   // ─── توليد تلقائي ───────────────────────────────────────────
   findRandomQuestions(
     tenantId: string,
-    teacherId: string,
     params: { subjectId?: string; grade?: string; difficulty?: string; types?: string[]; count: number },
   ): Promise<ExamQuestionEntity[]>;
 }

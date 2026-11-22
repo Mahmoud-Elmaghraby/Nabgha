@@ -51,11 +51,11 @@ export function ExamsListPage() {
     }
   };
 
-  const handleExportPdf = async (exam: ExamDto) => {
-    setExportingId(exam.id);
+  const handleExportPdf = async (exam: ExamDto, answerKey = false) => {
+    setExportingId(answerKey ? `${exam.id}:key` : exam.id);
     try {
-      const blob = await examsApi.exportPdf(exam.id);
-      downloadBlob(blob, `${exam.title}.pdf`);
+      const blob = await examsApi.exportPdf(exam.id, answerKey);
+      downloadBlob(blob, answerKey ? `${exam.title} - نموذج الإجابة.pdf` : `${exam.title}.pdf`);
     } catch (err: any) {
       alert('حدث خطأ أثناء تصدير الامتحان، تأكد من وجود أسئلة في الامتحان أولاً.');
     } finally {
@@ -255,6 +255,17 @@ export function ExamsListPage() {
                         <polyline points="14 2 14 8 20 8" />
                       </svg>
                       {exportingId === exam.id ? 'جاري...' : 'طباعة PDF'}
+                    </button>
+                  )}
+
+                  {/* زر نموذج الإجابة */}
+                  {hasPermission('exams.export') && (
+                    <button
+                      onClick={() => handleExportPdf(exam, true)}
+                      disabled={exportingId === `${exam.id}:key`}
+                      className="flex items-center gap-1 px-3 py-1.5 bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-semibold rounded-lg hover:bg-emerald-100 disabled:opacity-50 transition-colors"
+                    >
+                      ✓ {exportingId === `${exam.id}:key` ? 'جاري...' : 'نموذج الإجابة'}
                     </button>
                   )}
 

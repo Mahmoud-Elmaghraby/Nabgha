@@ -159,12 +159,11 @@ export class StorageService implements OnModuleInit {
   }
 
   /**
-   * يقرأ ملف من التخزين المحلي كـ Buffer خام (مستخدم لإرفاق صور في رسائل واتساب).
-   * متاح حالياً في Desktop mode بس — الأوضاع التانية (S3/MinIO) هترجع null
-   * لحد ما نبني منطق جلب مشابه ليها لو احتجناه لاحقاً.
+   * يقرأ ملف من التخزين كـ Buffer خام (صور واتساب + صور أسئلة الامتحانات في الـ PDF).
+   * Desktop: من الفولدر المحلي. السيرفر: من MinIO (الرابط شكله /storage/{bucket}/{key}).
    */
   async getFileBuffer(url: string): Promise<Buffer | null> {
-    if (!this.isDesktop) return null;
+    if (!this.isDesktop) return this.getObjectBuffer(url);
     try {
       const relativePath = url.replace(/^\/storage\//, '');
       const fullPath = path.join(this.localStoragePath, relativePath);
@@ -172,6 +171,28 @@ export class StorageService implements OnModuleInit {
       return fs.readFileSync(fullPath);
     } catch (err: any) {
       this.logger.warn(`getFileBuffer failed for ${url}: ${err.message}`);
+      return null;
+    }
+  }
+
+  private async getObjectBuffer(url: string): Promise<Buffer | null> {
+    const prefix = `/storage/${this.bucket}/`;
+    if (!this.client || !url.startsWith(prefix)) return null;
+    const key = url.slice(prefix.length);
+    if (!key || key.includes('..')) return null;
+    try {
+      const stream = await this.client.getObject(this.bucket, key);
+      const chunks: Buffer[] = [];
+      let size = 0;
+      for await (const chunk of stream) {
+        const b = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+        size += b.length;
+        if (size > 15 * 1024 * 1024) throw new Error('file too large');
+        chunks.push(b);
+      }
+      return Buffer.concat(chunks);
+    } catch (err: any) {
+      this.logger.warn(`getFileBuffer (minio) failed for ${url}: ${err.message}`);
       return null;
     }
   }

@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { examsApi } from '../api/exams.api';
+import { getFullMediaUrl } from '@/shared/lib/getFullMediaUrl';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -40,6 +42,25 @@ export function QuestionFormModal({ open, onClose, question }: Props) {
   const { data: subjects = [] } = useSubjects();
 
   const [qType, setQType] = useState<QuestionType>('mcq');
+  const [imageUrl, setImageUrl]   = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadErr, setUploadErr] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const handlePickImage = async (file: File | undefined) => {
+    if (!file) return;
+    setUploadErr(null);
+    if (file.size > 5 * 1024 * 1024) { setUploadErr('حجم الصورة أكبر من 5 ميجا'); return; }
+    setUploading(true);
+    try {
+      setImageUrl(await examsApi.uploadQuestionImage(file));
+    } catch {
+      setUploadErr('تعذّر رفع الصورة — جرّب صورة JPG أو PNG');
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
 
   const { register, handleSubmit, reset, watch, setValue, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(FormSchema),
@@ -47,6 +68,7 @@ export function QuestionFormModal({ open, onClose, question }: Props) {
   });
 
   const watchedType = watch('type');
+  const watchedOptions = [watch('option0'), watch('option1'), watch('option2'), watch('option3')];
 
   useEffect(() => {
     setQType(watchedType as QuestionType);
@@ -71,12 +93,15 @@ export function QuestionFormModal({ open, onClose, question }: Props) {
         option3:       question.options?.[3] ?? '',
       });
       setQType(question.type);
+      setImageUrl(question.imageUrl ?? null);
     } else {
       reset({ type: 'mcq', difficulty: 'medium', defaultDegree: 1, tags: '',
               questionText: '', subjectId: '', grade: '', correctAnswer: '', modelAnswer: '',
               option0: '', option1: '', option2: '', option3: '' });
       setQType('mcq');
+      setImageUrl(null);
     }
+    setUploadErr(null);
   }, [open, question, reset]);
 
   const onSubmit = async (values: FormValues) => {
@@ -94,6 +119,7 @@ export function QuestionFormModal({ open, onClose, question }: Props) {
       tags:          values.tags.split(',').map(t => t.trim()).filter(Boolean),
       correctAnswer: values.correctAnswer || null,
       modelAnswer:   values.modelAnswer   || null,
+      imageUrl,
       options,
     };
 
@@ -184,19 +210,22 @@ export function QuestionFormModal({ open, onClose, question }: Props) {
           </div>
         )}
 
-        {/* الإجابة الصحيحة */}
-        {(watchedType === 'mcq' || watchedType === 'fill') && (
+        {/* الإجابة الصحيحة — الاختياري بيتختار من الخيارات نفسها عشان نموذج الإجابة يطلع مظبوط */}
+        {watchedType === 'mcq' && (
+          <div>
+            <label className={labelCls}>الإجابة الصحيحة *</label>
+            <select {...register('correctAnswer')} className={inputCls}>
+              <option value="">— اختر الخيار الصحيح —</option>
+              {watchedOptions.map((opt, i) => (opt && opt.trim()) ? (
+                <option key={i} value={opt}>{['أ', 'ب', 'ج', 'د'][i]}) {opt}</option>
+              ) : null)}
+            </select>
+          </div>
+        )}
+        {watchedType === 'fill' && (
           <div>
             <label className={labelCls}>الإجابة الصحيحة</label>
-            {watchedType === 'true_false' ? (
-              <select {...register('correctAnswer')} className={inputCls}>
-                <option value="">— اختر —</option>
-                <option value="صح">صح</option>
-                <option value="خطأ">خطأ</option>
-              </select>
-            ) : (
-              <input {...register('correctAnswer')} className={inputCls} placeholder="الإجابة الصحيحة" />
-            )}
+            <input {...register('correctAnswer')} className={inputCls} placeholder="الكلمة/العبارة المطلوبة" />
           </div>
         )}
 
@@ -212,13 +241,53 @@ export function QuestionFormModal({ open, onClose, question }: Props) {
           </div>
         )}
 
-        {/* نموذج الإجابة (مقالي/أكمل) */}
-        {(watchedType === 'essay' || watchedType === 'fill') && (
-          <div>
-            <label className={labelCls}>نموذج الإجابة</label>
-            <textarea {...register('modelAnswer')} rows={3} className={inputCls} placeholder="نموذج الإجابة النموذجية..." />
-          </div>
-        )}
+        {/* نموذج الإجابة / شرح — بيظهر في PDF نموذج الإجابة بس */}
+        <div>
+          <label className={labelCls}>
+            {watchedType === 'essay' ? 'الإجابة النموذجية' : 'شرح أو توضيح للإجابة (اختياري)'}
+          </label>
+          <textarea
+            {...register('modelAnswer')}
+            rows={watchedType === 'essay' ? 3 : 2}
+            className={inputCls}
+            placeholder={watchedType === 'essay' ? 'الإجابة النموذجية...' : 'يظهر في نموذج الإجابة فقط'}
+          />
+        </div>
+
+        {/* صورة السؤال */}
+        <div>
+          <label className={labelCls}>صورة للسؤال (اختياري)</label>
+          {imageUrl ? (
+            <div className="flex items-start gap-3">
+              <img src={getFullMediaUrl(imageUrl)} alt="" className="max-h-32 rounded-lg border border-gray-200" />
+              <div className="flex flex-col gap-2">
+                <button type="button" onClick={() => fileRef.current?.click()} className="text-xs px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50">
+                  تغيير
+                </button>
+                <button type="button" onClick={() => setImageUrl(null)} className="text-xs px-3 py-1.5 border border-red-200 text-red-600 rounded-lg hover:bg-red-50">
+                  إزالة
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              disabled={uploading}
+              className="w-full border-2 border-dashed border-gray-200 rounded-lg py-3 text-xs text-gray-500 hover:border-[#0E3B2E]/40 hover:text-[#0E3B2E] disabled:opacity-50"
+            >
+              {uploading ? 'جاري رفع الصورة...' : '＋ إضافة صورة (رسم، شكل، جدول...)'}
+            </button>
+          )}
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            className="hidden"
+            onChange={(ev) => handlePickImage(ev.target.files?.[0])}
+          />
+          {uploadErr && <p className={errCls}>{uploadErr}</p>}
+        </div>
 
         {/* الصف والمادة والصعوبة */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

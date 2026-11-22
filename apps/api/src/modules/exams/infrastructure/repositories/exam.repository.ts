@@ -25,7 +25,6 @@ export class ExamRepository implements IExamRepository {
 
   async findQuestions(
     tenantId: string,
-    teacherId: string,
     params: ListQuestionsParams,
   ): Promise<{ data: ExamQuestionEntity[]; total: number }> {
     const db     = this.kysely.getTenantDb(tenantId);
@@ -35,8 +34,7 @@ export class ExamRepository implements IExamRepository {
 
     let base = db
       .selectFrom('exam_questions')
-      .where('deleted_at', 'is', null)
-      .where('teacher_id', '=', sql<string>`${teacherId}::uuid`);
+      .where('deleted_at', 'is', null);
 
     if (params.search) {
       base = base.where('question_text', 'ilike', `%${params.search}%`);
@@ -136,7 +134,6 @@ export class ExamRepository implements IExamRepository {
 
   async findExams(
     tenantId: string,
-    teacherId: string,
     params: ListExamsParams,
   ): Promise<{ data: ExamEntity[]; total: number }> {
     const db     = this.kysely.getTenantDb(tenantId);
@@ -146,8 +143,7 @@ export class ExamRepository implements IExamRepository {
 
     let base = db
       .selectFrom('exams')
-      .where('deleted_at', 'is', null)
-      .where('teacher_id', '=', sql<string>`${teacherId}::uuid`);
+      .where('deleted_at', 'is', null);
 
     if (params.search) {
       base = base.where('title', 'ilike', `%${params.search}%`);
@@ -311,15 +307,13 @@ export class ExamRepository implements IExamRepository {
 
   async findRandomQuestions(
     tenantId: string,
-    teacherId: string,
     params: { subjectId?: string; grade?: string; difficulty?: string; types?: string[]; count: number },
   ): Promise<ExamQuestionEntity[]> {
     const db = this.kysely.getTenantDb(tenantId);
 
     let base = db
       .selectFrom('exam_questions')
-      .where('deleted_at', 'is', null)
-      .where('teacher_id', '=', sql<string>`${teacherId}::uuid`);
+      .where('deleted_at', 'is', null);
 
     if (params.subjectId) {
       base = base.where('subject_id', '=', sql<string>`${params.subjectId}::uuid`);

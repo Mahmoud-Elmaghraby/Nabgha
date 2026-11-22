@@ -80,8 +80,23 @@ export const examsApi = {
   },
 
   // ─── تصدير PDF ─────────────────────────────────────────────
-  exportPdf: async (examId: string): Promise<Blob> => {
-    const res = await apiClient.post(`/exams/${examId}/pdf`, {}, { responseType: 'blob' });
+  // answerKey = true → نموذج الإجابة (الإجابات الصحيحة متعلّمة)
+  exportPdf: async (examId: string, answerKey = false): Promise<Blob> => {
+    const res = await apiClient.post(
+      `/exams/${examId}/pdf${answerKey ? '?answers=1' : ''}`,
+      {},
+      { responseType: 'blob' },
+    );
     return res.data;
+  },
+
+  // ─── رفع صورة سؤال ─────────────────────────────────────────
+  uploadQuestionImage: async (file: File): Promise<string> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await apiClient.post('/upload/image', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return res.data.data.url as string;
   },
 };
