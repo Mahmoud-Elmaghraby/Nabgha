@@ -1,11 +1,23 @@
 import { NavLink, Outlet } from 'react-router-dom';
+import { usePermissions } from '@/shared/hooks/usePermissions';
 
 const FINANCE_REPORT_TABS = [
   { path: '/reports/finance/collections', label: 'تقرير التحصيل' },
   { path: '/reports/finance/overdue', label: 'المستحقات المتأخرة' },
+  { path: '/reports/finance/monthly-status', label: 'مستحقات الشهر' },
 ];
 
 export function FinanceReportsLayout() {
+  const { hasPermission } = usePermissions();
+
+  if (!hasPermission('finance.view')) {
+    return (
+      <div className="p-8 text-center text-gray-400">
+        <p className="text-sm">مالك صلاحية لعرض التقارير المالية</p>
+      </div>
+    );
+  }
+
   return (
     <div>
       <div className="bg-white border-b border-gray-50 px-4 sm:px-6">

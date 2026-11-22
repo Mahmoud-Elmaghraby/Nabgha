@@ -9,24 +9,22 @@ import { getGroupSelectLabel } from '@/features/groups/utils/formatGroupLabel';
 import { useTenantCapabilities } from '@/shared/hooks/useTenantCapabilities';
 import { SectionDataTable } from '../components/SectionDataTable';
 
-function currentMonth(): string {
-  return new Date().toISOString().slice(0, 7);
-}
-
 export default function OverdueDuesReportPage() {
   const toast = useToast();
   const { data: subjects = [] } = useSubjects();
   const { data: groupsData } = useGroups({ limit: 1000 });
   const { data: capabilities } = useTenantCapabilities();
   const groups = groupsData?.data || [];
+  // من غير ما المدرس يحدد تاريخ، الباك إند بيرجع افتراضيًا الشهر الحالي + اللي فاته بس —
+  // فمحتاجين الحقلين يفضلوا فاضيين هنا (مش متعبيين بالشهر الحالي) عشان الافتراضي ده يشتغل.
   const [fromMonth, setFromMonth] = useState('');
-  const [toMonth, setToMonth] = useState(currentMonth());
+  const [toMonth, setToMonth] = useState('');
   const [subjectId, setSubjectId] = useState('');
   const [groupId, setGroupId] = useState('');
   const [downloadLoading, setDownloadLoading] = useState<'xlsx' | 'pdf' | null>(null);
 
   const params = {
-    toMonth,
+    toMonth: toMonth || undefined,
     fromMonth: fromMonth || undefined,
     subjectId: subjectId || undefined,
     groupId: groupId || undefined,
@@ -59,7 +57,7 @@ export default function OverdueDuesReportPage() {
                 className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0E3B2E]/20" />
             </div>
             <div>
-              <label className="text-xs text-gray-500 mb-1 block">حتى شهر</label>
+              <label className="text-xs text-gray-500 mb-1 block">حتى شهر (اختياري)</label>
               <input type="month" value={toMonth} onChange={e => setToMonth(e.target.value)}
                 className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0E3B2E]/20" />
             </div>
@@ -83,6 +81,11 @@ export default function OverdueDuesReportPage() {
                 ))}
               </select>
             </div>
+            {!fromMonth && !toMonth && (
+              <p className="text-xs text-gray-400 basis-full">
+                بدون تحديد شهر: هيظهر الشهر الحالي والشهر السابق بس. اختر شهر عشان تفلتر بتاريخ تاني.
+              </p>
+            )}
             <div className="flex gap-2">
               <button onClick={() => handleGenerate('xlsx')} disabled={downloadLoading !== null}
                 className="px-4 py-2 text-sm border border-[#0E3B2E] text-[#0E3B2E] rounded-lg hover:bg-[#0E3B2E]/5 disabled:opacity-50">

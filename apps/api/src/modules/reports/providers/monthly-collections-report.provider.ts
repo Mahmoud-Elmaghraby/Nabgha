@@ -56,7 +56,7 @@ export class MonthlyCollectionsReportProvider implements OnModuleInit {
         'treasuries.name as treasury_name', 'monthly_dues.subject_grade_id',
         'students.id as student_id',
       ])
-      .where('payments.status', '=', 'completed');
+      .where('payments.status', '=', 'paid');
 
     if (params.from) {
       query = query.where('payments.paid_at', '>=', new Date(params.from));

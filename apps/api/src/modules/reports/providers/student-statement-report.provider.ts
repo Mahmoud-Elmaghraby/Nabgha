@@ -64,7 +64,7 @@ export class StudentStatementReportProvider implements OnModuleInit {
       paymentMethod: p.paymentMethod,
       treasuryName: p.treasuryName,
       receiptNumber: p.receiptNumber,
-      status: p.status === 'completed' ? 'مكتملة' : p.status,
+      status: p.status === 'paid' ? 'مكتملة' : p.status === 'cancelled' ? 'ملغاة' : p.status === 'refunded' ? 'مسترجعة' : p.status === 'partial_refund' ? 'مسترجعة جزئياً' : p.status,
     }));
 
     return {

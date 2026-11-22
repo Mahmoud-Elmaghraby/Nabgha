@@ -6,6 +6,7 @@ import { downloadBlob } from '@/shared/lib/downloadBlob';
 import { useToast } from '@/shared/components/Toast';
 import { useReportsStudentStore } from '../stores/selected-student.store';
 import { SectionDataTable } from '../components/SectionDataTable';
+import { usePermissions } from '@/shared/hooks/usePermissions';
 
 function useStudentsSearch(q: string) {
   return useQuery({
@@ -21,16 +22,19 @@ function useStudentsSearch(q: string) {
 
 export default function StudentStatementReportPage() {
   const toast = useToast();
+  const { hasPermission } = usePermissions();
   const [search, setSearch] = useState('');
   const { selectedStudent, setSelectedStudent } = useReportsStudentStore();
   const [downloadLoading, setDownloadLoading] = useState<'xlsx' | 'pdf' | null>(null);
 
   const { data: results = [] } = useStudentsSearch(search);
 
+  const canView = hasPermission('finance.view');
+
   const { data: previewData, isFetching } = useQuery({
     queryKey: ['reports-preview', 'student-statement', selectedStudent?.id],
     queryFn: () => reportsApi.preview('student-statement', { studentId: selectedStudent!.id }),
-    enabled: !!selectedStudent,
+    enabled: !!selectedStudent && canView,
   });
 
   const handleGenerate = async (format: 'xlsx' | 'pdf') => {
@@ -45,6 +49,14 @@ export default function StudentStatementReportPage() {
       setDownloadLoading(null);
     }
   };
+
+  if (!canView) {
+    return (
+      <div className="p-8 text-center text-gray-400">
+        <p className="text-sm">مالك صلاحية لعرض كشف الحساب المالي — الشاشة دي بتعرض بيانات مدفوعات وخصومات الطالب</p>
+      </div>
+    );
+  }
 
   return (
             <div className="space-y-4">

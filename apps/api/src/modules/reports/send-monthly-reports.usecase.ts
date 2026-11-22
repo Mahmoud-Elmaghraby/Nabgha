@@ -6,6 +6,7 @@ import {
   IWaSettingsRepository, WA_SETTINGS_REPOSITORY,
 } from '../whatsapp/domain/repositories/wa.repository.interface';
 import { IWaProvider, WA_PROVIDER } from '../whatsapp/domain/interfaces/wa-provider.interface';
+import { WaSettingsEntity } from '../whatsapp/domain/entities/wa-settings.entity';
 import { ReportRegistryService } from './report-registry.service';
 import { StudentUseCase } from '../students/application/use-cases/student.usecase';
 
@@ -59,10 +60,10 @@ export class SendMonthlyReportsUseCase {
       scheduledAt: null,
     });
 
-    const effectiveDailyLimit = session.getCurrentDailyLimit(settings.dailyLimit);
+    const effectiveDailyLimit = session.getCurrentDailyLimit(settings.dailyLimit, settings.warmupEnabled);
     this.processJobInBackground(
       job.id, tenantId, studentIds, month,
-      settings.delayMinSeconds, settings.delayMaxSeconds, effectiveDailyLimit,
+      settings.delayMinSeconds, settings.delayMaxSeconds, effectiveDailyLimit, settings,
     );
 
     return this.toProgress(job);
@@ -93,6 +94,7 @@ export class SendMonthlyReportsUseCase {
   private async processJobInBackground(
     jobId: string, tenantId: string, studentIds: string[], month: string,
     delayMin: number, delayMax: number, dailyLimit: number,
+    settings: WaSettingsEntity,
   ): Promise<void> {
     this.activeJobs.set(jobId, true);
 
@@ -127,6 +129,20 @@ export class SendMonthlyReportsUseCase {
       }
 
       const caption = `التقرير الشهري — ${student.fullName} — ${month}`;
+
+      // فحص ساعات الإرسال
+      if (!settings.isWithinSendHours()) {
+        this.logger.log(`Job ${jobId} paused — outside send hours`);
+        const skipped = await this.messageRepo.create({
+          tenantId, phone: '', templateKey: null,
+          body: `التقرير الشهري — ${studentId}`, status: 'pending', bulkJobId: jobId,
+        });
+        skipped.markFailed('outside_send_hours');
+        await this.messageRepo.save(skipped);
+        job.incrementFailed();
+        await this.bulkJobRepo.save(job);
+        continue;
+      }
 
       if (sentToday >= dailyLimit) {
         const skipped = await this.messageRepo.create({

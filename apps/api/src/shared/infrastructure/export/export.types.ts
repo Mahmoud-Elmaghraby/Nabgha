@@ -43,9 +43,17 @@ export interface CompositeReportOptions {
   title: string;
   /** عنوان فرعي (مثلاً اسم الطالب) */
   subtitle?: string;
+  /** اسم يظهر فوق العنوان زي ترويسة رسمية — اسم المركز أو المدرس حسب إعداد الهوية
+   *  (نفس المصدر المستخدم في رسائل الواتساب/تليجرام عبر BrandingService). اختياري —
+   *  لو مش موجودة التقرير بيتصرف زي ما كان بالظبط (مفيش تغيير على باقي التقارير). */
+  brandName?: string;
   /** ملخص أرقام يظهر أعلى التقرير (مثال: إجمالي المستحق، إجمالي المدفوع) */
   summary?: ReportSummaryItem[];
   sections: ReportSection[];
+  /** لو موجودة، بيتعرض خط توقيع فاضي أسفل التقرير (PDF بس) بالتسمية دي — مثلاً "توقيع ولي الأمر" */
+  signatureLineLabel?: string;
+  /** لو موجودة، بيتعرض مربع ملاحظات فاضي أسفل التقرير (PDF بس) بالتسمية دي */
+  notesAreaLabel?: string;
   rtl?: boolean;
   headerColor?: string;
 }

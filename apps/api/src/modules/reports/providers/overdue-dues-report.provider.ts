@@ -40,6 +40,16 @@ function monthDiff(fromMonth: string, toMonth: string): number {
   return (ty * 12 + tm) - (fy * 12 + fm);
 }
 
+// بيرجع شهر "YYYY-MM" بعد إزاحته بعدد شهور (سالب = للخلف) — مستخدمة لحساب "الشهر اللي فات"
+// كنقطة بداية افتراضية للتقرير.
+function shiftMonth(month: string, delta: number): string {
+  const [y, m] = month.split('-').map(Number);
+  const total = y * 12 + (m - 1) + delta;
+  const newY = Math.floor(total / 12);
+  const newM = (total % 12) + 1;
+  return `${newY}-${String(newM).padStart(2, '0')}`;
+}
+
 function agingBucket(months: number): string {
   if (months <= 1) return 'شهر واحد';
   if (months <= 3) return 'شهرين - 3 شهور';
@@ -56,7 +66,16 @@ export class OverdueDuesReportProvider implements OnModuleInit {
   ) {}
 
   private async buildReportOptions(tenantId: string, params: Record<string, any>): Promise<CompositeReportOptions> {
-    const toMonth: string = params.toMonth || new Date().toISOString().slice(0, 7);
+    const currentMonth = new Date().toISOString().slice(0, 7);
+    const previousMonth = shiftMonth(currentMonth, -1);
+    const hasExplicitFilter = Boolean(params.fromMonth) || Boolean(params.toMonth);
+
+    // لو المدرس ما حددش فلتر تاريخ، الافتراضي: الشهر الحالي + اللي فاته بس (شامل الطرفين) —
+    // عشان الفواتير المتأخرة الحديثة (زي فواتير الشهر الحالي المولّدة لسه) تبان فورًا من غير
+    // ما يحتاج يعرف إنه لازم يفلتر يدويًا. لو حدد فلتر، بنستخدمه بالظبط زي ما هو.
+    const fromMonth: string | undefined = hasExplicitFilter ? (params.fromMonth || undefined) : previousMonth;
+    const toMonth: string = hasExplicitFilter ? (params.toMonth || currentMonth) : currentMonth;
+
     const db = this.kysely.getTenantDb(tenantId);
 
     let query = db.selectFrom('monthly_dues')
@@ -70,11 +89,12 @@ export class OverdueDuesReportProvider implements OnModuleInit {
         'subjects.name as subject_name', 'subject_grades.grade as grade_name',
       ])
       .where('monthly_dues.status', 'in', ['unpaid', 'partial'])
-      .where('monthly_dues.month', '<', toMonth)
+      // شامل الطرفين دلوقتي (مش < زي الأول) — عشان شهر toMonth نفسه ميختفيش من التقرير
+      .where('monthly_dues.month', '<=', toMonth)
       .where('students.deleted_at', 'is', null);
 
-    if (params.fromMonth) {
-      query = query.where('monthly_dues.month', '>=', params.fromMonth);
+    if (fromMonth) {
+      query = query.where('monthly_dues.month', '>=', fromMonth);
     }
     if (params.subjectId) {
       query = query.where('subject_grades.subject_id', '=', sql<string>`${params.subjectId}::uuid`);
@@ -173,7 +193,9 @@ export class OverdueDuesReportProvider implements OnModuleInit {
 
     return {
       title: 'تقرير المستحقات المتأخرة',
-      subtitle: `حتى شهر ${toMonth}${params.fromMonth ? ` — من شهر ${params.fromMonth}` : ''} — عدد الطلاب المتأخرين: ${summaryRows.length}`,
+      subtitle: (hasExplicitFilter
+        ? `${fromMonth ? `من شهر ${fromMonth} ` : ''}حتى شهر ${toMonth}`
+        : `الشهر الحالي والشهر السابق (${fromMonth} - ${toMonth})`) + ` — عدد الطلاب المتأخرين: ${summaryRows.length}`,
       summary: [
         { label: 'عدد الطلاب المتأخرين', value: summaryRows.length },
         { label: 'إجمالي المبلغ المتأخر', value: grandTotal },

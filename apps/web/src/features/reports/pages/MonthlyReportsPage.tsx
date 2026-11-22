@@ -75,6 +75,7 @@ export default function MonthlyReportsPage() {
   const [jobId, setJobId] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [downloadLoading, setDownloadLoading] = useState<'xlsx' | 'pdf' | null>(null);
+  const [printLoading, setPrintLoading] = useState(false);
 
   const { data: results = [] } = useStudentsSearch(searchQ);
   const { data: allStudents = [] } = useAllStudents(wantAll);
@@ -147,6 +148,26 @@ export default function MonthlyReportsPage() {
       toast.error(err?.response?.data?.error?.message || 'حدث خطأ أثناء توليد التقرير');
     } finally {
       setDownloadLoading(null);
+    }
+  };
+
+  // تحميل PDF واحد يجمع تقارير كل الطلاب المختارين — كل طالب في صفحة/صفحات منفصلة
+  // ورا بعض، عشان المدرس يقدر يطبعهم كلهم مرة واحدة (بديل عن إرسال الواتساب،
+  // مش بديل لزر "تحميل PDF" الخاص بمعاينة الطالب الواحد اللي فوق).
+  const handlePrintAll = async () => {
+    if (selectedStudents.length === 0) return;
+    setPrintLoading(true);
+    try {
+      const res = await apiClient.post(
+        '/reports/monthly-print',
+        { studentIds: selectedStudents.map(s => s.id), month },
+        { responseType: 'blob' },
+      );
+      downloadBlob(res.data, `التقارير-الشهرية-${month}.pdf`);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error?.message || 'حدث خطأ أثناء توليد ملف الطباعة');
+    } finally {
+      setPrintLoading(false);
     }
   };
 
@@ -315,10 +336,18 @@ export default function MonthlyReportsPage() {
                 </>
               )}
 
-              <button onClick={handleSendWhatsapp} disabled={sending || selectedStudents.length === 0}
-                className="w-full py-3 text-sm font-bold bg-[#0E3B2E] text-white rounded-xl hover:bg-[#1F6B4E] disabled:opacity-50">
-                {sending ? 'جاري البدء...' : `إرسال عبر واتساب (${selectedStudents.length} طالب)`}
-              </button>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <button onClick={handleSendWhatsapp} disabled={sending || selectedStudents.length === 0}
+                  className="flex-1 py-3 text-sm font-bold bg-[#0E3B2E] text-white rounded-xl hover:bg-[#1F6B4E] disabled:opacity-50">
+                  {sending ? 'جاري البدء...' : `إرسال عبر واتساب (${selectedStudents.length} طالب)`}
+                </button>
+                {selectedStudents.length > 1 && (
+                  <button onClick={handlePrintAll} disabled={printLoading}
+                    className="flex-1 py-3 text-sm font-bold border border-[#0E3B2E] text-[#0E3B2E] rounded-xl hover:bg-[#0E3B2E]/5 disabled:opacity-50">
+                    {printLoading ? 'جاري التجهيز...' : `تحميل / طباعة PDF (${selectedStudents.length} طالب)`}
+                  </button>
+                )}
+              </div>
             </>
           )}
         </div>

@@ -1,4 +1,5 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
+import { sql } from 'kysely';
 import { ReportRegistryService } from '../report-registry.service';
 import { StudentUseCase } from '../../students/application/use-cases/student.usecase';
 import { ExcelExportService } from '../../../shared/infrastructure/export/excel-export.service';
@@ -7,6 +8,8 @@ import { AppError } from '../../../core/errors/app.error';
 import { CompositeReportOptions, ExportColumn } from '../../../shared/infrastructure/export/export.types';
 import { compositeToPreviewData } from '../utils/format-preview-rows';
 import { ReportPreviewData } from '../report.types';
+import { KyselyService } from '../../../shared/infrastructure/database/kysely.service';
+import { BrandingService } from '../../settings/application/services/branding.service';
 
 const STATUS_LABELS: Record<string, string> = {
   present: 'حاضر',
@@ -54,6 +57,8 @@ export class StudentMonthlyReportProvider implements OnModuleInit {
     private readonly studentUseCase: StudentUseCase,
     private readonly excelExport: ExcelExportService,
     private readonly pdfExport: PdfExportService,
+    private readonly kysely: KyselyService,
+    private readonly branding: BrandingService,
   ) {}
 
   private async buildReportOptions(tenantId: string, params: Record<string, any>): Promise<CompositeReportOptions> {
@@ -117,10 +122,53 @@ export class StudentMonthlyReportProvider implements OnModuleInit {
     const validScores = [attendanceScore, gradeScore].filter((s): s is number => s !== null);
     const overallIndex = validScores.length > 0 ? Math.round(average(validScores)!) : null;
 
+    // ─── الهوية (اسم المركز/المدرس) — نفس مصدر الهوية المستخدم في رسائل الواتساب/تليجرام ───
+    const db = this.kysely.getTenantDb(tenantId);
+    const activeGroups = await db.selectFrom('group_students')
+      .innerJoin('groups', 'groups.id', 'group_students.group_id')
+      .select(['groups.id as group_id'])
+      .where('group_students.student_id', '=', sql<string>`${params.studentId}::uuid`)
+      .where('group_students.left_at', 'is', null)
+      .where('groups.deleted_at', 'is', null)
+      .execute();
+    const distinctGroupIds = [...new Set(activeGroups.map((g) => g.group_id as string))];
+    // لو الطالب مسجّل في مجموعة واحدة بس، بنستخدم هويتها (بتحدد اسم المدرس لو وضع الهوية
+    // "مدرس"). لو أكتر من مجموعة/مدرس، مفيش هوية واحدة تمثله بدقة فبيرجع اسم المركز تلقائيًا
+    // (نفس سلوك BrandingService الافتراضي لما مفيش سياق مدرس واضح — راجع resolveTeacherId).
+    const brandingContext = distinctGroupIds.length === 1 ? { groupId: distinctGroupIds[0] } : {};
+    const branding = await this.branding.getBrandingInfo(tenantId, brandingContext);
+
+    // ─── الموقف المالي: هل دفع فلوس الشهر ده؟ وهل عليه مستحقات متأخرة من شهور سابقة؟ ───
+    const currentMonthDue = await db.selectFrom('monthly_dues')
+      .select(['status'])
+      .where('student_id', '=', sql<string>`${params.studentId}::uuid`)
+      .where('month', '=', month)
+      .executeTakeFirst();
+    const PAYMENT_STATUS_LABELS: Record<string, string> = {
+      paid: 'مدفوع', waived: 'مدفوع (معفى)', partial: 'مدفوع جزئياً',
+      unpaid: 'غير مدفوع', cancelled: 'ملغاة',
+    };
+    const paymentStatusLabel = currentMonthDue
+      ? (PAYMENT_STATUS_LABELS[currentMonthDue.status as string] ?? currentMonthDue.status)
+      : 'لا يوجد مستحقات مسجلة';
+
+    const overdueDues = await db.selectFrom('monthly_dues')
+      .select(['due_amount', 'discount_applied', 'paid_amount'])
+      .where('student_id', '=', sql<string>`${params.studentId}::uuid`)
+      .where('status', 'in', ['unpaid', 'partial'])
+      .where('month', '<', month)
+      .execute();
+    const overdueTotal = overdueDues.reduce(
+      (sum, r) => sum + Math.max(0, Number(r.due_amount) - Number(r.discount_applied) - Number(r.paid_amount)),
+      0,
+    );
+    const overdueLabel = overdueTotal > 0 ? `نعم — ${overdueTotal} ج.م` : 'لا يوجد';
+
     const monthLabel = new Date(start).toLocaleDateString('ar-EG', { month: 'long', year: 'numeric' });
 
     return {
       title: 'التقرير الشهري',
+      brandName: branding.name,
       subtitle: `${student.fullName} — ${student.studentCode ?? ''} — ${monthLabel}`,
       summary: [
         { label: 'إجمالي الحصص', value: totalSessions },
@@ -130,11 +178,15 @@ export class StudentMonthlyReportProvider implements OnModuleInit {
         { label: 'نسبة الحضور', value: attendanceScore !== null ? `${attendanceScore}%` : '-' },
         { label: 'متوسط الدرجات', value: thisMonthAvgGrade !== null ? `${thisMonthAvgGrade}%` : '-' },
         { label: 'مؤشر الأداء العام (استرشادي)', value: overallIndex !== null ? `${overallIndex}%${trendLabel}` : 'لا توجد بيانات كافية' },
+        { label: 'حالة السداد هذا الشهر', value: paymentStatusLabel },
+        { label: 'مستحقات متأخرة (شهور سابقة)', value: overdueLabel },
       ],
       sections: [
         { title: 'سجل الحضور هذا الشهر', columns: ATTENDANCE_COLUMNS, rows: attendanceRows },
         { title: 'الدرجات هذا الشهر', columns: GRADES_COLUMNS, rows: gradeRows },
       ],
+      signatureLineLabel: 'توقيع ولي الأمر',
+      notesAreaLabel: 'ملاحظات',
     };
   }
 
@@ -154,7 +206,7 @@ export class StudentMonthlyReportProvider implements OnModuleInit {
         const reportOptions = await this.buildReportOptions(tenantId, params);
         return format === 'xlsx'
           ? this.excelExport.generateReport(reportOptions)
-          : this.pdfExport.generateReport(reportOptions);
+          : this.pdfExport.generateStudentMonthlyReport(reportOptions);
       },
     });
   }
