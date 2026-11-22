@@ -4,6 +4,12 @@
 
 export type QuestionType = 'mcq' | 'true_false' | 'fill' | 'essay';
 export type Difficulty   = 'easy' | 'medium' | 'hard';
+export type ExamKind     = 'exam' | 'quiz';
+
+export const EXAM_KIND_LABELS: Record<ExamKind, string> = { exam: 'امتحان', quiz: 'تسميع' };
+export const VERSION_KEYS = ['A', 'B', 'C', 'D'] as const;
+export type VersionKey = typeof VERSION_KEYS[number];
+export const VERSION_LABELS: Record<VersionKey, string> = { A: 'أ', B: 'ب', C: 'ج', D: 'د' };
 
 export const QUESTION_TYPE_LABELS: Record<QuestionType, string> = {
   mcq:        'اختيار من متعدد',
@@ -102,6 +108,7 @@ export interface ExamDto {
   instructions: string | null;
   designConfig: ExamDesignConfig;
   isTemplate:   boolean;
+  kind:         ExamKind;
   createdAt:    string;
   updatedAt:    string;
 }
@@ -126,6 +133,69 @@ export interface ExamWithItems {
   items: ExamItemDto[];
 }
 
+export interface GenerateReport {
+  requested:    number;
+  picked:       number;
+  recentlyUsed: number;
+  shortfalls:   Array<{ row: number; requested: number; found: number }>;
+}
+
+export interface GeneratedExam extends ExamWithItems {
+  report: GenerateReport;
+}
+
+export interface BlueprintRow {
+  type?:         QuestionType | null;
+  difficulty?:   Difficulty | null;
+  count:         number;
+  degree?:       number | null;
+  tags?:         string[];
+  sectionTitle?: string | null;
+}
+
+export interface QuestionAvailability {
+  total:  number;
+  matrix: Array<{ type: QuestionType; difficulty: Difficulty; count: number }>;
+  tags:   Array<{ tag: string; count: number }>;
+}
+
+export interface ImportOptions {
+  subjectId?:     string | null;
+  grade?:         string | null;
+  difficulty?:    Difficulty;
+  defaultDegree?: number;
+  tags?:          string[];
+  dryRun?:        boolean;
+}
+
+export interface ImportReport {
+  dryRun:     boolean;
+  found:      number;
+  valid:      number;
+  duplicates: number;
+  created:    number;
+  errors:     Array<{ ref: number; message: string }>;
+  preview:    Array<{
+    ref: number; type: QuestionType; questionText: string; options: string[] | null;
+    correctAnswer: string | null; difficulty: Difficulty; defaultDegree: number; tags: string[];
+  }>;
+}
+
+export interface SessionExamLink {
+  id:          string;
+  title:       string;
+  kind:        ExamKind;
+  totalDegree: number;
+}
+
+export interface LinkedSession {
+  id:        string;
+  title:     string;
+  startDate: string;
+  status:    string;
+  groupName: string | null;
+}
+
 export interface CreateExamPayload {
   title:        string;
   subjectId?:   string | null;
@@ -135,6 +205,7 @@ export interface CreateExamPayload {
   instructions?: string | null;
   designConfig?: ExamDesignConfig;
   isTemplate?:  boolean;
+  kind?:        ExamKind;
 }
 
 export interface UpdateExamPayload extends Partial<CreateExamPayload> {}
@@ -146,6 +217,7 @@ export interface ListExamsParams {
   grade?:      string;
   search?:     string;
   isTemplate?: boolean;
+  kind?:       ExamKind;
 }
 
 export interface PaginatedExams {
@@ -170,9 +242,15 @@ export interface SaveExamItemPayload {
 
 export interface GenerateExamPayload {
   title:             string;
+  kind?:             ExamKind;
   subjectId?:        string | null;
   grade?:            string | null;
-  count:             number;
+  durationMins?:     number | null;
+  instructions?:     string | null;
+  tags?:             string[];
+  avoidRecentDays?:  number;
+  blueprint?:        BlueprintRow[];
+  count?:            number;
   difficulty?:       Difficulty;
   questionTypes?:    QuestionType[];
   degreePerQuestion?: number;

@@ -62,10 +62,11 @@ export function useQuestionMutations() {
 }
 
 // ─── الامتحانات ───────────────────────────────────────────────
-export function useExams(params?: ListExamsParams) {
+export function useExams(params?: ListExamsParams, enabled = true) {
   return useQuery({
     queryKey: EXAM_KEYS.examList(params),
     queryFn:  () => examsApi.listExams(params),
+    enabled,
   });
 }
 

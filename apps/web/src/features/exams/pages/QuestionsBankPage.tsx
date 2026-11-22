@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuestions, useQuestionMutations } from '../hooks/useExams';
 import { QuestionFormModal } from '../components/QuestionFormModal';
+import { ImportQuestionsModal } from '../components/ImportQuestionsModal';
 import { useDebounce } from '@/shared/hooks/useDebounce';
 import { usePermissions } from '@/shared/hooks/usePermissions';
 import { useSubjects } from '@/features/subjects/hooks/useSubjects';
@@ -29,6 +30,7 @@ export function QuestionsBankPage() {
 
   const [editingQuestion, setEditingQuestion] = useState<QuestionDto | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
 
   useEffect(() => {
     setPage(1);
@@ -69,6 +71,15 @@ export function QuestionsBankPage() {
               <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" strokeLinecap="round" />
             </svg>
           </div>
+
+          {hasPermission('exams.create') && (
+            <button
+              onClick={() => setIsImporting(true)}
+              className="flex items-center gap-1.5 px-4 py-2 border border-[#0E3B2E]/30 text-[#0E3B2E] text-sm font-medium rounded-lg hover:bg-[#0E3B2E]/5 transition-colors flex-shrink-0"
+            >
+              ⬆ استيراد أسئلة
+            </button>
+          )}
 
           {hasPermission('exams.create') && (
             <button
@@ -237,6 +248,8 @@ export function QuestionsBankPage() {
         question={editingQuestion}
         onClose={() => { setEditingQuestion(null); setIsCreating(false); }}
       />
+
+      <ImportQuestionsModal open={isImporting} onClose={() => setIsImporting(false)} />
     </div>
   );
 }

@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useExam, useExamMutations, useQuestions } from '../hooks/useExams';
-import { examsApi } from '../api/exams.api';
-import { downloadBlob } from '@/shared/lib/downloadBlob';
+import { PrintMenu } from './PrintMenu';
+
 import { FormSheet } from '@/shared/components/FormSheet';
 import {
   QUESTION_TYPE_LABELS,
   DIFFICULTY_LABELS,
   DIFFICULTY_COLORS,
-  type ExamItemDto,
+
   type QuestionDto,
   type SaveExamItemPayload,
 } from '../types/exam.types';
@@ -19,7 +19,7 @@ interface Props {
 }
 
 export function ExamBuilderModal({ open, onClose, examId }: Props) {
-  const { data: examData, isLoading: isLoadingExam } = useExam(examId || '');
+  const { data: examData } = useExam(examId || '');
   const { saveItems } = useExamMutations();
 
   // جلب أسئلة البنك لاختيار منها
@@ -35,7 +35,7 @@ export function ExamBuilderModal({ open, onClose, examId }: Props) {
 
   const [items, setItems] = useState<SaveExamItemPayload[]>([]);
   const [activeTab, setActiveTab] = useState<'current' | 'pick'>('current');
-  const [isExporting, setIsExporting] = useState(false);
+
 
   useEffect(() => {
     if (examData?.items) {
@@ -111,21 +111,6 @@ export function ExamBuilderModal({ open, onClose, examId }: Props) {
     onClose();
   };
 
-  // تصدير PDF مباشر
-  const handleExportPdf = async (answerKey = false) => {
-    if (!examId) return;
-    setIsExporting(true);
-    try {
-      // حفظ الأسئلة أولاً لضمان أحدث نسخة
-      await saveItems.mutateAsync({ examId, items });
-      const blob = await examsApi.exportPdf(examId, answerKey);
-      const base = examData?.exam.title || 'exam';
-      downloadBlob(blob, answerKey ? `${base} - نموذج الإجابة.pdf` : `${base}.pdf`);
-    } finally {
-      setIsExporting(false);
-    }
-  };
-
   const totalDegrees = items.reduce((sum, it) => sum + (Number(it.degree) || 0), 0);
 
   return (
@@ -137,27 +122,14 @@ export function ExamBuilderModal({ open, onClose, examId }: Props) {
       size="lg"
       footer={
         <div className="flex gap-2 justify-between items-center w-full">
-          <button
-            onClick={() => handleExportPdf(false)}
-            disabled={isExporting || items.length === 0}
-            className="flex items-center gap-1.5 px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors font-medium"
-          >
-            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-              <polyline points="14 2 14 8 20 8" />
-              <line x1="16" y1="13" x2="8" y2="13" />
-              <line x1="16" y1="17" x2="8" y2="17" />
-              <polyline points="10 9 9 9 8 9" />
-            </svg>
-            {isExporting ? 'جاري التحميل...' : 'تصدير PDF'}
-          </button>
-          <button
-            onClick={() => handleExportPdf(true)}
-            disabled={isExporting || items.length === 0}
-            className="px-3 py-2 text-sm bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-lg hover:bg-emerald-100 disabled:opacity-50 transition-colors font-medium"
-          >
-            ✓ نموذج الإجابة
-          </button>
+          {examId && (
+            <PrintMenu
+              examId={examId}
+              title={examData?.exam.title || 'exam'}
+              disabled={items.length === 0}
+              beforeExport={async () => { await saveItems.mutateAsync({ examId, items }); }}
+            />
+          )}
 
           <div className="flex gap-2">
             <button onClick={onClose} className="px-4 py-2 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">

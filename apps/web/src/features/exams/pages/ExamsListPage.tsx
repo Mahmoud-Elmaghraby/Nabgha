@@ -2,13 +2,13 @@ import { useState, useEffect } from 'react';
 import { useExams, useExamMutations } from '../hooks/useExams';
 import { ExamFormModal } from '../components/ExamFormModal';
 import { ExamBuilderModal } from '../components/ExamBuilderModal';
-import { examsApi } from '../api/exams.api';
-import { downloadBlob } from '@/shared/lib/downloadBlob';
+import { SmartGenerateModal } from '../components/SmartGenerateModal';
+import { PrintMenu } from '../components/PrintMenu';
 import { useDebounce } from '@/shared/hooks/useDebounce';
 import { usePermissions } from '@/shared/hooks/usePermissions';
 import { useSubjects } from '@/features/subjects/hooks/useSubjects';
 import { GRADE_OPTIONS } from '@nabgha/types';
-import type { ExamDto } from '../types/exam.types';
+import type { ExamDto, ExamKind, GeneratedExam } from '../types/exam.types';
 
 export function ExamsListPage() {
   const { hasPermission } = usePermissions();
@@ -19,26 +19,24 @@ export function ExamsListPage() {
   const debouncedSearch = useDebounce(search, 300);
 
   const { data: subjects = [] } = useSubjects();
-  const { deleteExam, generateExam } = useExamMutations();
+  const { deleteExam } = useExamMutations();
+  const [kindFilter, setKindFilter] = useState<ExamKind | ''>('');
 
   const [editingExam, setEditingExam] = useState<ExamDto | null>(null);
   const [builderExamId, setBuilderExamId] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
-  const [isAutoGenerating, setIsAutoGenerating] = useState(false);
-  const [autoTitle, setAutoTitle] = useState('');
-  const [autoCount, setAutoCount] = useState(10);
-  const [autoSubject, setAutoSubject] = useState('');
-  const [autoGrade, setAutoGrade] = useState('');
-  const [exportingId, setExportingId] = useState<string | null>(null);
+  const [generateKind, setGenerateKind] = useState<ExamKind | null>(null);
+  const [genNotice, setGenNotice] = useState<string | null>(null);
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, gradeFilter, subjectFilter]);
+  }, [debouncedSearch, gradeFilter, subjectFilter, kindFilter]);
 
   const { data, isLoading } = useExams({
     search: debouncedSearch || undefined,
     grade: gradeFilter || undefined,
     subjectId: subjectFilter || undefined,
+    kind: kindFilter || undefined,
     page,
     limit: 15,
   });
@@ -51,37 +49,16 @@ export function ExamsListPage() {
     }
   };
 
-  const handleExportPdf = async (exam: ExamDto, answerKey = false) => {
-    setExportingId(answerKey ? `${exam.id}:key` : exam.id);
-    try {
-      const blob = await examsApi.exportPdf(exam.id, answerKey);
-      downloadBlob(blob, answerKey ? `${exam.title} - نموذج الإجابة.pdf` : `${exam.title}.pdf`);
-    } catch (err: any) {
-      alert('حدث خطأ أثناء تصدير الامتحان، تأكد من وجود أسئلة في الامتحان أولاً.');
-    } finally {
-      setExportingId(null);
+  const handleGenerated = (res: GeneratedExam) => {
+    setGenerateKind(null);
+    const r = res.report;
+    const parts: string[] = [`اتولّد ${r.picked} سؤال`];
+    if (r.shortfalls.length) {
+      parts.push(`ناقص ${r.requested - r.picked} لأن البنك مفيهوش كفاية (${r.shortfalls.map((s) => `صف ${s.row}: ${s.found} من ${s.requested}`).join('، ')})`);
     }
-  };
-
-  const handleAutoGenerateSubmit = async () => {
-    if (!autoTitle) {
-      alert('يرجى كتابة عنوان للامتحان');
-      return;
-    }
-    try {
-      const res = await generateExam.mutateAsync({
-        title: autoTitle,
-        count: Number(autoCount),
-        subjectId: autoSubject || null,
-        grade: autoGrade || null,
-      });
-      setIsAutoGenerating(false);
-      setAutoTitle('');
-      // فتح الـ builder مباشرة لرؤية الامتحان والأسئلة المولدة
-      setBuilderExamId(res.exam.id);
-    } catch (err: any) {
-      alert(err.response?.data?.message || err.message || 'فشل التوليد التلقائي — تأكد من وجود أسئلة كافية في البنك.');
-    }
+    if (r.recentlyUsed > 0) parts.push(`${r.recentlyUsed} سؤال منهم نزل في امتحان قريب`);
+    setGenNotice(parts.join(' — '));
+    setBuilderExamId(res.exam.id);
   };
 
   return (
@@ -106,10 +83,16 @@ export function ExamsListPage() {
             {hasPermission('exams.create') && (
               <>
                 <button
-                  onClick={() => setIsAutoGenerating(true)}
+                  onClick={() => setGenerateKind('quiz')}
+                  className="flex items-center gap-1.5 px-3.5 py-2 bg-sky-600 text-white text-xs sm:text-sm font-medium rounded-lg hover:bg-sky-700 transition-colors"
+                >
+                  📝 تسميع سريع
+                </button>
+                <button
+                  onClick={() => setGenerateKind('exam')}
                   className="flex items-center gap-1.5 px-3.5 py-2 bg-amber-600 text-white text-xs sm:text-sm font-medium rounded-lg hover:bg-amber-700 transition-colors"
                 >
-                  ⚡ توليد تلقائي ذكي
+                  ⚡ مولّد ذكي
                 </button>
                 <button
                   onClick={() => setIsCreating(true)}
@@ -123,6 +106,14 @@ export function ExamsListPage() {
         </div>
 
         {/* فلاتر */}
+        <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-fit">
+          {([['', 'الكل'], ['exam', 'امتحانات'], ['quiz', 'تسميعات']] as Array<[ExamKind | '', string]>).map(([k, label]) => (
+            <button key={k || 'all'} onClick={() => setKindFilter(k)}
+              className={`px-3 py-1 text-xs rounded-md font-medium ${kindFilter === k ? 'bg-white shadow text-[#0E3B2E]' : 'text-gray-500'}`}>
+              {label}
+            </button>
+          ))}
+        </div>
         <div className="grid grid-cols-2 gap-2 sm:w-1/2">
           <select
             value={subjectFilter}
@@ -144,64 +135,10 @@ export function ExamsListPage() {
         </div>
       </div>
 
-      {/* مودال التوليد التلقائي */}
-      {isAutoGenerating && (
-        <div className="p-4 bg-amber-50/70 border border-amber-200 rounded-xl space-y-3">
-          <h4 className="text-sm font-bold text-amber-900 flex items-center gap-2">
-            ⚡ توليد امتحان تلقائي من بنك الأسئلة
-          </h4>
-          <p className="text-xs text-amber-700">
-            سيقوم النظام باختيار أسئلة عشوائية من بنكك الخاص بحسب المادة والمرحلة المحددة.
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
-            <input
-              type="text"
-              placeholder="عنوان الامتحان *"
-              value={autoTitle}
-              onChange={e => setAutoTitle(e.target.value)}
-              className="px-3 py-1.5 text-xs bg-white border border-gray-200 rounded-lg"
-            />
-            <input
-              type="number"
-              min="1"
-              max="50"
-              placeholder="عدد الأسئلة"
-              value={autoCount}
-              onChange={e => setAutoCount(Number(e.target.value))}
-              className="px-3 py-1.5 text-xs bg-white border border-gray-200 rounded-lg"
-            />
-            <select
-              value={autoSubject}
-              onChange={e => setAutoSubject(e.target.value)}
-              className="px-3 py-1.5 text-xs bg-white border border-gray-200 rounded-lg"
-            >
-              <option value="">المادة (اختياري)</option>
-              {subjects.map(s => <option key={s.subject.id} value={s.subject.id}>{s.subject.name}</option>)}
-            </select>
-            <select
-              value={autoGrade}
-              onChange={e => setAutoGrade(e.target.value)}
-              className="px-3 py-1.5 text-xs bg-white border border-gray-200 rounded-lg"
-            >
-              <option value="">المرحلة (اختياري)</option>
-              {GRADE_OPTIONS.map(g => <option key={g} value={g}>{g}</option>)}
-            </select>
-          </div>
-          <div className="flex justify-end gap-2">
-            <button
-              onClick={() => setIsAutoGenerating(false)}
-              className="px-3 py-1.5 text-xs border border-gray-200 bg-white rounded-lg hover:bg-gray-50"
-            >
-              إلغاء
-            </button>
-            <button
-              onClick={handleAutoGenerateSubmit}
-              disabled={generateExam.isPending}
-              className="px-4 py-1.5 text-xs bg-amber-600 text-white font-medium rounded-lg hover:bg-amber-700 disabled:opacity-50"
-            >
-              {generateExam.isPending ? 'جاري التوليد...' : 'ابدأ التوليد'}
-            </button>
-          </div>
+      {genNotice && (
+        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 flex items-start justify-between gap-3">
+          <span>⚡ {genNotice}</span>
+          <button onClick={() => setGenNotice(null)} className="text-emerald-600">✕</button>
         </div>
       )}
 
@@ -221,6 +158,9 @@ export function ExamsListPage() {
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
                     <h3 className="text-sm font-bold text-gray-900">{exam.title}</h3>
+                    {exam.kind === 'quiz' && (
+                      <span className="text-xs px-2 py-0.5 bg-sky-50 text-sky-700 rounded font-medium">تسميع</span>
+                    )}
                     {exam.grade && (
                       <span className="text-xs px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded font-medium">
                         {exam.grade}
@@ -243,30 +183,9 @@ export function ExamsListPage() {
                     ✏️ تعديل الأسئلة
                   </button>
 
-                  {/* زر تصدير PDF */}
+                  {/* طباعة: الورقة + نموذج الإجابة + نماذج أ/ب/ج/د */}
                   {hasPermission('exams.export') && (
-                    <button
-                      onClick={() => handleExportPdf(exam)}
-                      disabled={exportingId === exam.id}
-                      className="flex items-center gap-1 px-3 py-1.5 bg-red-50 text-red-700 border border-red-200 text-xs font-semibold rounded-lg hover:bg-red-100 disabled:opacity-50 transition-colors"
-                    >
-                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                        <polyline points="14 2 14 8 20 8" />
-                      </svg>
-                      {exportingId === exam.id ? 'جاري...' : 'طباعة PDF'}
-                    </button>
-                  )}
-
-                  {/* زر نموذج الإجابة */}
-                  {hasPermission('exams.export') && (
-                    <button
-                      onClick={() => handleExportPdf(exam, true)}
-                      disabled={exportingId === `${exam.id}:key`}
-                      className="flex items-center gap-1 px-3 py-1.5 bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-semibold rounded-lg hover:bg-emerald-100 disabled:opacity-50 transition-colors"
-                    >
-                      ✓ {exportingId === `${exam.id}:key` ? 'جاري...' : 'نموذج الإجابة'}
-                    </button>
+                    <PrintMenu examId={exam.id} title={exam.title} disabled={exam.totalDegree <= 0} compact />
                   )}
 
                   {/* زر تعديل الإعدادات */}
@@ -336,6 +255,13 @@ export function ExamsListPage() {
         open={!!builderExamId}
         examId={builderExamId}
         onClose={() => setBuilderExamId(null)}
+      />
+
+      <SmartGenerateModal
+        open={generateKind !== null}
+        initialKind={generateKind ?? 'exam'}
+        onClose={() => setGenerateKind(null)}
+        onGenerated={handleGenerated}
       />
     </div>
   );

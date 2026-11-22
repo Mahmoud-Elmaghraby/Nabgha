@@ -7,6 +7,8 @@ import { GRADE_OPTIONS } from '@nabgha/types';
 import { useSessionMutations } from '../hooks/useSessions';
 import type { SessionType, CreateSessionPayload } from '../types/session.types';
 import { SESSION_TYPE_LABELS } from '../types/session.types';
+import { useExams } from '@/features/exams/hooks/useExams';
+import { examsApi } from '@/features/exams/api/exams.api';
 
 interface Props {
   open: boolean;
@@ -36,6 +38,7 @@ export function SessionFormModal({ open, onClose, initialGroupId, initialStartDa
   const [grade, setGrade] = useState('');
   const [subjectId, setSubjectId] = useState('');
   const [outOf, setOutOf] = useState('');
+  const [examId, setExamId] = useState('');
   const [startDate, setStartDate] = useState(initialStartDate ?? new Date().toISOString().split('T')[0]);
   const [endDate, setEndDate] = useState('');
   const [startTime, setStartTime] = useState('');
@@ -48,6 +51,18 @@ export function SessionFormModal({ open, onClose, initialGroupId, initialStartDa
   const needsGrades = TYPES_NEED_GRADES.includes(type);
   const groups = groupsData?.data || [];
   const selectedGroup = groups.find(g => g.id === groupId);
+  const examGrade = isGradeExam ? grade : '';
+  const { data: examsData } = useExams({ limit: 100, grade: examGrade || undefined }, open && needsGrades);
+  const examOptions = (examsData?.data ?? []).filter(x => x.totalDegree > 0);
+
+  const pickExam = (id: string) => {
+    setExamId(id);
+    const ex = examOptions.find(x => x.id === id);
+    if (!ex) return;
+    // الدرجة النهائية = مجموع الامتحان، والعنوان من الامتحان لو لسه فاضي
+    setOutOf(String(ex.totalDegree));
+    if (!title.trim()) setTitle(ex.title);
+  };
 
   // بمجرد اختيار مجموعة (أو تغيير تاريخ البداية)، نجيب معاد بداية/نهاية الحصة
   // تلقائياً من الجدول الأسبوعي المحفوظ في المجموعة — بدل ما المستخدم يكتبهم يدوي
@@ -87,7 +102,16 @@ export function SessionFormModal({ open, onClose, initialGroupId, initialStartDa
     };
 
     try {
-      await create.mutateAsync(payload);
+      const session = await create.mutateAsync(payload);
+      if (needsGrades && examId) {
+        try {
+          await examsApi.linkSession(examId, session.id);
+        } catch (err: any) {
+          // الحصة اتعملت — بس الربط فشل؛ نوضّح بدل ما نقفل بصمت
+          setError(`الحصة اتعملت، بس ربط الامتحان فشل: ${err?.response?.data?.error?.message || 'خطأ غير معروف'}`);
+          return;
+        }
+      }
       onClose();
     } catch (err: any) {
       setError(err?.response?.data?.error?.message || 'حدث خطأ');
@@ -169,11 +193,25 @@ export function SessionFormModal({ open, onClose, initialGroupId, initialStartDa
             </>
           )}
 
+          {/* امتحان من البنك (اختياري) */}
+          {needsGrades && examOptions.length > 0 && (
+            <div>
+              <label className="text-xs text-gray-500 mb-1.5 block">امتحان من بنك الأسئلة (اختياري)</label>
+              <select value={examId} onChange={e => pickExam(e.target.value)}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#0E3B2E]/20">
+                <option value="">من غير امتحان</option>
+                {examOptions.map(x => (
+                  <option key={x.id} value={x.id}>{x.kind === 'quiz' ? '📝 ' : ''}{x.title} — {x.totalDegree} درجة</option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {/* الدرجة القصوى */}
           {needsGrades && (
             <div>
               <label className="text-xs text-gray-500 mb-1.5 block">الدرجة من *</label>
-              <input type="number" min={1} value={outOf} onChange={e => setOutOf(e.target.value)}
+              <input type="number" min={0.5} step="0.5" value={outOf} disabled={!!examId} onChange={e => setOutOf(e.target.value)}
                 placeholder="مثال: 100"
                 className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0E3B2E]/20" />
             </div>

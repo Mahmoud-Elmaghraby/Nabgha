@@ -8,6 +8,7 @@ import { reportsApi } from '@/features/reports/api/reports.api';
 import { downloadBlob } from '@/shared/lib/downloadBlob';
 import { useToast } from '@/shared/components/Toast';
 import type { Session } from '../types/session.types';
+import { SessionExamLink } from '@/features/exams/components/SessionExamLink';
 
 interface Props {
   session: Session;
@@ -20,6 +21,9 @@ export function DegreesSheet({ session, onClose }: Props) {
   const { data: attendance = [], isLoading } = useSessionAttendance(session.id);
   const { updateOne } = useAttendanceMutations(session.id);
   const toast = useToast();
+  // لو الحصة اتربطت بامتحان من الشاشة دي، الدرجة النهائية بتتغيّر فوراً
+  const [outOfOverride, setOutOfOverride] = useState<number | null>(null);
+  const outOf = outOfOverride ?? session.outOf;
   const [degrees, setDegrees] = useState<Record<string, string>>({});
   const [search, setSearch] = useState('');
   const [saving, setSaving] = useState<Record<string, boolean>>({});
@@ -64,8 +68,8 @@ export function DegreesSheet({ session, onClose }: Props) {
       toast.error('الدرجة يجب أن تكون رقماً موجباً');
       return;
     }
-    if (session.outOf && degree > session.outOf) {
-      toast.error(`الدرجة لا تتجاوز ${session.outOf}`);
+    if (outOf && degree > outOf) {
+      toast.error(`الدرجة لا تتجاوز ${outOf}`);
       return;
     }
 
@@ -186,7 +190,7 @@ export function DegreesSheet({ session, onClose }: Props) {
           <div>
             <h2 className="text-base font-bold text-gray-900">رصد الدرجات</h2>
             <p className="text-xs text-gray-400 mt-0.5">
-              {session.title} {session.outOf ? `— من ${session.outOf} درجة` : ''}
+              {session.title} {outOf ? `— من ${outOf} درجة` : ''}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -255,6 +259,11 @@ export function DegreesSheet({ session, onClose }: Props) {
               </svg>
             </button>
           </div>
+        </div>
+
+        {/* الامتحان المربوط بالحصة */}
+        <div className="shrink-0">
+          <SessionExamLink sessionId={session.id} grade={session.grade} onOutOfChange={setOutOfOverride} />
         </div>
 
         {/* Stats */}
@@ -375,13 +384,13 @@ export function DegreesSheet({ session, onClose }: Props) {
                     <input
                       type="number"
                       min={0}
-                      max={session.outOf ?? undefined}
+                      max={outOf ?? undefined}
                       value={getDegreeValue(record.studentId, record.degree)}
                       onChange={e => {
                         const raw = e.target.value;
                         const num = Number(raw);
                         // نمنع الكتابة نفسها لو تجاوزت الحد الأقصى — مش بس نرفضها بعد الخروج من الخانة
-                        if (raw !== '' && session.outOf && num > session.outOf) return;
+                        if (raw !== '' && outOf && num > outOf) return;
                         setDegrees(prev => ({ ...prev, [record.studentId]: raw }));
                       }}
                       onBlur={() => handleDegreeBlur(record.studentId, record.status)}
@@ -390,8 +399,8 @@ export function DegreesSheet({ session, onClose }: Props) {
                       disabled={!canEdit}
                       className="degree-input w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center font-mono focus:outline-none focus:ring-2 focus:ring-[#0E3B2E]/20 focus:border-[#0E3B2E]/40 disabled:bg-gray-100 disabled:cursor-not-allowed"
                     />
-                    {session.outOf && (
-                      <span className="text-xs text-gray-400">/{session.outOf}</span>
+                    {outOf && (
+                      <span className="text-xs text-gray-400">/{outOf}</span>
                     )}
                     {saving[record.studentId] && (
                       <div className="w-3 h-3 border border-[#0E3B2E] border-t-transparent rounded-full animate-spin" />

@@ -41,7 +41,6 @@ export function QuestionFormModal({ open, onClose, question }: Props) {
   const isPending = createQuestion.isPending || updateQuestion.isPending;
   const { data: subjects = [] } = useSubjects();
 
-  const [qType, setQType] = useState<QuestionType>('mcq');
   const [imageUrl, setImageUrl]   = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadErr, setUploadErr] = useState<string | null>(null);
@@ -70,9 +69,6 @@ export function QuestionFormModal({ open, onClose, question }: Props) {
   const watchedType = watch('type');
   const watchedOptions = [watch('option0'), watch('option1'), watch('option2'), watch('option3')];
 
-  useEffect(() => {
-    setQType(watchedType as QuestionType);
-  }, [watchedType]);
 
   useEffect(() => {
     if (!open) return;
@@ -92,13 +88,11 @@ export function QuestionFormModal({ open, onClose, question }: Props) {
         option2:       question.options?.[2] ?? '',
         option3:       question.options?.[3] ?? '',
       });
-      setQType(question.type);
       setImageUrl(question.imageUrl ?? null);
     } else {
       reset({ type: 'mcq', difficulty: 'medium', defaultDegree: 1, tags: '',
               questionText: '', subjectId: '', grade: '', correctAnswer: '', modelAnswer: '',
               option0: '', option1: '', option2: '', option3: '' });
-      setQType('mcq');
       setImageUrl(null);
     }
     setUploadErr(null);

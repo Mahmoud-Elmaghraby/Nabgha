@@ -2,7 +2,7 @@ import { apiClient } from '@/shared/lib/api/client';
 import type {
   QuestionDto,
   ExamDto,
-  ExamItemDto,
+
   ExamWithItems,
   CreateQuestionPayload,
   UpdateQuestionPayload,
@@ -14,6 +14,13 @@ import type {
   PaginatedExams,
   SaveExamItemPayload,
   GenerateExamPayload,
+  GeneratedExam,
+  QuestionAvailability,
+  ImportOptions,
+  ImportReport,
+  SessionExamLink,
+  LinkedSession,
+  VersionKey,
 } from '../types/exam.types';
 
 export const examsApi = {
@@ -74,20 +81,71 @@ export const examsApi = {
   },
 
   // ─── توليد تلقائي ──────────────────────────────────────────
-  generateExam: async (payload: GenerateExamPayload): Promise<ExamWithItems> => {
+  generateExam: async (payload: GenerateExamPayload): Promise<GeneratedExam> => {
     const res = await apiClient.post('/exams/generate', payload);
     return res.data.data;
   },
 
   // ─── تصدير PDF ─────────────────────────────────────────────
   // answerKey = true → نموذج الإجابة (الإجابات الصحيحة متعلّمة)
-  exportPdf: async (examId: string, answerKey = false): Promise<Blob> => {
-    const res = await apiClient.post(
-      `/exams/${examId}/pdf${answerKey ? '?answers=1' : ''}`,
-      {},
-      { responseType: 'blob' },
-    );
+  // version = A..D → نموذج مختلف (نفس الأسئلة بترتيب مختلف)
+  exportPdf: async (examId: string, answerKey = false, version?: VersionKey): Promise<Blob> => {
+    const qs = new URLSearchParams();
+    if (answerKey) qs.set('answers', '1');
+    if (version) qs.set('version', version);
+    const q = qs.toString();
+    const res = await apiClient.post(`/exams/${examId}/pdf${q ? `?${q}` : ''}`, {}, { responseType: 'blob' });
     return res.data;
+  },
+
+  getAvailability: async (params: { subjectId?: string; grade?: string; tags?: string[] }): Promise<QuestionAvailability> => {
+    const res = await apiClient.get('/exams/questions/availability', {
+      params: {
+        subjectId: params.subjectId || undefined,
+        grade:     params.grade || undefined,
+        tags:      params.tags?.length ? params.tags.join(',') : undefined,
+      },
+    });
+    return res.data.data;
+  },
+
+  // ─── الربط بالحصص ──────────────────────────────────────────
+  linkSession: async (examId: string, sessionId: string): Promise<{ outOf: number }> => {
+    const res = await apiClient.post(`/exams/${examId}/link-session`, { sessionId });
+    return res.data.data;
+  },
+  unlinkSession: async (sessionId: string): Promise<void> => {
+    await apiClient.delete(`/exams/by-session/${sessionId}`);
+  },
+  getSessionExam: async (sessionId: string): Promise<SessionExamLink | null> => {
+    const res = await apiClient.get(`/exams/by-session/${sessionId}`);
+    return res.data.data;
+  },
+  getLinkedSessions: async (examId: string): Promise<LinkedSession[]> => {
+    const res = await apiClient.get(`/exams/${examId}/sessions`);
+    return res.data.data;
+  },
+
+  // ─── استيراد ───────────────────────────────────────────────
+  downloadImportTemplate: async (): Promise<Blob> => {
+    const res = await apiClient.get('/exams/questions/import/template', { responseType: 'blob' });
+    return res.data;
+  },
+  importText: async (text: string, opts: ImportOptions): Promise<ImportReport> => {
+    const res = await apiClient.post('/exams/questions/import/text', { ...opts, text });
+    return res.data.data;
+  },
+  importExcel: async (file: File, opts: ImportOptions): Promise<ImportReport> => {
+    const fd = new FormData();
+    fd.append('file', file);
+    Object.entries(opts).forEach(([k, v]) => {
+      if (v === undefined || v === null) return;
+      fd.append(k, Array.isArray(v) ? v.join(',') : String(v));
+    });
+    const res = await apiClient.post('/exams/questions/import/excel', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return res.data.data;
   },
 
   // ─── رفع صورة سؤال ─────────────────────────────────────────
