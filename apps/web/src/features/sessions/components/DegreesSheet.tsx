@@ -4,6 +4,8 @@ import { usePermissions } from '@/shared/hooks/usePermissions';
 import { useSessionAttendance, useAttendanceMutations } from '../hooks/useSessions';
 import { useQuery } from '@tanstack/react-query';
 import { sessionsApi } from '../api/sessions.api';
+import { reportsApi } from '@/features/reports/api/reports.api';
+import { downloadBlob } from '@/shared/lib/downloadBlob';
 import { useToast } from '@/shared/components/Toast';
 import type { Session } from '../types/session.types';
 
@@ -23,6 +25,9 @@ export function DegreesSheet({ session, onClose }: Props) {
   const [saving, setSaving] = useState<Record<string, boolean>>({});
   const [notifying, setNotifying] = useState<Record<string, boolean>>({});
   const [gradeJobId, setGradeJobId] = useState<string | null>(null);
+  const [telegramNotifying, setTelegramNotifying] = useState<Record<string, boolean>>({});
+  const [telegramGradeJobId, setTelegramGradeJobId] = useState<string | null>(null);
+  const [exportLoading, setExportLoading] = useState<'pdf' | 'xlsx' | null>(null);
 
   const handleVoiceResult = useCallback((text: string) => {
     setSearch(text.trim());
@@ -97,6 +102,26 @@ export function DegreesSheet({ session, onClose }: Props) {
     }
   };
 
+  // إرسال الدرجات عبر التليجرام — مستقل بالكامل عن إرسال الواتساب أعلاه
+  const handleSendGradeTelegram = async (studentId: string) => {
+    try {
+      await sessionsApi.resendGradeNotificationTelegram(session.id, studentId);
+      toast.success('تمت إضافة الدرجة لقائمة إرسال التليجرام — تابع سجل الرسائل (تليجرام) للتأكد من الوصول');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error?.message || 'فشل إضافة الدرجة لقائمة إرسال التليجرام');
+    }
+  };
+
+  const handleSendAllTelegram = async () => {
+    try {
+      const result = await sessionsApi.sendAllGradeNotificationsTelegram(session.id);
+      setTelegramGradeJobId(result.jobId);
+      toast.success('بدأ إرسال الدرجات عبر التليجرام في الخلفية...');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error?.message || 'فشل بدء الإرسال الجماعي عبر التليجرام');
+    }
+  };
+
   const { data: jobProgress } = useQuery({
     queryKey: ['grade-notification-progress', session.id, gradeJobId],
     queryFn: () => sessionsApi.getGradeNotificationProgress(session.id, gradeJobId!),
@@ -109,6 +134,33 @@ export function DegreesSheet({ session, onClose }: Props) {
   });
 
   const isJobRunning = jobProgress?.status === 'running' || jobProgress?.status === 'pending';
+
+  // ── تصدير درجات الحصة كملف PDF أو Excel فعلي — نفس الـ endpoint وطريقة العمل
+  // المستخدمة بالظبط في تصدير كشف الحضور والغياب (تقرير مولّد من السيرفر، مش طباعة متصفح)
+  const handleExport = async (format: 'pdf' | 'xlsx') => {
+    setExportLoading(format);
+    try {
+      const blob = await reportsApi.generate('session-grades', { sessionId: session.id }, format);
+      downloadBlob(blob, `كشف-درجات-${session.title}.${format}`);
+    } catch (err: any) {
+      toast.error('حدث خطأ أثناء توليد الملف');
+    } finally {
+      setExportLoading(null);
+    }
+  };
+
+  const { data: telegramJobProgress } = useQuery({
+    queryKey: ['telegram-grade-notification-progress', session.id, telegramGradeJobId],
+    queryFn: () => sessionsApi.getGradeNotificationProgressTelegram(session.id, telegramGradeJobId!),
+    enabled: !!telegramGradeJobId,
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      if (!data) return 1500;
+      return data.status === 'running' || data.status === 'pending' ? 1500 : false;
+    },
+  });
+
+  const isTelegramJobRunning = telegramJobProgress?.status === 'running' || telegramJobProgress?.status === 'pending';
 
   const handleKeyDown = (e: React.KeyboardEvent, studentId: string, index: number, currentStatus: 'present' | 'absent' | 'late') => {
     if (e.key === 'Enter') {
@@ -138,19 +190,64 @@ export function DegreesSheet({ session, onClose }: Props) {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            {isJobRunning && jobProgress ? (
-              <div className="flex items-center gap-2 text-xs text-gray-600">
-                <div className="w-16 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                  <div className="h-full bg-[#0E3B2E] transition-all" style={{ width: `${jobProgress.progress}%` }} />
+            <div className="flex flex-col gap-1.5 items-end">
+              {/* أزرار تصدير الدرجات كملف حقيقي (Excel / PDF) — نفس شكل وسلوك أزرار تصدير الحضور والغياب بالظبط */}
+              {attendance.length > 0 && (
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => handleExport('xlsx')}
+                    disabled={exportLoading !== null}
+                    title="تصدير Excel"
+                    className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 hover:bg-gray-50 disabled:opacity-50 flex items-center gap-1"
+                  >
+                    <svg className="w-3.5 h-3.5 text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                    {exportLoading === 'xlsx' ? '...' : 'Excel'}
+                  </button>
+                  <button
+                    onClick={() => handleExport('pdf')}
+                    disabled={exportLoading !== null}
+                    title="تصدير PDF"
+                    className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 hover:bg-gray-50 disabled:opacity-50 flex items-center gap-1"
+                  >
+                    <svg className="w-3.5 h-3.5 text-red-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                    {exportLoading === 'pdf' ? '...' : 'PDF'}
+                  </button>
                 </div>
-                <span className="whitespace-nowrap">{jobProgress.sent + jobProgress.failed} / {jobProgress.total}</span>
-              </div>
-            ) : (
-              <button onClick={handleSendAll}
-                className="text-xs px-3 py-1.5 bg-[#0E3B2E] text-white rounded-lg hover:bg-[#1F6B4E] whitespace-nowrap">
-                إرسال الكل
-              </button>
-            )}
+              )}
+
+              {/* إرسال جماعي عبر واتساب — منفصل بالكامل عن التليجرام */}
+              {isJobRunning && jobProgress ? (
+                <div className="flex items-center gap-2 text-xs text-gray-600">
+                  <div className="w-16 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                    <div className="h-full bg-[#0E3B2E] transition-all" style={{ width: `${jobProgress.progress}%` }} />
+                  </div>
+                  <span className="whitespace-nowrap">{jobProgress.sent + jobProgress.failed} / {jobProgress.total}</span>
+                </div>
+              ) : (
+                <button onClick={handleSendAll}
+                  className="text-xs px-3 py-1.5 bg-[#0E3B2E] text-white rounded-lg hover:bg-[#1F6B4E] whitespace-nowrap">
+                  إرسال الكل (واتساب)
+                </button>
+              )}
+              {/* إرسال جماعي عبر التليجرام — زر مستقل تماماً، مش تابع لواتساب */}
+              {isTelegramJobRunning && telegramJobProgress ? (
+                <div className="flex items-center gap-2 text-xs text-gray-600">
+                  <div className="w-16 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                    <div className="h-full bg-[#229ED9] transition-all" style={{ width: `${telegramJobProgress.progress}%` }} />
+                  </div>
+                  <span className="whitespace-nowrap">{telegramJobProgress.sent + telegramJobProgress.failed} / {telegramJobProgress.total}</span>
+                </div>
+              ) : (
+                <button onClick={handleSendAllTelegram}
+                  className="text-xs px-3 py-1.5 bg-[#229ED9] text-white rounded-lg hover:bg-[#1c8bc0] whitespace-nowrap">
+                  إرسال الكل (تليجرام)
+                </button>
+              )}
+            </div>
             <button onClick={onClose}
               className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100">
               <svg className="w-4 h-4 text-gray-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -313,6 +410,22 @@ export function DegreesSheet({ session, onClose }: Props) {
                       >
                         {notifying[record.studentId] ? (
                           <div className="w-3 h-3 border border-emerald-600 border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        )}
+                      </button>
+                    )}
+                    {record.degree !== null && (
+                      <button
+                        onClick={() => handleSendGradeTelegram(record.studentId)}
+                        disabled={telegramNotifying[record.studentId]}
+                        title="إرسال الدرجة عبر تليجرام"
+                        className="w-7 h-7 flex items-center justify-center rounded-lg bg-sky-50 text-[#229ED9] hover:bg-sky-100 disabled:opacity-50 shrink-0"
+                      >
+                        {telegramNotifying[record.studentId] ? (
+                          <div className="w-3 h-3 border border-[#229ED9] border-t-transparent rounded-full animate-spin" />
                         ) : (
                           <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" strokeLinecap="round" strokeLinejoin="round"/>

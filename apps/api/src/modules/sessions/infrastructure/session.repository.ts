@@ -29,6 +29,7 @@ export class SessionRepository {
       row.created_at, row.updated_at,
       row.student_name, row.student_code, row.student_phone, row.parent_phone,
       row.grade_notified_at ?? null,
+      row.telegram_grade_notified_at ?? null,
     );
   }
 
@@ -63,10 +64,12 @@ export class SessionRepository {
     const countQuery = db.selectFrom('sessions')
       .select(db.fn.countAll<string>().as('count'))
       .where('sessions.deleted_at', 'is', null)
-      .$if(!!params.type, q => q.where('sessions.type', '=', params.type!))
+      .$if(!!params.type,    q => q.where('sessions.type', '=', params.type!))
       .$if(!!params.groupId, q => q.where('sessions.group_id', '=', sql<string>`${params.groupId}::uuid`))
-      .$if(!!params.grade, q => q.where('sessions.grade', '=', params.grade!))
-      .$if(!!params.status, q => q.where('sessions.status', '=', params.status!));
+      .$if(!!params.grade,   q => q.where('sessions.grade', '=', params.grade!))
+      .$if(!!params.status,  q => q.where('sessions.status', '=', params.status!))
+      .$if(!!params.from,    q => q.where('sessions.start_date', '>=', new Date(params.from!) as any))
+      .$if(!!params.to,      q => q.where('sessions.start_date', '<=', new Date(params.to!)   as any));
 
     const [rows, countResult] = await Promise.all([
       query.orderBy('sessions.start_date', 'desc').orderBy('sessions.created_at', 'desc')
@@ -182,6 +185,7 @@ export class SessionRepository {
         'attendance.id', 'attendance.session_id', 'attendance.student_id',
         'attendance.status', 'attendance.degree', 'attendance.scanned_at',
         'attendance.notes', 'attendance.created_at', 'attendance.updated_at', 'attendance.grade_notified_at',
+        'attendance.telegram_grade_notified_at',
         'students.full_name as student_name', 'students.student_code',
         'students.student_phone', 'students.parent_phone',
       ])
@@ -199,6 +203,7 @@ export class SessionRepository {
         'attendance.id', 'attendance.session_id', 'attendance.student_id',
         'attendance.status', 'attendance.degree', 'attendance.scanned_at',
         'attendance.notes', 'attendance.created_at', 'attendance.updated_at', 'attendance.grade_notified_at',
+        'attendance.telegram_grade_notified_at',
         'students.full_name as student_name', 'students.student_code',
         'students.student_phone', 'students.parent_phone',
       ])
@@ -216,6 +221,7 @@ export class SessionRepository {
         'attendance.id', 'attendance.session_id', 'attendance.student_id',
         'attendance.status', 'attendance.degree', 'attendance.scanned_at',
         'attendance.notes', 'attendance.created_at', 'attendance.updated_at', 'attendance.grade_notified_at',
+        'attendance.telegram_grade_notified_at',
         'students.full_name as student_name', 'students.student_code',
         'students.student_phone', 'students.parent_phone',
       ])
@@ -240,6 +246,15 @@ export class SessionRepository {
     const db = this.kysely.getTenantDb(tenantId);
     await db.updateTable('attendance').set({
       grade_notified_at: new Date() as any,
+    } as any).where('id', '=', sql<string>`${attendanceId}::uuid`).execute();
+  }
+
+  // مستقل تمامًا عن markGradeNotified (الواتساب) — نفس السبب المذكور في migration
+  // 022: قناة تليجرام لازم تتبّع حالتها الخاصة، مش تشارك عمود الواتساب.
+  async markTelegramGradeNotified(tenantId: string, attendanceId: string): Promise<void> {
+    const db = this.kysely.getTenantDb(tenantId);
+    await db.updateTable('attendance').set({
+      telegram_grade_notified_at: new Date() as any,
     } as any).where('id', '=', sql<string>`${attendanceId}::uuid`).execute();
   }
 
@@ -437,6 +452,21 @@ export class SessionRepository {
     return row?.subject_grade_id ?? null;
   }
 
+  // بيتحقق إن الطالب فعلاً مسجل (حاليًا) في مجموعة من نفس المادة/الصف — مستخدمة قبل قبول
+  // أي "طالب بديل" (سكانر أو زر يدوي) عشان نمنع إضافة طالب من مرحلة/مادة مالهاش أي علاقة
+  // بمجموعة الحصة المفتوحة (زي طالب إعدادي يتسجل حاضر بالغلط في حصة ثانوي).
+  async isStudentEnrolledInSubjectGrade(tenantId: string, studentId: string, subjectGradeId: string): Promise<boolean> {
+    const db = this.kysely.getTenantDb(tenantId);
+    const row = await db.selectFrom('group_students')
+      .innerJoin('groups', 'groups.id', 'group_students.group_id')
+      .select('group_students.id')
+      .where('group_students.student_id', '=', sql<string>`${studentId}::uuid`)
+      .where('group_students.left_at', 'is', null)
+      .where('groups.subject_grade_id', '=', sql<string>`${subjectGradeId}::uuid`)
+      .executeTakeFirst();
+    return !!row;
+  }
+
   async resolveStudentIdByCode(tenantId: string, studentCode: string): Promise<string | null> {
     const db = this.kysely.getTenantDb(tenantId);
     const row = await db.selectFrom('students')
@@ -472,6 +502,7 @@ export class SessionRepository {
         'attendance.id', 'attendance.session_id', 'attendance.student_id',
         'attendance.status', 'attendance.degree', 'attendance.scanned_at',
         'attendance.notes', 'attendance.created_at', 'attendance.updated_at', 'attendance.grade_notified_at',
+        'attendance.telegram_grade_notified_at',
         'students.full_name as student_name', 'students.student_code',
         'students.student_phone', 'students.parent_phone',
       ])
@@ -493,6 +524,7 @@ export class SessionRepository {
         'attendance.id', 'attendance.session_id', 'attendance.student_id',
         'attendance.status', 'attendance.degree', 'attendance.scanned_at',
         'attendance.notes', 'attendance.created_at', 'attendance.updated_at', 'attendance.grade_notified_at',
+        'attendance.telegram_grade_notified_at',
         'students.full_name as student_name', 'students.student_code',
         'students.student_phone', 'students.parent_phone',
       ])
@@ -562,6 +594,7 @@ export class SessionRepository {
         'attendance.id', 'attendance.session_id', 'attendance.student_id',
         'attendance.status', 'attendance.degree', 'attendance.scanned_at',
         'attendance.notes', 'attendance.created_at', 'attendance.updated_at', 'attendance.grade_notified_at',
+        'attendance.telegram_grade_notified_at',
         'students.full_name as student_name', 'students.student_code',
         'students.student_phone', 'students.parent_phone',
       ])

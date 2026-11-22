@@ -18,6 +18,7 @@ export class AttendanceEntity {
     public readonly studentPhone?: string,
     public readonly parentPhone?: string,
     public gradeNotifiedAt: Date | null = null,
+    public telegramGradeNotifiedAt: Date | null = null,
   ) {}
 
   markPresent(scannedAt?: Date): void {

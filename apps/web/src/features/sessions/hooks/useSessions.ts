@@ -13,13 +13,12 @@ export function useSessions(params?: ListSessionsParams) {
   return useQuery({
     queryKey: SESSION_KEYS.list(params),
     queryFn: () => sessionsApi.list(params),
-    // في السيرفر فيه كرون بيبدّل حالة الحصص (مجدولة → جارية → منتهية) أوتوماتيك
-    // حسب مواعيدها من غير أي فعل من المستخدم — فلازم القايمة تتحدّث لوحدها كل
-    // فترة قصيرة، وإلا هتفضل عارضة حالة قديمة (مثلاً "مجدولة" وهي بقت "جارية"
-    // فعلياً)، وأي محاولة تعديل يدوي (زرار بدء/إنهاء) هترفض من الباك إند بسبب
-    // اختلاف الحالة الحقيقية عن اللي متعرضة.
-    refetchInterval: 20_000,
-    refetchIntervalInBackground: false,
+    // الكرون معطّل — الحصص تُبدأ وتُنهى يدوياً بواسطة المدرّس.
+    // المستخدمون الآخرون (مثل أجهزة متعددة للمدرس نفسه) يحتاجون polling
+    // لرؤية التغييرات اليدوية. refetchIntervalInBackground: true ضروري
+    // لأن المدرس ممكن يترك الشاشة مفتوحة بدون تفاعل.
+    refetchInterval: 15_000,
+    refetchIntervalInBackground: true,
   });
 }
 
@@ -28,8 +27,8 @@ export function useSession(id: string) {
     queryKey: SESSION_KEYS.detail(id),
     queryFn: () => sessionsApi.getById(id),
     enabled: !!id,
-    refetchInterval: 20_000,
-    refetchIntervalInBackground: false,
+    refetchInterval: 15_000,
+    refetchIntervalInBackground: true,
   });
 }
 
@@ -68,7 +67,11 @@ export function useSessionAttendance(sessionId: string) {
     queryKey: SESSION_KEYS.attendance(sessionId),
     queryFn: () => sessionsApi.getAttendance(sessionId),
     enabled: !!sessionId,
-    refetchInterval: 10_000,
+    // الـ mutations (مسح QR، تعديل يدوي) عندها onSuccess: invalidate —
+    // يعني التحديث بيحصل فوراً بعد أي عملية على نفس الجهاز.
+    // الـ 60 ثانية دي بس كـ safety net لو في جهاز تاني (مثلاً جهاز المدرس
+    // والطالب بيمسح من جهازه) — مش محتاجين أكثر من كده.
+    refetchInterval: 60_000,
     refetchIntervalInBackground: false,
   });
 }

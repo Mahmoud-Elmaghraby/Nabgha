@@ -118,4 +118,17 @@ export const sessionsApi = {
     const res = await apiClient.get(`/sessions/${sessionId}/attendance/notify-all-grades/${jobId}`);
     return res.data.data;
   },
+  resendGradeNotificationTelegram: async (sessionId: string, studentId: string): Promise<void> => {
+    await apiClient.post(`/sessions/${sessionId}/attendance/${studentId}/notify-grade-telegram`);
+  },
+  sendAllGradeNotificationsTelegram: async (sessionId: string): Promise<{ jobId: string }> => {
+    const res = await apiClient.post(`/sessions/${sessionId}/attendance/notify-all-grades-telegram`);
+    return res.data.data;
+  },
+  getGradeNotificationProgressTelegram: async (sessionId: string, jobId: string): Promise<{
+    jobId: string; total: number; sent: number; failed: number; progress: number; status: string;
+  }> => {
+    const res = await apiClient.get(`/sessions/${sessionId}/attendance/notify-all-grades-telegram/${jobId}`);
+    return res.data.data;
+  },
 };

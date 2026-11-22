@@ -1,6 +1,7 @@
 import { Injectable, Logger, Inject } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+// Cron removed — session transitions are manual (teacher-controlled)
 import { SendNotificationUseCase } from '../../../whatsapp/application/use-cases/send-notification.usecase';
+import { TelegramNotifyUseCase } from '../../../telegram/application/use-cases/telegram-notify.usecase';
 import { StorageService } from '../../../../shared/infrastructure/storage/storage.service';
 import { IWaBulkJobRepository, WA_BULK_JOB_REPOSITORY } from '../../../whatsapp/domain/repositories/wa.repository.interface';
 import { BrandingService } from '../../../settings/application/services/branding.service';
@@ -22,6 +23,7 @@ export class SessionUseCase {
   constructor(
     private readonly repo: SessionRepository,
     private readonly sendNotification: SendNotificationUseCase,
+    private readonly telegramNotify: TelegramNotifyUseCase,
     private readonly kysely: KyselyService,
     private readonly branding: BrandingService,
     private readonly storage: StorageService,
@@ -90,12 +92,10 @@ export class SessionUseCase {
   }
 
   /**
-   * كل دقيقة: أي حصة "مجدولة" وصل معاد بدايتها تتحول "جارية" أوتوماتيك، وأي حصة
-   * "جارية" وصل معاد نهايتها تتحول "منتهية" أوتوماتيك — بنفس منطق زرار البدء/الإنهاء
-   * اليدوي بالظبط (بما فيه sweep رصيد التعويض عند الإنهاء)، من غير ما المدرّس
-   * يحتاج يضغط أي زرار. بتلف على كل الـ tenants النشطين زي كرون توليد الفواتير.
+   * ⚠️ الكرون معطّل — الحصص تبدأ وتنتهي يدوياً بواسطة المدرّس.
+   * الدالة محفوظة للرجوع إليها لو احتجنا التحويل التلقائي مستقبلاً.
    */
-  @Cron(CronExpression.EVERY_MINUTE)
+  // @Cron(CronExpression.EVERY_MINUTE)
   async autoTransitionSessions(): Promise<void> {
     try {
       const tenants = await this.prisma.tenant.findMany({ where: { isActive: true } });
@@ -147,14 +147,18 @@ export class SessionUseCase {
     session.complete();
     await this.repo.save(tenantId, session);
 
-    // فحص رصيد التعويض لكل الغيابات الافتراضية (اللي محدش لمسها يدوي) قبل إقفال الحصة نهائياً
+    // فحص رصيد التعويض لكل الغيابات الافتراضية (اللي محدش لمسها يدوي) قبل إقفال الحصة نهائياً.
+    // Promise.allSettled بتشغّل كل الطلاب في نفس الوقت (متوازي) بدل واحد ورا واحد —
+    // فشل طالب واحد مش هيوقف الباقيين، وزرار "إنهاء" بيرد أسرع بكتير مع المجموعات الكبيرة.
     if (session.groupId) {
       const absentRecords = await this.repo.findAbsentAttendanceForSession(tenantId, id);
-      for (const record of absentRecords) {
-        await this.tryExcuseWithCredit(tenantId, session, record).catch(err =>
-          this.logger.error(`Credit sweep failed for student ${record.studentId}: ${err.message}`),
-        );
-      }
+      await Promise.allSettled(
+        absentRecords.map(record =>
+          this.tryExcuseWithCredit(tenantId, session, record).catch(err =>
+            this.logger.error(`Credit sweep failed for student ${record.studentId}: ${err.message}`),
+          ),
+        ),
+      );
     }
 
     return session;
@@ -267,6 +271,7 @@ export class SessionUseCase {
       template_not_found: 'قالب الرسالة غير موجود',
       notification_disabled: 'هذا النوع من الإشعارات معطّل من الإعدادات',
       no_phone: 'لا يوجد رقم هاتف مسجّل لولي الأمر',
+      duplicate_recent: 'اتبعتت نفس الرسالة من أقل من دقيقتين',
     };
     return map[error ?? ''] ?? 'فشل الإرسال لسبب غير معروف';
   }
@@ -361,7 +366,11 @@ export class SessionUseCase {
       if (buffer) imageBuffer = buffer;
     }
 
-    const result = await this.sendNotification.execute({
+    // ملحوظة: زرار تليجرام مستقل تمامًا (resendTelegramGradeNotification /
+    // sendAllTelegramGradeNotifications) — الدالة دي بقت واتساب بس، من غير أي
+    // نداء جانبي لتليجرام، بناءً على طلب صريح إن الزرارين يبقوا منفصلين تمامًا
+    // (مش زرار واتساب يبعت الاتنين تلقائي).
+    return this.sendNotification.execute({
       tenantId,
       phone: record.parentPhone,
       templateKey: 'GRADE_RECORDED',
@@ -375,7 +384,115 @@ export class SessionUseCase {
       },
       imageBuffer,
     });
-    return result;
+  }
+
+  // ─── إرسال الدرجات عبر تليجرام — مستقل تمامًا عن واتساب (زرار خاص به، عداد
+  // إرسال خاص به عبر telegram_grade_notified_at، ومفيش أي نداء تلقائي بين
+  // الاتنين في أي الاتجاهين) ──────────────────────────────────────────────
+
+  /** إرسال فردي عبر تليجرام — fire-and-forget، مرآة لـ resendGradeNotification */
+  async resendTelegramGradeNotification(tenantId: string, sessionId: string, studentId: string): Promise<void> {
+    const session = await this.getById(tenantId, sessionId);
+    const record = await this.repo.findAttendanceRecord(tenantId, sessionId, studentId);
+    if (!record) throw new AppError('NOT_FOUND', 'الطالب غير مسجل في هذه الحصة', 404);
+    if (record.degree === null) throw new AppError('VALIDATION_ERROR', 'لم يتم رصد درجة لهذا الطالب بعد', 400);
+
+    this.sendGradeNotificationTelegram(tenantId, session, record)
+      .then(async (result) => {
+        if (result.success) {
+          await this.repo.markTelegramGradeNotified(tenantId, record.id);
+        } else {
+          this.logger.warn(`Telegram grade notification failed for ${record.studentId}: ${result.error}`);
+        }
+      })
+      .catch((err) => this.logger.error(`Telegram grade notification error: ${err.message}`));
+  }
+
+  /** إرسال جماعي عبر تليجرام — Job منفصل تمامًا عن job الواتساب، مرآة لـ sendAllGradeNotifications */
+  async sendAllTelegramGradeNotifications(tenantId: string, sessionId: string, createdBy: string): Promise<{ jobId: string }> {
+    const session = await this.getById(tenantId, sessionId);
+    const allAttendance = await this.repo.findAttendance(tenantId, sessionId);
+    const pending = allAttendance.filter(r =>
+      r.degree !== null && (!r.telegramGradeNotifiedAt || r.updatedAt > r.telegramGradeNotifiedAt)
+    );
+
+    const job = await this.bulkJobRepo.create({
+      tenantId,
+      title: 'إرسال الدرجات (تليجرام)',
+      body: `الحصة: ${session.title}`,
+      total: pending.length,
+      createdBy,
+      scheduledAt: null,
+    });
+
+    this.processTelegramGradeNotificationsInBackground(tenantId, session, pending, job.id)
+      .catch((err) => this.logger.error(`Bulk telegram grade job failed: ${err.message}`));
+
+    return { jobId: job.id };
+  }
+
+  private async processTelegramGradeNotificationsInBackground(
+    tenantId: string, session: SessionEntity, pending: AttendanceEntity[], jobId: string,
+  ): Promise<void> {
+    const job = await this.bulkJobRepo.findById(tenantId, jobId);
+    if (!job) return;
+    job.start();
+    await this.bulkJobRepo.save(job);
+
+    for (const record of pending) {
+      try {
+        const result = await this.sendGradeNotificationTelegram(tenantId, session, record);
+        if (result.success) {
+          await this.repo.markTelegramGradeNotified(tenantId, record.id);
+          job.incrementSent();
+        } else {
+          job.incrementFailed();
+        }
+      } catch (err: any) {
+        this.logger.error(`Bulk telegram grade notify failed for ${record.studentId}: ${err.message}`);
+        job.incrementFailed();
+      }
+      await this.bulkJobRepo.save(job);
+    }
+  }
+
+  async getTelegramGradeNotificationJobProgress(tenantId: string, jobId: string) {
+    const job = await this.bulkJobRepo.findById(tenantId, jobId);
+    if (!job) return null;
+    return {
+      jobId: job.id, total: job.total, sent: job.sent,
+      failed: job.failed, progress: job.progress, status: job.status,
+    };
+  }
+
+  private async sendGradeNotificationTelegram(
+    tenantId: string, session: SessionEntity, record: AttendanceEntity,
+  ): Promise<{ success: boolean; error?: string }> {
+    if (record.degree === null) return { success: false, error: 'no_degree' };
+
+    const branding = await this.branding.getBrandingInfo(tenantId, { groupId: session.groupId ?? undefined });
+    const subject = session.groupName || session.grade || session.title;
+    const date = new Date(session.startDate).toLocaleDateString('ar-EG');
+
+    let imageBuffer: Buffer | undefined;
+    if (session.imageUrl) {
+      const buffer = await this.storage.getFileBuffer(session.imageUrl);
+      if (buffer) imageBuffer = buffer;
+    }
+
+    return this.telegramNotify.execute({
+      tenantId, entityType: 'student', entityId: record.studentId,
+      templateKey: 'GRADE_RECORDED',
+      vars: {
+        student_name: record.studentName || '',
+        subject,
+        date,
+        degree: String(record.degree),
+        out_of: String(session.outOf ?? ''),
+        center_name: branding.name,
+      },
+      imageBuffer,
+    });
   }
 
   // ─── نظام رصيد التعويض (حضور بديل في مادة أخرى) ────────────
@@ -400,6 +517,13 @@ export class SessionUseCase {
 
     const subjectGradeId = await this.repo.getGroupSubjectGradeId(tenantId, session.groupId);
     if (!subjectGradeId) throw new AppError('INVALID_GROUP', 'المجموعة غير مرتبطة بمادة', 400);
+
+    // لازم الطالب يكون مسجل فعلاً في مجموعة من نفس المادة/الصف عشان يقبل كـ"بديل" —
+    // بيمنع إضافة طالب من مرحلة/مادة تانية تمامًا بالغلط (سكانر أو زر يدوي).
+    const sameSubject = await this.repo.isStudentEnrolledInSubjectGrade(tenantId, studentId, subjectGradeId);
+    if (!sameSubject) {
+      throw new AppError('SUBJECT_MISMATCH', 'الطالب غير مسجل في مادة/مرحلة هذه المجموعة، لا يمكن تسجيله كبديل هنا', 400);
+    }
 
     const record = await this.repo.addExternalAttendance(tenantId, sessionId, studentId);
     const { weekStart, weekEnd } = this.getWeekBounds(session.startDate);
@@ -485,6 +609,17 @@ export class SessionUseCase {
       },
     });
     this.logger.log('ABSENCE_EXCUSED SendNotification result: ' + JSON.stringify(result));
+
+    this.telegramNotify.execute({
+      tenantId, entityType: 'student', entityId: record.studentId,
+      templateKey: 'ABSENCE_EXCUSED',
+      vars: {
+        student_name: record.studentName || '',
+        subject,
+        date,
+        center_name: branding.name,
+      },
+    }).catch((err) => this.logger.error('Telegram ABSENCE_EXCUSED failed: ' + err.message));
   }
 
   async bulkUpdateAttendance(
@@ -559,7 +694,45 @@ export class SessionUseCase {
   }
 
   // ─── Private: WhatsApp Notification ──────────────────────
+  // ⚠️ تصليح (Oct 2026): الرسالة كانت بتتبعت فورًا مع كل ضغطة. لو المدرس ضغط "غايب" بالغلط
+  // وصلّحها لـ "حاضر" بعدها بثواني، ولي الأمر كان بيستلم رسالة غياب غلط + رسالة حضور.
+  // دلوقتي بنستنى ATTENDANCE_NOTIFY_DELAY_MS، ولو الحالة اتغيّرت في الفترة دي بنلغي
+  // الرسالة القديمة، وبعد المهلة بنعيد قراءة الحالة الفعلية من قاعدة البيانات
+  // ونبعت بس لو لسه زي ما هي.
+  private readonly pendingAttendanceNotifications = new Map<string, NodeJS.Timeout>();
+  private static readonly ATTENDANCE_NOTIFY_DELAY_MS = 90_000;
+
   private async sendAttendanceNotification(
+    tenantId: string,
+    session: SessionEntity,
+    record: AttendanceEntity,
+    status: string,
+  ): Promise<void> {
+    if (!record.parentPhone) return;
+
+    const key = `${tenantId}:${session.id}:${record.studentId}`;
+    const existing = this.pendingAttendanceNotifications.get(key);
+    if (existing) clearTimeout(existing);
+
+    const timer = setTimeout(async () => {
+      this.pendingAttendanceNotifications.delete(key);
+      try {
+        const fresh = await this.repo.findAttendanceRecord(tenantId, session.id, record.studentId);
+        if (!fresh || fresh.status !== status) {
+          this.logger.log(`Skipped stale ${status} notification for student ${record.studentId} (status now: ${fresh?.status})`);
+          return;
+        }
+        await this.deliverAttendanceNotification(tenantId, session, fresh, status);
+      } catch (err: any) {
+        this.logger.error('Delayed attendance notification failed: ' + err.message);
+      }
+    }, SessionUseCase.ATTENDANCE_NOTIFY_DELAY_MS);
+    // ما نمنعش إغلاق التطبيق بسبب المؤقت
+    (timer as any).unref?.();
+    this.pendingAttendanceNotifications.set(key, timer);
+  }
+
+  private async deliverAttendanceNotification(
     tenantId: string,
     session: SessionEntity,
     record: AttendanceEntity,
@@ -595,31 +768,65 @@ export class SessionUseCase {
       },
     });
 
+    this.telegramNotify.execute({
+      tenantId, entityType: 'student', entityId: record.studentId,
+      templateKey: templateKey as any,
+      vars: {
+        student_name: record.studentName || '',
+        subject,
+        date,
+        time,
+        center_name: branding.name,
+      },
+    }).catch((err) => this.logger.error(`Telegram ${templateKey} failed: ` + err.message));
+
     // فحص 3 غيابات متتالية
     if (status === 'absent') {
-      await this.checkThreeAbsences(tenantId, record, subject, date);
+      await this.checkThreeAbsences(tenantId, record, session, subject, date, branding.name);
     }
   }
 
   private async checkThreeAbsences(
     tenantId: string,
     record: AttendanceEntity,
+    session: SessionEntity,
     subject: string,
     date: string,
+    centerName: string,
   ): Promise<void> {
     const db = this.kysely.getTenantDb(tenantId);
 
-    const recentAbsences = await db.selectFrom('attendance')
+    // آخر 4 حصص مسجّل فيها الطالب (أي حالة، لحد الحصة الحالية، ونفس المجموعة)
+    // عشان نتأكد إن الغيابات "متتالية فعلًا": آخر 3 كلهم غياب، والحصة اللي قبلهم
+    // (الرابعة) مش غياب — كده الرسالة تتبعت مرة واحدة بس عند الغياب الثالث.
+    // الغلطة القديمة كانت بتجيب آخر 3 غيابات بغض النظر عن حضوره بينهم.
+    let q = db.selectFrom('attendance')
       .innerJoin('sessions', 'sessions.id', 'attendance.session_id')
       .select(['attendance.status'])
       .where('attendance.student_id', '=', record.studentId as any)
-      .where('attendance.status', '=', 'absent')
       .where('sessions.deleted_at', 'is', null)
+      // ⚠️ تصليح: الحصص الملغية/اللي لسه ماتعملتش بيبقى فيها "غياب افتراضي" لكل الطلاب
+      // وكانت بتتحسب غيابات حقيقية. نحسب بس الحصص اللي اتعملت فعلًا (جارية/منتهية)
+      // واللي حد فيها اتسجّل حضوره (يعني المدرس أخد حضور فعلًا).
+      .where('sessions.status', 'in', ['ongoing', 'completed'])
+      .where(sql<boolean>`EXISTS (SELECT 1 FROM attendance a2 WHERE a2.session_id = sessions.id AND a2.status <> 'absent')`)
+      .where('sessions.start_date', '<=', session.startDate as any);
+    if (session.groupId) {
+      q = q.where('sessions.group_id', '=', session.groupId as any);
+    }
+    const recent = await q
       .orderBy('sessions.start_date', 'desc')
-      .limit(3)
+      .orderBy('sessions.start_time', 'desc')
+      .limit(4)
       .execute();
 
-    if (recentAbsences.length === 3 && recentAbsences.every(a => a.status === 'absent')) {
+    const recentAbsences = recent.slice(0, 3);
+    const isThirdConsecutive =
+      recentAbsences.length === 3 &&
+      recentAbsences.every(a => a.status === 'absent') &&
+      (recent.length < 4 || recent[3].status !== 'absent');
+
+    if (isThirdConsecutive) {
       await this.sendNotification.execute({
         tenantId,
         phone: record.parentPhone!,
@@ -629,8 +836,20 @@ export class SessionUseCase {
           subject,
           date,
           count: '3',
+          center_name: centerName,
         },
       });
+      this.telegramNotify.execute({
+        tenantId, entityType: 'student', entityId: record.studentId,
+        templateKey: 'THREE_ABSENCES',
+        vars: {
+          student_name: record.studentName || '',
+          subject,
+          date,
+          count: '3',
+          center_name: centerName,
+        },
+      }).catch((err) => this.logger.error('Telegram THREE_ABSENCES failed: ' + err.message));
       this.logger.warn(`THREE_ABSENCES notification sent for student ${record.studentCode}`);
     }
   }

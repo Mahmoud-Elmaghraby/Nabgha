@@ -3,6 +3,8 @@ import { useToast } from '@/shared/components/Toast';
 import { useSessionAttendance, useAttendanceMutations, usePreviousAbsent, useUnpaidStudents } from '../hooks/useSessions';
 import { QrCameraScanner } from './QrCameraScanner';
 import { sessionsApi } from '../api/sessions.api';
+import { reportsApi } from '@/features/reports/api/reports.api';
+import { downloadBlob } from '@/shared/lib/downloadBlob';
 import { getFullMediaUrl } from '@/shared/lib/getFullMediaUrl';
 import { useQueryClient } from '@tanstack/react-query';
 import { SESSION_KEYS } from '../hooks/useSessions';
@@ -42,11 +44,13 @@ export function AttendanceSheet({ session, onClose }: Props) {
   const qc = useQueryClient();
   const [scanInput, setScanInput] = useState('');
   const [searchFilter, setSearchFilter] = useState('');
+  const [activeTab, setActiveTab] = useState<'all' | 'present' | 'absent'>('all');
   const [scanMsg, setScanMsg] = useState<AttendanceAlertMessage | null>(null);
   const [showCamera, setShowCamera] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [showFullImage, setShowFullImage] = useState(false);
   const [removingImage, setRemovingImage] = useState(false);
+  const [exportLoading, setExportLoading] = useState<'pdf' | 'xlsx' | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const scanRef = useRef<HTMLInputElement>(null);
 
@@ -62,6 +66,29 @@ export function AttendanceSheet({ session, onClose }: Props) {
   const externalResults = (externalCandidates?.data || []).filter(s => !enrolledIds.has(s.id));
 
   const isOpen = session.status === 'scheduled' || session.status === 'ongoing';
+
+  // تصدير الكشف المفلتر (نفس الـ tab المعروض) كـ PDF أو Excel
+  const handleExport = async (format: 'pdf' | 'xlsx') => {
+    setExportLoading(format);
+    try {
+      // نمرر الحالة للـ backend عشان يفلتر نفس اللي المدرس شايفه
+      const statusParam =
+        activeTab === 'present' ? 'present' :
+        activeTab === 'absent'  ? 'absent'  :
+        'all';
+      const blob = await reportsApi.generate('session-attendance', {
+        sessionId: session.id,
+        status: statusParam,
+      }, format);
+      const tabLabel = activeTab === 'present' ? 'حاضرين' : activeTab === 'absent' ? 'غايبين' : 'الكل';
+      downloadBlob(blob, `كشف-${tabLabel}-${session.title}.${format}`);
+    } catch (err: any) {
+      // نعرض خطأ بسيط عبر console — الـ toast مش محتاجينه هنا
+      console.error('Export failed:', err);
+    } finally {
+      setExportLoading(null);
+    }
+  };
 
   useEffect(() => {
     if (isOpen && canMark) scanRef.current?.focus();
@@ -170,7 +197,19 @@ export function AttendanceSheet({ session, onClose }: Props) {
           scanRef.current?.focus();
           setScanInput('');
           return { studentId: result.attendance.studentId, studentName: result.attendance.studentName, ...warnings };
-        } catch { /* فشلت الإضافة برضو — نعرض الخطأ العادي تحت */ }
+        } catch (externalErr: any) {
+          // فشلت الإضافة كـ"بديل" برضو — لو الباك إند رجّع رسالة واضحة (زي عدم تطابق
+          // المادة/المرحلة) نعرضها هي بدل رسالة "QR غير موجود" العامة، عشان المدرس يفهم
+          // السبب الحقيقي (مش مجرد QR غلط).
+          const externalMsg = externalErr?.response?.data?.error?.message;
+          if (externalMsg) {
+            setScanMsg({ text: `❌ ${externalMsg}`, level: 'error' });
+            setTimeout(() => setScanMsg(null), 3000);
+            scanRef.current?.focus();
+            setScanInput('');
+            return;
+          }
+        }
       }
       const msg = err?.response?.data?.error?.message || 'QR غير صحيح';
       setScanMsg({ text: `❌ ${msg}`, level: 'error' });
@@ -189,12 +228,18 @@ export function AttendanceSheet({ session, onClose }: Props) {
     }
   };
 
+  const tabFiltered = activeTab === 'present'
+    ? attendance.filter(a => a.status === 'present' || a.status === 'late')
+    : activeTab === 'absent'
+    ? attendance.filter(a => a.status === 'absent' || a.status === 'excused')
+    : attendance;
+
   const filteredAttendance = searchFilter
-    ? attendance.filter(a => 
-        a.studentName?.includes(searchFilter) || 
+    ? tabFiltered.filter(a =>
+        a.studentName?.includes(searchFilter) ||
         a.studentCode?.includes(searchFilter)
       )
-    : attendance;
+    : tabFiltered;
 
   const present = attendance.filter(a => a.status === 'present').length;
   const late    = attendance.filter(a => a.status === 'late').length;
@@ -212,6 +257,33 @@ export function AttendanceSheet({ session, onClose }: Props) {
             <p className="text-xs text-gray-400">{session.groupName || session.grade}</p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
+            {/* Export buttons */}
+            {attendance.length > 0 && (
+              <>
+                <button
+                  onClick={() => handleExport('xlsx')}
+                  disabled={exportLoading !== null}
+                  title="تصدير Excel"
+                  className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 hover:bg-gray-50 disabled:opacity-50 flex items-center gap-1"
+                >
+                  <svg className="w-3.5 h-3.5 text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  {exportLoading === 'xlsx' ? '...' : 'Excel'}
+                </button>
+                <button
+                  onClick={() => handleExport('pdf')}
+                  disabled={exportLoading !== null}
+                  title="تصدير PDF"
+                  className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 hover:bg-gray-50 disabled:opacity-50 flex items-center gap-1"
+                >
+                  <svg className="w-3.5 h-3.5 text-red-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  {exportLoading === 'pdf' ? '...' : 'PDF'}
+                </button>
+              </>
+            )}
             {canMark && sessionHasImage(session.type) && (
               <>
                 <input ref={fileRef} type="file" accept="image/*" className="hidden"
@@ -278,6 +350,32 @@ export function AttendanceSheet({ session, onClose }: Props) {
             <p className="text-lg font-bold text-purple-500">{excused}</p>
             <p className="text-xs text-purple-400">معذور</p>
           </div>
+        </div>
+
+        {/* Tabs: الكل / حاضرين / غايبين */}
+        <div className="flex gap-1.5 px-4 py-2 border-b border-gray-50 shrink-0">
+          {([
+            { key: 'all',     label: 'الكل',    count: attendance.length },
+            { key: 'present', label: 'حاضرين',  count: present + late },
+            { key: 'absent',  label: 'غايبين',  count: absent + excused },
+          ] as const).map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`flex-1 py-1.5 text-xs font-medium rounded-lg transition-all ${
+                activeTab === tab.key
+                  ? 'bg-[#0E3B2E] text-white shadow-sm'
+                  : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+              }`}
+            >
+              {tab.label}
+              <span className={`mr-1 ${
+                activeTab === tab.key ? 'opacity-80' : 'opacity-60'
+              }`}>
+                ({tab.count})
+              </span>
+            </button>
+          ))}
         </div>
 
         {/* QR Scanner + طالب بديل */}

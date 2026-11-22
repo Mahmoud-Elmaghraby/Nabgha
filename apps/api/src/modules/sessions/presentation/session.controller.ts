@@ -226,6 +226,36 @@ export class SessionController {
     return { success: true, data };
   }
 
+  // ─── إرسال الدرجات عبر تليجرام — نفس شكل endpoints الواتساب فوق بالظبط،
+  // بس مسار مختلف ("-telegram") ومنفصل تمامًا في الـ use case ─────────────
+  @Post(':id/attendance/:studentId/notify-grade-telegram')
+  @RequirePermission('sessions.attendance')
+  async resendGradeNotificationTelegram(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Param('studentId') studentId: string,
+  ) {
+    await this.useCase.resendTelegramGradeNotification(req.user.tenantId, id, studentId);
+    return { success: true };
+  }
+
+  @Post(':id/attendance/notify-all-grades-telegram')
+  @RequirePermission('sessions.attendance')
+  async sendAllGradeNotificationsTelegram(@Request() req: any, @Param('id') id: string) {
+    const data = await this.useCase.sendAllTelegramGradeNotifications(req.user.tenantId, id, req.user.sub);
+    return { success: true, data };
+  }
+
+  @Get(':id/attendance/notify-all-grades-telegram/:jobId')
+  @RequirePermission('sessions.attendance')
+  async getGradeNotificationProgressTelegram(
+    @Request() req: any, @Param('id') id: string, @Param('jobId') jobId: string,
+  ) {
+    const data = await this.useCase.getTelegramGradeNotificationJobProgress(req.user.tenantId, jobId);
+    if (!data) throw new AppError('NOT_FOUND', 'العملية غير موجودة', 404);
+    return { success: true, data };
+  }
+
   // ─── حضور بديل (طالب من مجموعة تانية) ─────────────────────
   @Post(':id/attendance/external')
   @RequirePermission('sessions.attendance')
