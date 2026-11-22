@@ -133,7 +133,7 @@ export interface AttendanceCreditsTable {
   source_attendance_id: string;
   week_start: Date;
   week_end: Date;
-  status: Generated<'available' | 'consumed' | 'expired'>;
+  status: Generated<'available' | 'consumed' | 'revoked' | 'expired'>;
   consumed_attendance_id: string | null;
   consumed_at: Date | null;
   created_at: Generated<Date>;

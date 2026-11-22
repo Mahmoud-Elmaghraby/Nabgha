@@ -19,6 +19,8 @@ export class AttendanceEntity {
     public readonly parentPhone?: string,
     public gradeNotifiedAt: Date | null = null,
     public telegramGradeNotifiedAt: Date | null = null,
+    /** طالب من مجموعة تانية حضر هنا كبديل (عنده رصيد تعويض مربوط بالسجل ده) */
+    public isExternal: boolean = false,
   ) {}
 
   markPresent(scannedAt?: Date): void {

@@ -38,6 +38,8 @@ export interface AttendanceRecord {
   studentCode: string;
   studentPhone: string | null;
   parentPhone: string;
+  /** طالب من مجموعة تانية حضر هنا كبديل */
+  isExternal?: boolean;
 }
 
 export interface Session {

@@ -1,4 +1,5 @@
 import { Injectable, Logger, Inject } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
 // Cron removed — session transitions are manual (teacher-controlled)
 import { SendNotificationUseCase } from '../../../whatsapp/application/use-cases/send-notification.usecase';
 import { TelegramNotifyUseCase } from '../../../telegram/application/use-cases/telegram-notify.usecase';
@@ -11,6 +12,7 @@ import { sql } from 'kysely';
 import { SessionRepository } from '../../infrastructure/session.repository';
 import { SessionEntity, AttendanceEntity } from '../../domain/entities/session.entity';
 import { AppError } from '../../../../core/errors/app.error';
+import { AttendanceCreditService } from '../services/attendance-credit.service';
 import type {
   CreateSessionDto, UpdateSessionDto, ListSessionsDto,
   UpdateAttendanceDto, BulkUpdateAttendanceDto, ScanQrDto,
@@ -29,6 +31,7 @@ export class SessionUseCase {
     private readonly storage: StorageService,
     private readonly prisma: PrismaService,
     @Inject(WA_BULK_JOB_REPOSITORY) private readonly bulkJobRepo: IWaBulkJobRepository,
+    private readonly credits: AttendanceCreditService,
   ) {}
 
   async list(tenantId: string, params: ListSessionsDto) {
@@ -147,18 +150,10 @@ export class SessionUseCase {
     session.complete();
     await this.repo.save(tenantId, session);
 
-    // فحص رصيد التعويض لكل الغيابات الافتراضية (اللي محدش لمسها يدوي) قبل إقفال الحصة نهائياً.
-    // Promise.allSettled بتشغّل كل الطلاب في نفس الوقت (متوازي) بدل واحد ورا واحد —
-    // فشل طالب واحد مش هيوقف الباقيين، وزرار "إنهاء" بيرد أسرع بكتير مع المجموعات الكبيرة.
+    // فحص رصيد التعويض لكل الغيابات قبل إقفال الحصة نهائياً — لو الطالب حضر بديل
+    // في مجموعة تانية في نفس الأسبوع غيابه هنا يتحسب معذور.
     if (session.groupId) {
-      const absentRecords = await this.repo.findAbsentAttendanceForSession(tenantId, id);
-      await Promise.allSettled(
-        absentRecords.map(record =>
-          this.tryExcuseWithCredit(tenantId, session, record).catch(err =>
-            this.logger.error(`Credit sweep failed for student ${record.studentId}: ${err.message}`),
-          ),
-        ),
-      );
+      await this.sweepSessionAbsences(tenantId, session);
     }
 
     return session;
@@ -169,6 +164,7 @@ export class SessionUseCase {
     if (!session.isOpen) throw new AppError('INVALID_STATUS', 'لا يمكن إلغاء حصة منتهية', 400);
     session.cancel();
     await this.repo.save(tenantId, session);
+    await this.voidSessionCredits(tenantId, session);
     return session;
   }
 
@@ -177,6 +173,7 @@ export class SessionUseCase {
     if (session.status === 'ongoing') throw new AppError('INVALID_STATUS', 'لا يمكن حذف حصة جارية', 400);
     session.softDelete();
     await this.repo.save(tenantId, session);
+    await this.voidSessionCredits(tenantId, session);
   }
 
   async setImage(tenantId: string, id: string, imageUrl: string): Promise<SessionEntity> {
@@ -222,21 +219,9 @@ export class SessionUseCase {
     // ─── تحديث حالة الحضور (لو صراحة اتبعتت) ───
     // منفصل تماماً عن رصد الدرجة — عشان تعديل درجة طالب مايبعتش رسالة "حضور" مكررة كل مرة.
     if (data.status !== undefined) {
-      // لو التسجيل الصريح "غايب"، افحص رصيد التعويض الأول قبل ما تثبته غياب فعلي
-      if (data.status === 'absent' && session.groupId) {
-        const excused = await this.tryExcuseWithCredit(tenantId, session, record);
-        if (excused) return record;
-      }
-
-      if (data.status === 'present') record.markPresent();
-      else if (data.status === 'absent') record.markAbsent();
-      else record.markLate();
-
-      await this.repo.saveAttendance(tenantId, record);
-
-      // WhatsApp notification — fire and forget
-      this.sendAttendanceNotification(tenantId, session, record, data.status)
-        .catch(err => this.logger.error('WA notification failed: ' + err.message));
+      const result = await this.changeStatus(tenantId, session, record, data.status, { notify: true });
+      // طالب بديل اتسجل غايب = اتشال من الحصة خالص، مفيش درجة أو ملاحظات تتسجل له
+      if (result.removed) return record;
     }
 
     // ─── رصد الدرجة (تسجيل صامت فقط — الإرسال قرار صريح من المدرّس لاحقاً،
@@ -495,7 +480,8 @@ export class SessionUseCase {
     });
   }
 
-  // ─── نظام رصيد التعويض (حضور بديل في مادة أخرى) ────────────
+  // ─── نظام رصيد التعويض (حضور بديل في مجموعة تانية بنفس المادة) ────
+  // القواعد كاملة موثقة في AttendanceCreditService.
 
   async addExternalAttendance(
     tenantId: string, sessionId: string, identifier: { studentId?: string; studentCode?: string },
@@ -526,67 +512,169 @@ export class SessionUseCase {
     }
 
     const record = await this.repo.addExternalAttendance(tenantId, sessionId, studentId);
-    const { weekStart, weekEnd } = this.getWeekBounds(session.startDate);
+    record.isExternal = true;
 
-    const pendingAbsence = await this.repo.findPendingAbsenceForSubject(
-      tenantId, studentId, subjectGradeId, weekStart, weekEnd,
-    );
-
-    if (pendingAbsence) {
-      pendingAbsence.markExcused();
-      pendingAbsence.notes = `معذور — حضر بديل في حصة "${session.title}" بتاريخ ${session.startDate.toLocaleDateString('ar-EG')}`;
-      await this.repo.saveAttendance(tenantId, pendingAbsence);
-
-      this.sendExcusedNotification(tenantId, pendingAbsence, session)
-        .catch(err => this.logger.error('ABSENCE_EXCUSED notification failed: ' + err.message));
-
-      return { attendance: record, excusedAbsence: true, creditCreated: false };
-    }
-
-    await this.repo.createAttendanceCredit(tenantId, {
-      studentId, subjectGradeId,
-      sourceSessionId: sessionId, sourceAttendanceId: record.id,
-      weekStart, weekEnd,
+    const { excusedAbsenceId } = await this.credits.onExternalAttendance(tenantId, {
+      sessionId, sessionDate: session.startDate, sessionTitle: session.title,
+      attendanceId: record.id, studentId, subjectGradeId,
     });
 
-    return { attendance: record, excusedAbsence: false, creditCreated: true };
+    if (excusedAbsenceId) this.notifyExcused(tenantId, [excusedAbsenceId]);
+
+    // ولي الأمر يعرف إن ابنه وصل — زي أي حضور عادي
+    this.sendAttendanceNotification(tenantId, session, record, 'present')
+      .catch(err => this.logger.error('WA external attendance notification failed: ' + err.message));
+
+    return { attendance: record, excusedAbsence: !!excusedAbsenceId, creditCreated: !excusedAbsenceId };
   }
 
-  private async tryExcuseWithCredit(
+  /**
+   * المكان الوحيد اللي بيغيّر حالة حضور طالب — التسجيل الفردي والجماعي ومسح الـ QR كلهم
+   * بيعدّوا من هنا، عشان قواعد رصيد التعويض تتطبق بنفس الشكل في كل الحالات.
+   */
+  private async changeStatus(
     tenantId: string, session: SessionEntity, record: AttendanceEntity,
-  ): Promise<boolean> {
-    if (!session.groupId) return false;
-    const subjectGradeId = await this.repo.getGroupSubjectGradeId(tenantId, session.groupId);
-    if (!subjectGradeId) return false;
+    status: 'present' | 'absent' | 'late',
+    opts: { notify: boolean; scannedAt?: Date },
+  ): Promise<{ removed: boolean }> {
+    // ── طالب بديل (من مجموعة تانية) ──
+    if (session.groupId && await this.credits.isExternal(tenantId, record.id)) {
+      if (status === 'absent') {
+        // اتسجل بالغلط: يتشال من الحصة، رصيده يتلغي، وأي غياب اتعذر بيه يرجع غياب
+        await this.credits.removeExternalAttendance(tenantId, record.id);
+        this.logger.log(`External attendee ${record.studentId} removed from session ${session.id}`);
+        return { removed: true };
+      }
+      if (status === 'present') record.markPresent(opts.scannedAt);
+      else record.markLate();
+      await this.repo.saveAttendance(tenantId, record);
+      if (opts.notify) this.queueAttendanceNotification(tenantId, session, record, status);
+      return { removed: false };
+    }
 
-    const { weekStart, weekEnd } = this.getWeekBounds(session.startDate);
-    const credit = await this.repo.findAvailableCredit(tenantId, record.studentId, subjectGradeId, weekStart, weekEnd);
-    if (!credit) return false;
+    // ── طالب من المجموعة ──
+    if (record.status === 'excused') {
+      // غيابه متغطي برصيد تعويض فعلاً — "غايب" تاني مش هيغيّر حاجة
+      if (status === 'absent') return { removed: false };
+      // حضر حصته في الآخر: الرصيد يرجع متاح ويدوّر على غياب تاني
+      const reExcused = await this.credits.onExcusedRecordChanged(tenantId, record.id);
+      this.notifyExcused(tenantId, reExcused);
+      record.notes = null;
+    }
 
-    record.markExcused();
-    record.notes = 'معذور — لديه رصيد تعويض (حضر بديل في مادة أخرى بنفس الأسبوع)';
+    if (status === 'absent' && session.groupId) {
+      const subjectGradeId = await this.repo.getGroupSubjectGradeId(tenantId, session.groupId);
+      if (subjectGradeId) {
+        // حفظ الغياب الأول، وبعدين محاولة صرف رصيد عليه (الصرف بيشترط إن الحالة "غايب")
+        record.markAbsent();
+        await this.repo.saveAttendance(tenantId, record);
+        const excused = await this.credits.excuseAbsenceIfCredit(tenantId, {
+          absenceAttendanceId: record.id, studentId: record.studentId,
+          subjectGradeId, sessionDate: session.startDate,
+        });
+        if (excused) {
+          record.markExcused();
+          record.notes = AttendanceCreditService.DEFAULT_NOTE;
+          if (opts.notify) this.sendExcusedNotification(tenantId, record, session)
+            .catch(err => this.logger.error('ABSENCE_EXCUSED notification failed: ' + err.message));
+          return { removed: false };
+        }
+        if (opts.notify) this.queueAttendanceNotification(tenantId, session, record, status);
+        return { removed: false };
+      }
+    }
+
+    if (status === 'present') record.markPresent(opts.scannedAt);
+    else if (status === 'absent') record.markAbsent();
+    else record.markLate();
     await this.repo.saveAttendance(tenantId, record);
-    await this.repo.consumeCredit(tenantId, credit.id, record.id);
-
-    this.sendExcusedNotification(tenantId, record, session)
-      .catch(err => this.logger.error('ABSENCE_EXCUSED notification failed: ' + err.message));
-
-    return true;
+    if (opts.notify) this.queueAttendanceNotification(tenantId, session, record, status);
+    return { removed: false };
   }
 
-  private getWeekBounds(date: Date): { weekStart: Date; weekEnd: Date } {
-    // الأسبوع: من السبت للخميس — الجمعة إجازة وبرة الحساب
-    const d = new Date(date);
-    d.setHours(0, 0, 0, 0);
-    const day = d.getDay(); // 0=أحد .. 6=سبت
-    const daysSinceSaturday = (day - 6 + 7) % 7;
-    const weekStart = new Date(d);
-    weekStart.setDate(d.getDate() - daysSinceSaturday);
-    weekStart.setHours(0, 0, 0, 0);
-    const weekEnd = new Date(weekStart);
-    weekEnd.setDate(weekStart.getDate() + 5);
-    weekEnd.setHours(0, 0, 0, 0);
-    return { weekStart, weekEnd };
+  private queueAttendanceNotification(
+    tenantId: string, session: SessionEntity, record: AttendanceEntity, status: string,
+  ): void {
+    this.sendAttendanceNotification(tenantId, session, record, status)
+      .catch(err => this.logger.error('WA notification failed: ' + err.message));
+  }
+
+  /** عند إنهاء الحصة: كل غياب فيها ياخد رصيد تعويض لو موجود */
+  private async sweepSessionAbsences(tenantId: string, session: SessionEntity): Promise<void> {
+    const subjectGradeId = await this.repo.getGroupSubjectGradeId(tenantId, session.groupId!);
+    if (!subjectGradeId) return;
+    const absentRecords = await this.repo.findAbsentAttendanceForSession(tenantId, session.id);
+    const excusedIds: string[] = [];
+    // واحد ورا واحد — عدد الأرصدة المتاحة في أي أسبوع صغير جدًا، والتسلسل أبسط وأأمن
+    for (const record of absentRecords) {
+      try {
+        const ok = await this.credits.excuseAbsenceIfCredit(tenantId, {
+          absenceAttendanceId: record.id, studentId: record.studentId,
+          subjectGradeId, sessionDate: session.startDate,
+        });
+        if (ok) excusedIds.push(record.id);
+      } catch (err: any) {
+        this.logger.error(`Credit sweep failed for student ${record.studentId}: ${err.message}`);
+      }
+    }
+    this.notifyExcused(tenantId, excusedIds);
+  }
+
+  /** حصة اتلغت أو اتمسحت: الأرصدة المرتبطة بيها بتترتب من جديد */
+  private async voidSessionCredits(tenantId: string, session: SessionEntity): Promise<void> {
+    if (!session.groupId) return;
+    try {
+      const reExcused = await this.credits.onSessionVoided(tenantId, session.id);
+      this.notifyExcused(tenantId, reExcused);
+    } catch (err: any) {
+      this.logger.error(`Credit cleanup failed for session ${session.id}: ${err.message}`);
+    }
+  }
+
+  /** إشعار "غياب معذور" لكل سجل غياب اتعذر — بتاريخ ومادة حصة الغياب نفسها */
+  private notifyExcused(tenantId: string, absenceAttendanceIds: string[]): void {
+    for (const attendanceId of absenceAttendanceIds) {
+      (async () => {
+        const ctx = await this.repo.findAttendanceContextById(tenantId, attendanceId);
+        if (!ctx) return;
+        await this.sendExcusedNotification(tenantId, ctx.record, ctx.session);
+      })().catch(err => this.logger.error('ABSENCE_EXCUSED notification failed: ' + err.message));
+    }
+  }
+
+  // ─── مطابقة يومية لرصيد التعويض ─────────────────────────
+  // لو المدرّس مابيدوسش "إنهاء الحصة"، الغياب ماكانش بيتقابل مع رصيد اتعمل قبله.
+  // بيصحى كل ساعة بس الشغل الفعلي مرة واحدة في اليوم لكل مركز (نفس أسلوب المالية).
+  private static readonly CREDIT_SWEEP_KEY = 'attendance_credit_sweep_last_date';
+
+  @Cron('20 * * * *')
+  async dailyCreditSweep(): Promise<void> {
+    try {
+      const tenants = await this.prisma.tenant.findMany({ where: { isActive: true }, select: { id: true } });
+      const today = AttendanceCreditService.toDateStr(new Date());
+      for (const tenant of tenants) {
+        try {
+          const db = this.kysely.getTenantDb(tenant.id);
+          const last = await db.selectFrom('tenant_settings').select('value')
+            .where('key', '=', SessionUseCase.CREDIT_SWEEP_KEY)
+            .executeTakeFirst();
+          if (last?.value === today) continue;
+
+          const excused = await this.credits.matchPendingCredits(tenant.id);
+          this.notifyExcused(tenant.id, excused);
+
+          await db.insertInto('tenant_settings')
+            .values({ key: SessionUseCase.CREDIT_SWEEP_KEY, value: today, updated_at: new Date() } as any)
+            .onConflict((oc) => oc.column('key').doUpdateSet({ value: today, updated_at: new Date() } as any))
+            .execute();
+          if (excused.length) this.logger.log(`Credit sweep tenant ${tenant.id}: ${excused.length} absences excused`);
+        } catch (err: any) {
+          this.logger.error(`Credit sweep failed for tenant ${tenant.id}: ${err.message}`);
+        }
+      }
+    } catch (err: any) {
+      this.logger.error(`dailyCreditSweep failed: ${err.message}`);
+    }
   }
 
   private async sendExcusedNotification(
@@ -633,9 +721,9 @@ export class SessionUseCase {
     await Promise.all(data.updates.map(async update => {
       const record = await this.repo.findAttendanceRecord(tenantId, sessionId, update.studentId);
       if (!record) return;
-      if (update.status === 'present') record.markPresent();
-      else if (update.status === 'absent') record.markAbsent();
-      else record.markLate();
+      // نفس قواعد التسجيل الفردي (رصيد التعويض، الطالب البديل) — من غير إشعارات زي الأول
+      const result = await this.changeStatus(tenantId, session, record, update.status, { notify: false });
+      if (result.removed) return;
 
       if (update.degree !== undefined && session.hasGrades) {
         if (!session.outOf) {
@@ -682,14 +770,8 @@ export class SessionUseCase {
     const record = await this.repo.findAttendanceByQr(tenantId, sessionId, qrCode);
     if (!record) throw new AppError('NOT_FOUND', 'QR غير موجود أو الطالب غير مسجل', 404);
     if (record.status === 'present') return record;
-    record.markPresent(new Date());
-    await this.repo.saveAttendance(tenantId, record);
+    await this.changeStatus(tenantId, session, record, 'present', { notify: true, scannedAt: new Date() });
     this.logger.log(`QR scan: ${record.studentCode} → present in session ${sessionId}`);
-
-    // WhatsApp notification — fire and forget
-    this.sendAttendanceNotification(tenantId, session, record, 'present')
-      .catch(err => this.logger.error('WA scan notification failed: ' + err.message));
-
     return record;
   }
 
@@ -809,7 +891,15 @@ export class SessionUseCase {
       // وكانت بتتحسب غيابات حقيقية. نحسب بس الحصص اللي اتعملت فعلًا (جارية/منتهية)
       // واللي حد فيها اتسجّل حضوره (يعني المدرس أخد حضور فعلًا).
       .where('sessions.status', 'in', ['ongoing', 'completed'])
-      .where(sql<boolean>`EXISTS (SELECT 1 FROM attendance a2 WHERE a2.session_id = sessions.id AND a2.status <> 'absent')`)
+      // ⚠️ تصليح (Nov 2026): كانت sql`EXISTS (SELECT 1 FROM attendance ...)` خام — الـ SQL الخام
+      // مابياخدش الـ schema بتاعة المركز، فالاستعلام كان بيدوّر على جدول attendance في public
+      // ويفشل، ورسالة "3 غيابات متتالية" عمرها ما اتبعتت. دلوقتي subquery من الـ query builder.
+      .where(({ exists, selectFrom }) => exists(
+        selectFrom('attendance as a2')
+          .select('a2.id')
+          .whereRef('a2.session_id', '=', 'sessions.id')
+          .where('a2.status', '<>', 'absent'),
+      ))
       .where('sessions.start_date', '<=', session.startDate as any);
     if (session.groupId) {
       q = q.where('sessions.group_id', '=', session.groupId as any);

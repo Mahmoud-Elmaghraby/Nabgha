@@ -24,12 +24,14 @@ export class SessionRepository {
     return new AttendanceEntity(
       row.id, row.session_id, row.student_id,
       row.status as AttendanceStatus,
-      row.degree ? Number(row.degree) : null,
+      // الدرجة صفر درجة حقيقية — قبل كده كانت بتتقري null وكأنها مارتصدتش
+      row.degree !== null && row.degree !== undefined ? Number(row.degree) : null,
       row.scanned_at ?? null, row.notes ?? null,
       row.created_at, row.updated_at,
       row.student_name, row.student_code, row.student_phone, row.parent_phone,
       row.grade_notified_at ?? null,
       row.telegram_grade_notified_at ?? null,
+      !!row.is_external,
     );
   }
 
@@ -189,6 +191,12 @@ export class SessionRepository {
         'students.full_name as student_name', 'students.student_code',
         'students.student_phone', 'students.parent_phone',
       ])
+      .select(({ exists, selectFrom }) => exists(
+        selectFrom('attendance_credits as c')
+          .select('c.id')
+          .whereRef('c.source_attendance_id', '=', 'attendance.id')
+          .where('c.status', '<>', 'revoked'),
+      ).as('is_external'))
       .where('attendance.session_id', '=', sql<string>`${sessionId}::uuid`)
       .orderBy('students.full_name', 'asc')
       .execute();
@@ -511,79 +519,18 @@ export class SessionRepository {
     return this.toAttendanceEntity(full);
   }
 
-  async findPendingAbsenceForSubject(
-    tenantId: string, studentId: string, subjectGradeId: string,
-    weekStart: Date, weekEnd: Date,
-  ): Promise<AttendanceEntity | null> {
+  /** سجل حضور بمعرفه + الحصة بتاعته (لإشعارات الغياب المعذور) */
+  async findAttendanceContextById(tenantId: string, attendanceId: string): Promise<{ record: AttendanceEntity; session: SessionEntity } | null> {
     const db = this.kysely.getTenantDb(tenantId);
-    const row = await db.selectFrom('attendance')
-      .innerJoin('sessions', 'sessions.id', 'attendance.session_id')
-      .innerJoin('groups', 'groups.id', 'sessions.group_id')
-      .innerJoin('students', 'students.id', 'attendance.student_id')
-      .select([
-        'attendance.id', 'attendance.session_id', 'attendance.student_id',
-        'attendance.status', 'attendance.degree', 'attendance.scanned_at',
-        'attendance.notes', 'attendance.created_at', 'attendance.updated_at', 'attendance.grade_notified_at',
-        'attendance.telegram_grade_notified_at',
-        'students.full_name as student_name', 'students.student_code',
-        'students.student_phone', 'students.parent_phone',
-      ])
-      .where('attendance.student_id', '=', sql<string>`${studentId}::uuid`)
-      .where('attendance.status', '=', 'absent')
-      .where('groups.subject_grade_id', '=', sql<string>`${subjectGradeId}::uuid`)
-      .where('sessions.start_date', '>=', weekStart as any)
-      .where('sessions.start_date', '<=', weekEnd as any)
-      .where('sessions.deleted_at', 'is', null)
-      .orderBy('sessions.start_date', 'asc')
-      .limit(1)
+    const row = await db.selectFrom('attendance').select(['session_id', 'student_id'])
+      .where('id', '=', sql<string>`${attendanceId}::uuid`)
       .executeTakeFirst();
-    return row ? this.toAttendanceEntity(row) : null;
-  }
-
-  async createAttendanceCredit(tenantId: string, data: {
-    studentId: string; subjectGradeId: string; sourceSessionId: string;
-    sourceAttendanceId: string; weekStart: Date; weekEnd: Date;
-  }): Promise<void> {
-    const db = this.kysely.getTenantDb(tenantId);
-    await db.insertInto('attendance_credits').values({
-      student_id: sql<string>`${data.studentId}::uuid`,
-      subject_grade_id: sql<string>`${data.subjectGradeId}::uuid`,
-      source_session_id: sql<string>`${data.sourceSessionId}::uuid`,
-      source_attendance_id: sql<string>`${data.sourceAttendanceId}::uuid`,
-      week_start: data.weekStart as any,
-      week_end: data.weekEnd as any,
-      status: 'available',
-    } as any).execute();
-  }
-
-  async findAvailableCredit(
-    tenantId: string, studentId: string, subjectGradeId: string,
-    weekStart: Date, weekEnd: Date,
-  ): Promise<{ id: string } | null> {
-    const db = this.kysely.getTenantDb(tenantId);
-    const row = await db.selectFrom('attendance_credits')
-      .select('id')
-      .where('student_id', '=', sql<string>`${studentId}::uuid`)
-      .where('subject_grade_id', '=', sql<string>`${subjectGradeId}::uuid`)
-      .where('status', '=', 'available')
-      .where('week_start', '=', weekStart as any)
-      .where('week_end', '=', weekEnd as any)
-      .orderBy('created_at', 'asc')
-      .limit(1)
-      .executeTakeFirst();
-    return row ? { id: row.id as string } : null;
-  }
-
-  async consumeCredit(tenantId: string, creditId: string, consumedAttendanceId: string): Promise<void> {
-    const db = this.kysely.getTenantDb(tenantId);
-    await db.updateTable('attendance_credits').set({
-      status: 'consumed',
-      consumed_attendance_id: sql<string>`${consumedAttendanceId}::uuid`,
-      consumed_at: new Date(),
-      updated_at: new Date(),
-    } as any)
-    .where('id', '=', sql<string>`${creditId}::uuid`)
-    .execute();
+    if (!row) return null;
+    const [session, record] = await Promise.all([
+      this.findById(tenantId, row.session_id as string),
+      this.findAttendanceRecord(tenantId, row.session_id as string, row.student_id as string),
+    ]);
+    return session && record ? { session, record } : null;
   }
 
   async findAbsentAttendanceForSession(tenantId: string, sessionId: string): Promise<AttendanceEntity[]> {

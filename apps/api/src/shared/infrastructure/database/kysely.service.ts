@@ -36,6 +36,18 @@ export class KyselyService implements OnModuleInit, OnModuleDestroy {
     this.logger.log('KyselyService destroyed');
   }
 
+  /**
+   * اسم الـ schema بتاعة المركز. getTenantDb بيضيفها تلقائي لأي جدول في الـ query builder،
+   * لكن مش جوه sql`...` الخام — أي SQL خام بيلمس جداول المركز لازم يشتغل جوه
+   * transaction فيها SET LOCAL search_path للـ schema دي (أو يستخدم الـ query builder).
+   */
+  getTenantSchema(tenantId: string): string {
+    if (!tenantId || typeof tenantId !== 'string') {
+      throw new Error(`Invalid tenantId: ${tenantId}`);
+    }
+    return `tenant_${tenantId.replace(/-/g, '_')}`;
+  }
+
   getTenantDb(tenantId: string): Kysely<TenantDatabase> {
     if (!tenantId || typeof tenantId !== 'string') {
       throw new Error(`Invalid tenantId: ${tenantId}`);

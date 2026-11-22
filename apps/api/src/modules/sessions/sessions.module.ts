@@ -7,11 +7,13 @@ import { WhatsAppModule } from '../whatsapp/whatsapp.module';
 import { TelegramModule } from '../telegram/telegram.module';
 import { SettingsModule } from '../settings/settings.module';
 import { StorageService } from '../../shared/infrastructure/storage/storage.service';
+import { AttendanceCreditService } from './application/services/attendance-credit.service';
+import { AttendanceCreditRepository } from './infrastructure/attendance-credit.repository';
 
 @Module({
   imports: [DatabaseModule, WhatsAppModule, TelegramModule, SettingsModule],
   controllers: [SessionController],
-  providers: [SessionUseCase, SessionRepository, StorageService],
+  providers: [SessionUseCase, SessionRepository, StorageService, AttendanceCreditService, AttendanceCreditRepository],
   exports: [SessionUseCase],
 })
 export class SessionsModule {}

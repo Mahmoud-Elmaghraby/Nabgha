@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useToast } from '@/shared/components/Toast';
+import { useConfirm } from '@/shared/components/Confirm';
 import { useSessionAttendance, useAttendanceMutations, usePreviousAbsent, useUnpaidStudents } from '../hooks/useSessions';
 import { QrCameraScanner } from './QrCameraScanner';
 import { sessionsApi } from '../api/sessions.api';
@@ -34,6 +35,7 @@ interface Props {
 
 export function AttendanceSheet({ session, onClose }: Props) {
   const toast = useToast();
+  const confirm = useConfirm();
   const { hasPermission } = usePermissions();
   const canMark = hasPermission('sessions.attendance');
 
@@ -140,7 +142,7 @@ export function AttendanceSheet({ session, onClose }: Props) {
     if (result.excusedAbsence) {
       baseText = `✅ ${name} — تم تسجيل حضوره وإعفاء غياب سابق تلقائياً`;
     } else if (result.creditCreated) {
-      baseText = `✅ ${name} — تم تسجيل حضوره (رصيد تعويض متاح لو غاب لاحقاً بنفس المادة)`;
+      baseText = `✅ ${name} — تم تسجيل حضوره كبديل (لو غاب عن حصته في نفس الأسبوع هيتحسب معذور تلقائياً)`;
     } else {
       baseText = `✅ ${name} — تم تسجيل حضوره`;
     }
@@ -220,6 +222,14 @@ export function AttendanceSheet({ session, onClose }: Props) {
   };
 
   const handleStatusChange = async (studentId: string, status: AttendanceStatus) => {
+    const current = attendance.find(a => a.studentId === studentId);
+    if (status === 'absent' && current?.isExternal) {
+      const ok = await confirm(
+        `${current.studentName} حاضر هنا كبديل من مجموعة تانية — تسجيله غايب هيشيله من الحصة دي ويلغي رصيد التعويض بتاعه. متأكد؟`,
+        { danger: true },
+      );
+      if (!ok) return;
+    }
     const record = await updateOne.mutateAsync({ studentId, payload: { status } });
     // التنبيه يخص الطالب اللي بيتسجل حاضر/متأخر فعليًا — مش وقت تعليمه غايب
     if (status === 'present' || status === 'late') {
@@ -503,6 +513,11 @@ export function AttendanceSheet({ session, onClose }: Props) {
                     {unpaidStudents.includes(record.studentId) && (
                       <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full shrink-0">
                         💰 لسه مدفعش
+                      </span>
+                    )}
+                    {record.isExternal && (
+                      <span className="text-xs bg-sky-100 text-sky-700 px-1.5 py-0.5 rounded-full shrink-0" title="من مجموعة تانية — حضوره هنا بيتحسب رصيد تعويض">
+                        بديل
                       </span>
                     )}
                     {record.status === 'excused' && (
