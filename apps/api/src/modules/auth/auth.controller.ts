@@ -14,6 +14,13 @@ const RefreshSchema = z.object({
   refreshToken: z.string().min(1),
 });
 
+const DesktopSetupSchema = z.object({
+  centerName: z.string().trim().min(1, 'اسم المركز مطلوب').max(255),
+  slug: z.string().trim().min(1).max(50).regex(/^[a-z0-9-]+$/, 'الـ slug يقبل حروف إنجليزية صغيرة وأرقام وشرطة فقط'),
+  username: z.string().trim().min(1, 'اسم المستخدم مطلوب').max(100),
+  password: z.string().min(6, 'كلمة المرور يجب أن تكون 6 أحرف على الأقل').max(200),
+});
+
 const PlatformLoginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
@@ -37,11 +44,16 @@ export class AuthController {
   }
 
   @Post('setup/init')
+  @Throttle({ auth: { limit: 5, ttl: 60000 } })
   async initSetup(@Body() body: any) {
     if (process.env.DEPLOY_MODE !== 'desktop') {
-      throw new Error('Not allowed');
+      throw new AppError('FORBIDDEN', 'غير مسموح', 403);
     }
-    await this.authService.initDesktopSetup(body);
+    const parsed = DesktopSetupSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new AppError('VALIDATION_ERROR', parsed.error.issues[0]?.message ?? 'بيانات غير صحيحة', 400);
+    }
+    await this.authService.initDesktopSetup(parsed.data);
     return { success: true };
   }
 

@@ -5,6 +5,8 @@ import { PrismaService } from '../../shared/infrastructure/database/prisma.servi
 import { KyselyService } from '../../shared/infrastructure/database/kysely.service';
 import { AppError } from '../../core/errors/app.error';
 import * as bcrypt from 'bcrypt';
+import { randomUUID } from 'crypto';
+import { provisionTenantSchema } from '../../shared/infrastructure/database/tenant-provisioner';
 
 @Injectable()
 export class AuthService {
@@ -26,10 +28,13 @@ export class AuthService {
     username: string;
     password: string;
   }): Promise<void> {
-    const bcrypt = require('bcrypt');
-    const { v4: uuidv4 } = require('uuid');
+    // معالج الإعداد مسموح مرة واحدة بس — لو فيه مركز موجود يبقى الإعداد اتعمل قبل كده
+    const existing = await this.prisma.tenant.count();
+    if (existing > 0) {
+      throw new AppError('SETUP_ALREADY_DONE', 'تم إعداد البرنامج بالفعل', 409);
+    }
 
-    const tenantId = uuidv4();
+    const tenantId = randomUUID();
     const schemaName = `tenant_${tenantId.replace(/-/g, '_')}`;
 
     // إنشاء الـ default plan لو مش موجود
@@ -46,63 +51,26 @@ export class AuthService {
         name: data.centerName,
         slug: data.slug,
         isActive: true,
-        schemaName: schemaName,
+        schemaName,
         planId: plan.id,
       },
     });
 
-    const { Pool } = require('pg');
-    const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-
-    await pool.query(`CREATE SCHEMA IF NOT EXISTS "${schemaName}"`);
-
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS "${schemaName}".users (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        email VARCHAR(255) UNIQUE,
-        username VARCHAR(255) UNIQUE NOT NULL,
-        password_hash VARCHAR(255) NOT NULL,
-        name VARCHAR(255) NOT NULL,
-        role VARCHAR(50) NOT NULL DEFAULT 'tenant_admin',
-        permissions JSONB DEFAULT '[]',
-        is_active BOOLEAN DEFAULT true,
-        created_at TIMESTAMPTZ DEFAULT NOW(),
-        updated_at TIMESTAMPTZ DEFAULT NOW(),
-        deleted_at TIMESTAMPTZ
-      );
-
-      CREATE TABLE IF NOT EXISTS "${schemaName}".center_settings (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        center_name VARCHAR(255) NOT NULL,
-        center_logo_url TEXT,
-        center_phone VARCHAR(20),
-        center_address TEXT,
-        currency VARCHAR(10) DEFAULT 'EGP',
-        currency_symbol VARCHAR(5) DEFAULT 'ج.م',
-        academic_year VARCHAR(20) DEFAULT '2025/2026',
-        created_at TIMESTAMPTZ DEFAULT NOW(),
-        updated_at TIMESTAMPTZ DEFAULT NOW()
-      );
-
-      CREATE TABLE IF NOT EXISTS "${schemaName}".tenant_settings (
-        key VARCHAR(255) PRIMARY KEY,
-        value TEXT,
-        updated_at TIMESTAMPTZ DEFAULT NOW()
-      );
-    `);
-
-    const passwordHash = await bcrypt.hash(data.password, 10);
-    await pool.query(`
-      INSERT INTO "${schemaName}".users (username, password_hash, name, role, permissions)
-      VALUES ($1, $2, $3, 'tenant_admin', '[]'::jsonb)
-    `, [data.username, passwordHash, data.centerName]);
-
-    await pool.query(`
-      INSERT INTO "${schemaName}".center_settings (center_name)
-      VALUES ($1)
-    `, [data.centerName]);
-
-    await pool.end();
+    // نفس مسار تجهيز المراكز من لوحة المنصة: كل الـ tenant migrations بالترتيب
+    // بدل جداول SQL يدوية كانت بتفوّت أي migration جديدة على العملاء الجدد
+    try {
+      await provisionTenantSchema({
+        schemaName,
+        centerName: data.centerName,
+        adminUsername: data.username,
+        adminPassword: data.password,
+        adminName: data.centerName,
+      });
+    } catch (err) {
+      // لو التجهيز فشل، نشيل سجل المركز عشان المعالج يقدر يتعاد من غير ما يتقفل
+      await this.prisma.tenant.delete({ where: { id: tenantId } }).catch(() => undefined);
+      throw err;
+    }
   }
 
   async tenantLogin(slug: string, username: string, password: string) {
