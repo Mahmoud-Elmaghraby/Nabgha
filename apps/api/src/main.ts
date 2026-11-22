@@ -15,6 +15,9 @@ async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: true });
   const logger = app.get(AppLogger);
   app.useLogger(logger);
+  // ورا nginx: من غير trust proxy كل الطلبات بتظهر جاية من 127.0.0.1، فحد الطلبات
+  // (rate limit) كان بيتحسب على السيرفر كله كأنه مستخدم واحد
+  app.set('trust proxy', 'loopback');
   app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 
   app.setGlobalPrefix('api/v1');

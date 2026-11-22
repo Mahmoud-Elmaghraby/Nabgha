@@ -31,15 +31,20 @@ import { ExamsModule }        from './modules/exams/exam.module';
     ConfigModule.forRoot({ isGlobal: true }),
     ScheduleModule.forRoot(),
     ThrottlerModule.forRoot([
+      // حد عام لكل IP — الواجهة بتعمل طلبات كتير مع بعض (داشبورد، مسح QR متتالي)
       {
         name: 'global',
         ttl: 60000,
-        limit: process.env.NODE_ENV === 'production' ? 100 : 1000,
+        limit: 600,
       },
+      // ⚠️ في @nestjs/throttler v6 كل throttler هنا بيتطبق على **كل** المسارات، مش بس
+      // اللي عليها @Throttle({ auth }). قبل كده الحد ده كان 10 طلبات/دقيقة في الـ production
+      // لكل الـ API، فالبرنامج كان بيقف بعد كام ضغطة. الحد الفعلي لتسجيل الدخول والـ OTP
+      // متحدد على مساراتها بـ @Throttle({ auth: { limit: ... } })، وهنا رقم عالي بس.
       {
         name: 'auth',
         ttl: 60000,
-        limit: process.env.NODE_ENV === 'production' ? 10 : 100,
+        limit: 1000,
       },
     ]),
     LoggingModule,
