@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Body, Param, Query, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards, Request } from '@nestjs/common';
 import { JwtAuthGuard } from '../../shared/infrastructure/guards/jwt-auth.guard';
 import { TenantGuard } from '../../shared/infrastructure/guards/tenant.guard';
 import { RolesGuard } from '../../shared/infrastructure/guards/roles.guard';
@@ -128,6 +128,14 @@ export class TelegramController {
       audience: parsed.data,
     });
     return { success: true, data };
+  }
+
+  @Delete('bulk-links/:jobId')
+  @RequirePermission('reports.send_whatsapp')
+  async cancelBulkLinks(@Request() req: any, @Param('jobId') jobId: string) {
+    if (!z.string().uuid().safeParse(jobId).success) throw new AppError('VALIDATION_ERROR', 'معرّف غير صحيح', 400);
+    await this.sendLinks.cancel(req.user.tenantId, jobId);
+    return { success: true };
   }
 
   // ─── إعدادات إشعارات تليجرام (منفصلة تمامًا عن /telegram/settings الخاصة

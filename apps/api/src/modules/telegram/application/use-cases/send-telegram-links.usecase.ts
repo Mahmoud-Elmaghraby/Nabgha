@@ -44,6 +44,13 @@ interface EligibleStudent {
 export class SendTelegramLinksUseCase {
   private readonly logger = new Logger(SendTelegramLinksUseCase.name);
 
+  /**
+   * الـ jobs الشغالة دلوقتي: jobId → { tenantId, cancelled }.
+   * نفس فكرة activeJobs في SendBulkUseCase بتاع الواتساب — الإلغاء بيقلب
+   * cancelled لـ true، والحلقة بتشوفها قبل كل رسالة وتقف.
+   */
+  private readonly activeJobs = new Map<string, { tenantId: string; cancelled: boolean }>();
+
   constructor(
     private readonly resolveAudience: ResolveAudienceUseCase,
     private readonly sendNotification: SendNotificationUseCase,
@@ -99,6 +106,13 @@ export class SendTelegramLinksUseCase {
       }));
     const alreadyLinked = resolved.data.filter((s) => linkedIds.has(s.studentId)).length;
 
+    // منع تشغيل إرسالين روابط في نفس الوقت لنفس المركز (ضغط مزدوج أو تابين مفتوحين)
+    for (const active of this.activeJobs.values()) {
+      if (active.tenantId === tenantId && !active.cancelled) {
+        throw new AppError('BULK_ALREADY_RUNNING', 'bulk_job_already_running', 409);
+      }
+    }
+
     if (eligible.length === 0) {
       return { jobId: null, total, eligible: 0, alreadyLinked };
     }
@@ -114,11 +128,38 @@ export class SendTelegramLinksUseCase {
 
     // fire-and-forget — إلزامي حسب اتفاقية المشروع لأي إرسال لأكتر من رسالة
     // (راجع DEVELOPER_GUIDE.md قسم WhatsApp — تراكم تأخير anti-ban بين الرسايل)
-    this.processInBackground(tenantId, job.id, eligible).catch((err: any) =>
-      this.logger.error(`Unexpected error in telegram-links job ${job.id}: ${err.message}`),
-    );
+    this.activeJobs.set(job.id, { tenantId, cancelled: false });
+    this.processInBackground(tenantId, job.id, eligible)
+      .catch((err: any) =>
+        this.logger.error(`Unexpected error in telegram-links job ${job.id}: ${err.message}`),
+      )
+      .finally(() => this.activeJobs.delete(job.id));
 
     return { jobId: job.id, total, eligible: eligible.length, alreadyLinked };
+  }
+
+  /**
+   * إلغاء إرسال روابط شغال. الرسالة اللي بتتبعت في اللحظة دي بتكمل، وكل اللي
+   * بعدها بيتلغي. لو الـ job مش شغال في الذاكرة (مثلاً السيرفر اتعمله restart)
+   * بنعلّمه ملغي في قاعدة البيانات بس.
+   */
+  async cancel(tenantId: string, jobId: string): Promise<void> {
+    const active = this.activeJobs.get(jobId);
+    if (active && active.tenantId === tenantId) active.cancelled = true;
+
+    const job = await this.bulkJobRepo.findById(tenantId, jobId);
+    if (!job) throw new AppError('NOT_FOUND', 'عملية الإرسال غير موجودة', 404);
+    if (job.status === 'running' || job.status === 'pending') {
+      job.cancel();
+      await this.bulkJobRepo.save(job);
+    }
+  }
+
+  /** ملغي من الذاكرة، أو من قاعدة البيانات (لو اتلغى من شاشة الواتساب لإن الجدول مشترك) */
+  private async isCancelled(tenantId: string, jobId: string): Promise<boolean> {
+    if (this.activeJobs.get(jobId)?.cancelled) return true;
+    const fresh = await this.bulkJobRepo.findById(tenantId, jobId);
+    return fresh?.status === 'cancelled';
   }
 
   private async processInBackground(tenantId: string, jobId: string, students: EligibleStudent[]): Promise<void> {
@@ -135,6 +176,11 @@ export class SendTelegramLinksUseCase {
     const branding = await this.branding.getBrandingInfo(tenantId, {});
 
     for (const student of students) {
+      if (await this.isCancelled(tenantId, jobId)) {
+        this.logger.log(`Telegram-links job ${jobId} cancelled`);
+        return;
+      }
+
       let success = false;
 
       if (botInfo) {
@@ -154,6 +200,15 @@ export class SendTelegramLinksUseCase {
 
       if (success) job.incrementSent();
       else job.incrementFailed();
+
+      // الإلغاء ممكن يحصل والرسالة لسه بتتبعت — من غير الفحص ده، الحفظ هنا كان
+      // هيرجّع الحالة "running" فوق "cancelled" اللي اتسجلت
+      if (await this.isCancelled(tenantId, jobId)) {
+        job.cancel();
+        await this.bulkJobRepo.save(job);
+        this.logger.log(`Telegram-links job ${jobId} cancelled`);
+        return;
+      }
       await this.bulkJobRepo.save(job);
     }
   }

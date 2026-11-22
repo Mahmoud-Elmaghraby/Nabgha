@@ -1,6 +1,8 @@
 import { useState, useMemo } from 'react';
 import { apiClient } from '@/shared/lib/api/client';
 import { usePermissions } from '@/shared/hooks/usePermissions';
+import { useConfirm } from '@/shared/components/Confirm';
+import { useToast } from '@/shared/components/Toast';
 import { useResolveAudience, useWaBulkProgress } from '../../whatsapp/hooks/useWhatsapp';
 import { useGroups } from '@/features/groups/hooks/useGroups';
 import { getGroupSelectLabel } from '@/features/groups/utils/formatGroupLabel';
@@ -30,6 +32,8 @@ interface BulkLinksResult {
 export function TelegramBulkSend() {
   const { hasPermission } = usePermissions();
   const canSend = hasPermission('reports.send_whatsapp');
+  const confirm = useConfirm();
+  const toast = useToast();
 
   const [audienceType, setAudienceType] = useState<AudienceType>('all');
   const [groupId, setGroupId] = useState('');
@@ -39,6 +43,7 @@ export function TelegramBulkSend() {
   const [jobId, setJobId] = useState<string | null>(null);
   const [summary, setSummary] = useState<BulkLinksResult | null>(null);
   const [isSending, setIsSending] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
   const [error, setError] = useState('');
 
   const { data: groupsData } = useGroups({ limit: 1000 });
@@ -57,7 +62,7 @@ export function TelegramBulkSend() {
   );
 
   const { data: audience = [], isFetching: resolvingAudience } = useResolveAudience(audienceParams);
-  const { data: progress } = useWaBulkProgress(jobId);
+  const { data: progress, refetch: refetchProgress } = useWaBulkProgress(jobId);
   const isRunning = progress?.status === 'running' || progress?.status === 'pending';
 
   const handleSend = async () => {
@@ -97,6 +102,21 @@ export function TelegramBulkSend() {
       );
     } finally {
       setIsSending(false);
+    }
+  };
+
+  const handleCancel = async () => {
+    if (!jobId) return;
+    if (!(await confirm('إيقاف إرسال الروابط؟ الرسالة اللي بتتبعت دلوقتي هتكمل، والباقي مش هيتبعت.', { danger: true }))) return;
+    setIsCancelling(true);
+    try {
+      await apiClient.delete(`/telegram/bulk-links/${jobId}`);
+      toast.success('تم إيقاف الإرسال');
+      refetchProgress();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error?.message || 'تعذر إيقاف الإرسال');
+    } finally {
+      setIsCancelling(false);
     }
   };
 
@@ -245,6 +265,16 @@ export function TelegramBulkSend() {
             <p className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
               ملحوظة: {summary.alreadyLinked} طالب من النطاق ده مربوط بتليجرام بالفعل واتستبعد من الإرسال
             </p>
+          )}
+
+          {isRunning && (
+            <button
+              onClick={handleCancel}
+              disabled={isCancelling}
+              className="w-full py-2.5 border border-red-200 text-sm text-red-600 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50"
+            >
+              {isCancelling ? 'جاري الإيقاف...' : 'إيقاف الإرسال'}
+            </button>
           )}
 
           {!isRunning && (
