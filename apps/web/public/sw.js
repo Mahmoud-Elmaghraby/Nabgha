@@ -1,4 +1,5 @@
-const CACHE_NAME = 'nabgha-v2-' + self.registration.scope;
+// غيّر رقم النسخة مع أي تغيير في الصور/الأيقونات — الكاش القديم بيتمسح تلقائي عند التفعيل
+const CACHE_NAME = 'nabgha-v3-' + self.registration.scope;
 const STATIC_ASSETS = ['/', '/index.html', '/offline.html', '/Logo-icon-192.png'];
 
 self.addEventListener('install', (event) => {
