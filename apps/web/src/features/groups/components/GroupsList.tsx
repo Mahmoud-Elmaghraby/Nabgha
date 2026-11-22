@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useGroupMutations } from '../hooks/useGroups';
 import { usePermissions } from '@/shared/hooks/usePermissions';
 import { useConfirm } from '@/shared/components/Confirm';
+import { useToast } from '@/shared/components/Toast';
 import type { GroupDto } from '../types/group.types';
 import { DAY_LABELS } from '../types/group.types';
 import { DataTable } from '@/shared/components';
@@ -17,13 +18,18 @@ interface Props {
 export function GroupsList({ groups, onEdit, onViewStudents, isLoading }: Props) {
   const { hasPermission } = usePermissions();
   const confirm = useConfirm();
+  const toast = useToast();
   const { deleteGroup } = useGroupMutations();
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const handleDelete = async (id: string) => {
     if (!(await confirm('هل أنت متأكد من حذف هذه المجموعة؟', { danger: true }))) return;
     setDeletingId(id);
-    deleteGroup.mutate(id, { onSettled: () => setDeletingId(null) });
+    deleteGroup.mutate(id, {
+      onError: (err: any) =>
+        toast.error(err?.response?.data?.error?.message || 'تعذر حذف المجموعة'),
+      onSettled: () => setDeletingId(null),
+    });
   };
 
   const columns: Column<GroupDto>[] = [

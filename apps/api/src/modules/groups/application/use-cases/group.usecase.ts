@@ -51,6 +51,36 @@ export class GroupUseCase {
   async delete(tenantId: string, id: string): Promise<void> {
     const group = await this.repo.findById(tenantId, id);
     if (!group) throw new AppError('NOT_FOUND', 'المجموعة غير موجودة', 404);
+
+    // زي حذف الطالب: ممنوع حذف مجموعة لسه فيها طلاب نشطين أو حصص لسه متقفلتش
+    const db = this.kysely.getTenantDb(tenantId);
+    const [activeStudents, openSessions] = await Promise.all([
+      db.selectFrom('group_students as gs')
+        .innerJoin('students as s', 's.id', 'gs.student_id')
+        .select(sql<number>`count(*)::int`.as('count'))
+        .where('gs.group_id', '=', sql<string>`${id}::uuid`)
+        .where('gs.left_at', 'is', null)
+        .where('s.deleted_at', 'is', null)
+        .executeTakeFirst(),
+      db.selectFrom('sessions')
+        .select(sql<number>`count(*)::int`.as('count'))
+        .where('group_id', '=', sql<string>`${id}::uuid`)
+        .where('status', 'in', ['scheduled', 'ongoing'])
+        .where('deleted_at', 'is', null)
+        .executeTakeFirst(),
+    ]);
+
+    const parts: string[] = [];
+    if ((activeStudents?.count ?? 0) > 0) parts.push(`${activeStudents!.count} طالب مسجل`);
+    if ((openSessions?.count ?? 0) > 0) parts.push(`${openSessions!.count} حصة لم تنتهِ`);
+    if (parts.length > 0) {
+      throw new AppError(
+        'CANNOT_DELETE',
+        `لا يمكن حذف المجموعة — فيها ${parts.join(' و')}. انقل الطلاب أو أنهِ الحصص الأول.`,
+        409,
+      );
+    }
+
     group.softDelete();
     await this.repo.save(tenantId, group);
   }
