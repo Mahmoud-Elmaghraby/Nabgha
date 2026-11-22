@@ -755,10 +755,12 @@ export class FinanceUseCase implements OnApplicationBootstrap {
    *   - المتأخرة أكثر من 3 أيام → PAYMENT_OVERDUE
    * يبعت واتساب فقط لو الإعداد المقابل مفعّل في wa_settings.
    */
-  // كل ساعة من 10 الصبح لـ 8 بالليل (بتوقيت الجهاز) بدل مرة واحدة الساعة 10:
-  // معظم السناتر بتفتح الجهاز بعد الضهر، فالميعاد الواحد كان بيعدّي والجهاز مقفول
-  // والتذكير مايتبعتش خالص. التكرار آمن لإن alreadyNotified بيمنع إرسال نفس التذكير
-  // لنفس الطالب أكتر من مرة (20 ساعة للمستحق، 7 أيام للمتأخر).
+  // بيصحى كل ساعة من 10 الصبح لـ 8 بالليل (بتوقيت الجهاز) بدل مرة واحدة الساعة 10،
+  // عشان معظم السناتر بتفتح الجهاز بعد الضهر. لكن الشغل الفعلي (الاستعلامات والإرسال)
+  // بيحصل مرة واحدة بس في اليوم لكل مركز — باقي الساعات بتعمل قراية واحدة صغيرة من
+  // tenant_settings وتخرج (finance_reminders_last_date).
+  private static readonly REMINDERS_KEY = 'finance_reminders_last_date';
+
   @Cron('0 10-20 * * *')
   async sendPaymentReminders(): Promise<void> {
     this.logger.log('🔔 Starting payment due reminders...');
@@ -767,7 +769,20 @@ export class FinanceUseCase implements OnApplicationBootstrap {
 
       for (const tenant of tenants) {
         try {
+          const db = this.kysely.getTenantDb(tenant.id);
+          const now = new Date();
+          const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+          const last = await db.selectFrom('tenant_settings').select('value')
+            .where('key', '=', FinanceUseCase.REMINDERS_KEY)
+            .executeTakeFirst();
+          if (last?.value === today) continue;
+
           await this.sendPaymentRemindersForTenant(tenant.id);
+
+          await db.insertInto('tenant_settings')
+            .values({ key: FinanceUseCase.REMINDERS_KEY, value: today, updated_at: new Date() } as any)
+            .onConflict((oc) => oc.column('key').doUpdateSet({ value: today, updated_at: new Date() } as any))
+            .execute();
         } catch (err: any) {
           this.logger.error(`Payment reminders failed for tenant ${tenant.id}: ${err.message}`);
         }
