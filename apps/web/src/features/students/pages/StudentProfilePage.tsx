@@ -104,6 +104,21 @@ export default function StudentProfilePage() {
     }
   };
 
+  const handleSendTelegramLink = async () => {
+    try {
+      const res = await apiClient.get(`/telegram/deep-link/student/${student!.studentCode}`);
+      const link = res.data?.data?.link;
+      if (!link) {
+        toast.error('لازم تفعّل بوت التليجرام من الإعدادات أولاً');
+        return;
+      }
+      await navigator.clipboard.writeText(link);
+      toast.success('تم نسخ رابط التليجرام — ابعته لولي الأمر');
+    } catch {
+      toast.error('تعذر إنشاء رابط التليجرام');
+    }
+  };
+
   const handleAddToGroup = async () => {
     if (!selectedGroupId) return;
     try {
@@ -203,13 +218,21 @@ export default function StudentProfilePage() {
                   </div>
                 </div>
               </div>
-              <button onClick={() => setShowQr(true)}
-                className="w-10 h-10 rounded-xl bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors">
-                <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
-                  <rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="3" height="3"/>
-                </svg>
-              </button>
+              <div className="flex items-center gap-2">
+                <button onClick={handleSendTelegramLink} title="إرسال رابط تليجرام"
+                  className="w-10 h-10 rounded-xl bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors">
+                  <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7Z"/>
+                  </svg>
+                </button>
+                <button onClick={() => setShowQr(true)}
+                  className="w-10 h-10 rounded-xl bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors">
+                  <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+                    <rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="3" height="3"/>
+                  </svg>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -477,6 +500,7 @@ export default function StudentProfilePage() {
                       ) : (
                         <div className="space-y-2">
                           {allDues.map((due: any) => {
+                            const netAmount = Math.max(0, due.dueAmount - due.discountApplied);
                             const remaining = due.status === 'waived' ? 0 : Math.max(0, due.dueAmount - due.discountApplied - due.paidAmount);
                             return (
                               <div key={due.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl border border-gray-100">
@@ -488,7 +512,10 @@ export default function StudentProfilePage() {
                                   )}
                                 </div>
                                 <div className="text-left shrink-0 mr-2">
-                                  <p className="text-sm font-bold text-gray-800">{remaining.toLocaleString('ar-EG')} ج</p>
+                                  <p className="text-sm font-bold text-gray-800">{netAmount.toLocaleString('ar-EG')} ج</p>
+                                  {remaining > 0 && (
+                                    <p className="text-xs text-red-500 mt-0.5">متبقي {remaining.toLocaleString('ar-EG')} ج</p>
+                                  )}
                                   <span className={`text-xs px-1.5 py-0.5 rounded-full border ${DUE_STATUS_LABELS[due.status as keyof typeof DUE_STATUS_LABELS]?.class}`}>
                                     {DUE_STATUS_LABELS[due.status as keyof typeof DUE_STATUS_LABELS]?.label}
                                   </span>

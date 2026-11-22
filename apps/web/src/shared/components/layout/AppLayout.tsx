@@ -8,6 +8,9 @@ import { Sidebar } from './Sidebar';
 import { Navbar } from './Navbar';
 import { MobileNav } from './MobileNav';
 import { useLayoutPreference } from '@/shared/hooks/useLayoutPreference';
+import { usePwaInstall } from '@/shared/hooks/usePwaInstall';
+import { DisplayModeControls } from './DisplayModeControls';
+import { InstallBanner } from './InstallBanner';
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -46,6 +49,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   const [activeTab, setActiveTab] = useState<'app' | 'cert'>('app');
   const [copied, setCopied]       = useState(false);
   const { mode, toggle }          = useLayoutPreference();
+  const pwa                       = usePwaInstall();
 
   // ===== رابط التطبيق ورابط الشهادة — يعتمد على IP الشبكة الحقيقي =====
   // لو التطبيق بيتفتح عبر "localhost" (وضع Desktop)، window.location.hostname
@@ -228,6 +232,29 @@ export function AppLayout({ children }: AppLayoutProps) {
                       <CopyIcon copied={copied} />
                     </button>
                   </div>
+                  {/* ── تثبيت كتطبيق على الموبايل/التابلت (PWA) ── */}
+                  <div className="text-right bg-[#0E3B2E]/5 rounded-xl px-3 py-3 space-y-2" dir="rtl">
+                    <p className="text-xs font-bold text-[#0E3B2E]">تثبيت البرنامج كتطبيق</p>
+                    {pwa.isInstalled ? (
+                      <p className="text-xs text-green-700">✓ البرنامج مثبّت كتطبيق على هذا الجهاز</p>
+                    ) : pwa.canPrompt ? (
+                      <button type="button" onClick={() => pwa.install()}
+                        className="w-full py-2 text-sm font-bold bg-[#0E3B2E] text-white rounded-lg hover:bg-[#1F6B4E]">
+                        تثبيت التطبيق على هذا الجهاز
+                      </button>
+                    ) : (
+                      <p className="text-xs text-gray-600 leading-relaxed">
+                        {pwa.platform === 'ios'
+                          ? 'على iPhone/iPad: افتح الرابط في Safari ← زر المشاركة ← "إضافة إلى الشاشة الرئيسية".'
+                          : 'على أندرويد: افتح الرابط في Chrome ← القائمة (⋮) ← "تثبيت التطبيق" أو "إضافة إلى الشاشة الرئيسية".'}
+                      </p>
+                    )}
+                    {!pwa.isSecure && !pwa.isInstalled && (
+                      <p className="text-[11px] text-amber-700 leading-relaxed">
+                        ⚠️ الاتصال هنا عبر http بدون تشفير، فالمتصفح غالبًا هيعمل اختصار بس (بدون وضع التطبيق الكامل). للتثبيت الكامل لازم الرابط يكون https (ثبّت الشهادة من التبويب الجانبي).
+                      </p>
+                    )}
+                  </div>
                   {!isLocalHost && (
                     <p className="text-xs text-[#0E3B2E] bg-[#0E3B2E]/5 rounded-xl px-3 py-2">
                       💡 لو ظهرت رسالة "Not Secure" — ثبّت الشهادة الأمنية أولاً من التبويب الجانبي
@@ -277,6 +304,8 @@ export function AppLayout({ children }: AppLayoutProps) {
         </div>
       )}
 
+      <DisplayModeControls />
+      <InstallBanner />
       <FloatingFab />
 
       {/* Attendance Panel — Fixed Side Panel */}

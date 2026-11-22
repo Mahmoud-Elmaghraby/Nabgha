@@ -4,7 +4,7 @@ import { useAuthStore } from '@/shared/stores/auth.store';
 import { ToastProvider } from '@/shared/components/Toast';
 import { ConfirmProvider } from '@/shared/components/Confirm';
 
-const queryClient = new QueryClient({
+export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       retry: 1,

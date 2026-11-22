@@ -278,3 +278,255 @@ export async function generateDirectLabelsPDF(
 
   printPDF(doc, `labels-${Date.now()}.pdf`);
 }
+
+// ─── تصدير درجات الحصة كـ PDF احترافي ──────────────────────────────────────
+export interface GradeExportRecord {
+  studentName: string;
+  studentCode: string;
+  status: 'present' | 'absent' | 'late' | 'excused';
+  degree: number | null;
+}
+
+export interface GradeExportOptions {
+  sessionTitle: string;
+  sessionDate: string;
+  outOf: number | null;
+  groupName?: string;
+  subjectName?: string;
+  teacherName?: string;
+  centerName?: string;
+}
+
+export function exportGradesPDF(
+  records: GradeExportRecord[],
+  opts: GradeExportOptions,
+): void {
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+
+  // ── ثوابت التخطيط ──────────────────────────────────────────────────────
+  const PW = 210;          // عرض A4 بالمم
+  const ML = 14;           // هامش يسار/يمين
+  const MR = PW - ML;
+  const COL = {
+    rank:   MR,            // # (RTL: يبدأ من اليمين)
+    code:   MR - 14,
+    name:   MR - 52,
+    status: ML + 32,
+    degree: ML + 10,
+    outOf:  ML,
+  };
+
+  const STATUS_AR: Record<string, string> = {
+    present: 'حاضر', absent: 'غايب', late: 'متأخر', excused: 'معذور',
+  };
+  const STATUS_COLOR: Record<string, [number, number, number]> = {
+    present: [16, 185, 129],
+    late:    [245, 158, 11],
+    absent:  [239, 68,  68],
+    excused: [139, 92,  246],
+  };
+
+  // ── مساعد: رسم نص RTL على canvas ثم وضعه على الـ PDF ────────────────────
+  const drawRtlText = (
+    text: string,
+    x: number,
+    y: number,
+    fontSize: number,
+    color: [number, number, number] = [30, 30, 30],
+    bold = false,
+    maxWidthPx = 400,
+  ) => {
+    const canvas = document.createElement('canvas');
+    const scale  = 4;
+    const fSize  = fontSize * scale;
+    canvas.height = Math.ceil(fSize * 1.6);
+    canvas.width  = maxWidthPx * scale;
+    const ctx = canvas.getContext('2d')!;
+    ctx.font      = `${bold ? 'bold ' : ''}${fSize}px 'Segoe UI', Arial, sans-serif`;
+    ctx.fillStyle = `rgb(${color.join(',')})`;
+    ctx.textAlign = 'right';
+    ctx.direction = 'rtl';
+    // اقتطاع لو أطول
+    let t = text;
+    while (ctx.measureText(t).width > maxWidthPx * scale - 4 && t.length > 1) t = t.slice(0, -1);
+    if (t !== text) t = t.trimEnd() + '…';
+    ctx.fillText(t, canvas.width, fSize * 1.1);
+    const wmm  = canvas.width  / scale / (96 / 25.4);
+    const hmm  = canvas.height / scale / (96 / 25.4);
+    doc.addImage(canvas.toDataURL('image/png'), 'PNG', x - wmm, y - hmm * 0.75, wmm, hmm);
+  };
+
+  const drawLtrText = (
+    text: string,
+    x: number,
+    y: number,
+    fontSize: number,
+    color: [number, number, number] = [30, 30, 30],
+    bold = false,
+  ) => {
+    const canvas = document.createElement('canvas');
+    const scale  = 4;
+    const fSize  = fontSize * scale;
+    canvas.height = Math.ceil(fSize * 1.6);
+    canvas.width  = 300 * scale;
+    const ctx = canvas.getContext('2d')!;
+    ctx.font      = `${bold ? 'bold ' : ''}${fSize}px monospace`;
+    ctx.fillStyle = `rgb(${color.join(',')})`;
+    ctx.textAlign = 'center';
+    ctx.fillText(text, canvas.width / 2, fSize * 1.1);
+    const wmm = canvas.width  / scale / (96 / 25.4);
+    const hmm = canvas.height / scale / (96 / 25.4);
+    doc.addImage(canvas.toDataURL('image/png'), 'PNG', x - wmm / 2, y - hmm * 0.75, wmm, hmm);
+  };
+
+  // ── Header Banner ─────────────────────────────────────────────────────────
+  doc.setFillColor(14, 59, 46);
+  doc.roundedRect(ML, 10, PW - ML * 2, 28, 3, 3, 'F');
+
+  // عنوان الجلسة
+  drawRtlText(opts.sessionTitle, MR - 2, 21, 9, [255, 255, 255], true, 240);
+
+  // تفاصيل فرعية: التاريخ، المجموعة، الكورس، المدرس
+  const subParts = [opts.sessionDate];
+  if (opts.groupName)   subParts.push(opts.groupName);
+  if (opts.subjectName) subParts.push(opts.subjectName);
+  if (opts.teacherName) subParts.push(opts.teacherName);
+  drawRtlText(subParts.join('  |  '), MR - 2, 31, 6.5, [255, 255, 255, 0.75] as any, false, 240);
+
+  // اسم المركز (يسار)
+  if (opts.centerName) {
+    drawRtlText(opts.centerName, ML + 52, 21, 7.5, [212, 171, 83], true, 100);
+  }
+
+  // ── Stats Bar ─────────────────────────────────────────────────────────────
+  const present  = records.filter(r => r.status === 'present' || r.status === 'late');
+  const absent   = records.filter(r => r.status === 'absent');
+  const graded   = present.filter(r => r.degree !== null);
+  const avgGrade = graded.length && opts.outOf
+    ? (graded.reduce((s, r) => s + (r.degree ?? 0), 0) / graded.length).toFixed(1)
+    : null;
+
+  const stats = [
+    { label: 'إجمالي الطلاب', value: String(records.length), color: [14, 59, 46] as [number,number,number] },
+    { label: 'الحاضرون',      value: String(present.length),  color: [16, 185, 129] as [number,number,number] },
+    { label: 'الغايبون',      value: String(absent.length),   color: [239, 68, 68] as [number,number,number] },
+    { label: 'رُصدت درجاتهم', value: String(graded.length),  color: [99, 102, 241] as [number,number,number] },
+    ...(avgGrade ? [{ label: 'متوسط الدرجات', value: `${avgGrade}/${opts.outOf}`, color: [245, 158, 11] as [number,number,number] }] : []),
+  ];
+
+  const statBoxW  = (PW - ML * 2) / stats.length;
+  const statY     = 42;
+
+  stats.forEach((s, i) => {
+    const bx = ML + i * statBoxW;
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(226, 232, 240);
+    doc.setLineWidth(0.2);
+    doc.roundedRect(bx, statY, statBoxW - 1.5, 14, 2, 2, 'FD');
+    // القيمة
+    drawLtrText(s.value, bx + statBoxW / 2 - 0.75, statY + 6.5, 8.5, s.color, true);
+    // التسمية
+    drawRtlText(s.label, bx + statBoxW - 3, statY + 11.5, 5, [100, 116, 139], false, 80);
+  });
+
+  // ── Table Header ──────────────────────────────────────────────────────────
+  let y = statY + 18;
+
+  doc.setFillColor(241, 245, 249);
+  doc.setDrawColor(226, 232, 240);
+  doc.setLineWidth(0.2);
+  doc.rect(ML, y, PW - ML * 2, 8, 'FD');
+
+  drawRtlText('#',           COL.rank,   y + 5.5, 6, [71, 85, 105], true, 18);
+  drawRtlText('الكود',       COL.code,   y + 5.5, 6, [71, 85, 105], true, 28);
+  drawRtlText('اسم الطالب', COL.name,   y + 5.5, 6, [71, 85, 105], true, 100);
+  drawRtlText('الحالة',      COL.status, y + 5.5, 6, [71, 85, 105], true, 36);
+  drawRtlText('الدرجة',      COL.degree + 10, y + 5.5, 6, [71, 85, 105], true, 36);
+
+  y += 8;
+
+  // ── Table Rows ────────────────────────────────────────────────────────────
+  const ROW_H  = 9;
+  const PAGE_H = 282;
+
+  records.forEach((rec, idx) => {
+    // صفحة جديدة لو اقتربنا من نهاية الصفحة
+    if (y + ROW_H > PAGE_H) {
+      doc.addPage();
+      y = 14;
+      // إعادة رسم رأس الجدول
+      doc.setFillColor(241, 245, 249);
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.2);
+      doc.rect(ML, y, PW - ML * 2, 8, 'FD');
+      drawRtlText('#',           COL.rank,   y + 5.5, 6, [71, 85, 105], true, 18);
+      drawRtlText('الكود',       COL.code,   y + 5.5, 6, [71, 85, 105], true, 28);
+      drawRtlText('اسم الطالب', COL.name,   y + 5.5, 6, [71, 85, 105], true, 100);
+      drawRtlText('الحالة',      COL.status, y + 5.5, 6, [71, 85, 105], true, 36);
+      drawRtlText('الدرجة',      COL.degree + 10, y + 5.5, 6, [71, 85, 105], true, 36);
+      y += 8;
+    }
+
+    // خلفية الصف الزوجي
+    if (idx % 2 === 1) {
+      doc.setFillColor(249, 250, 251);
+      doc.setDrawColor(249, 250, 251);
+      doc.rect(ML, y, PW - ML * 2, ROW_H, 'F');
+    }
+
+    // خط فاصل خفيف
+    doc.setDrawColor(241, 245, 249);
+    doc.setLineWidth(0.15);
+    doc.line(ML, y + ROW_H, MR, y + ROW_H);
+
+    const textY = y + ROW_H * 0.68;
+
+    // رقم التسلسل
+    drawLtrText(String(idx + 1), COL.rank - 3, textY, 6, [148, 163, 184]);
+
+    // الكود
+    drawLtrText(rec.studentCode, COL.code - 5, textY, 6, [71, 85, 105], true);
+
+    // الاسم
+    drawRtlText(rec.studentName, COL.name, textY, 6.5, [30, 41, 59], false, 100);
+
+    // بادج الحالة
+    const sColor = STATUS_COLOR[rec.status] ?? [100, 116, 139];
+    doc.setFillColor(sColor[0], sColor[1], sColor[2]);
+    doc.setGState(doc.GState({ opacity: 0.12 }));
+    doc.roundedRect(COL.status - 16, y + 1.8, 18, 5.5, 1.5, 1.5, 'F');
+    doc.setGState(doc.GState({ opacity: 1 }));
+    drawRtlText(STATUS_AR[rec.status] ?? rec.status, COL.status - 0.5, textY, 5.5, sColor, true, 36);
+
+    // الدرجة
+    if (rec.status !== 'absent' && rec.status !== 'excused') {
+      if (rec.degree !== null) {
+        const degStr = opts.outOf ? `${rec.degree} / ${opts.outOf}` : String(rec.degree);
+        drawLtrText(degStr, COL.degree + 14, textY, 7, [14, 59, 46], true);
+      } else {
+        drawLtrText('—', COL.degree + 14, textY, 7, [203, 213, 225]);
+      }
+    }
+
+    y += ROW_H;
+  });
+
+  // ── Footer ────────────────────────────────────────────────────────────────
+  const totalPages = (doc as any).internal.getNumberOfPages();
+  for (let p = 1; p <= totalPages; p++) {
+    doc.setPage(p);
+    doc.setDrawColor(226, 232, 240);
+    doc.setLineWidth(0.3);
+    doc.line(ML, 289, MR, 289);
+    drawRtlText(
+      `صفحة ${p} من ${totalPages}  ·  تم التوليد ${new Date().toLocaleDateString('ar-EG')}`,
+      MR, 293.5, 5.5, [148, 163, 184],
+    );
+    if (opts.centerName) {
+      drawRtlText(opts.centerName, ML + 40, 293.5, 5.5, [148, 163, 184], false, 80);
+    }
+  }
+
+  const safeName = opts.sessionTitle.replace(/[^a-zA-Z0-9\u0600-\u06FF]/g, '-').slice(0, 40);
+  printPDF(doc, `grades-${safeName}-${Date.now()}.pdf`);
+}

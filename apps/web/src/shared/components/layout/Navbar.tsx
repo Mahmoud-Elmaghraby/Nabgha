@@ -73,6 +73,11 @@ const WhatsappIcon = () => (
     <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" strokeLinecap="round" strokeLinejoin="round"/>
   </svg>
 );
+const TelegramIcon = () => (
+  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+);
 const SettingsIcon = () => (
   <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
     <circle cx="12" cy="12" r="3"/>
@@ -93,6 +98,7 @@ const PRIMARY_ITEMS = [
   { path: '/sessions', label: 'الحصص', icon: <SessionsIcon /> },
   { path: '/finance', label: 'المالية', icon: <FinanceIcon /> },
   { path: '/whatsapp', label: 'واتساب', icon: <WhatsappIcon />, badge: true },
+  { path: '/telegram', label: 'تليجرام', icon: <TelegramIcon /> },
 ];
 
 // ── العناصر الثانوية — جوه قائمة "المزيد" ────────────────────────

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { UserRole } from '@nabgha/types';
+import { queryClient } from '@/app/providers';
 
 interface AuthUser {
   id: string;
@@ -50,6 +51,9 @@ export const useAuthStore = create<AuthState>((set) => ({
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
     localStorage.removeItem('user');
+    // مسح كل الـ cache عشان البيانات القديمة متفضلش بعد الدخول من حساب تاني
+    queryClient.clear();
     set({ user: null, accessToken: null, isAuthenticated: false });
   },
 }));
+

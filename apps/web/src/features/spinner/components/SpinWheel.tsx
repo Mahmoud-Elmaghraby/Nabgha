@@ -40,8 +40,23 @@ export function SpinWheel({ students, onWinnerSelected }: Props) {
 
     // خانة الاسم: تيك-تاك متسارع في الأول ومتباطئ تدريجياً (زي عداد الحظ)
     const delays: number[] = [];
-    let d = 55, total = 0;
-    while (total < 4000) { delays.push(d); total += d; d *= 1.16; }
+    let d = 50, total = 0;
+    while (total < 7000) { delays.push(d); total += d; d *= 1.12; }
+
+    // Fisher-Yates shuffle حقيقي
+    const fyShuffle = (arr: typeof students) => {
+      const a = [...arr];
+      for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+      }
+      return a;
+    };
+
+    // نبدأ بدورة مخلوطة، وكل ما نخلص دورة كاملة نعمل shuffle جديد تمامًا
+    // عشان الاسماء ما تتكررش بنفس الترتيب في الدورة الجاية
+    let deck = fyShuffle(students);
+    let posInDeck = 0;
 
     let idx = 0;
     const tick = () => {
@@ -52,12 +67,20 @@ export function SpinWheel({ students, onWinnerSelected }: Props) {
         onWinnerSelected?.(winner);
         return;
       }
-      setDisplayName(students[Math.floor(Math.random() * count)].fullName);
+      // لما نخلص دورة كاملة نعمل shuffle جديد
+      if (posInDeck >= deck.length) {
+        deck = fyShuffle(students);
+        posInDeck = 0;
+      }
+      setDisplayName(deck[posInDeck].fullName);
+      posInDeck++;
       idx++;
       setTimeout(tick, delays[idx]);
     };
     tick();
   };
+
+
 
   if (count === 0) {
     return (
@@ -86,7 +109,7 @@ export function SpinWheel({ students, onWinnerSelected }: Props) {
             style={{
               transform: `rotate(${rotation}deg)`,
               transformOrigin: '110px 110px',
-              transition: spinning ? 'transform 4s cubic-bezier(0.12, 0.67, 0.15, 1)' : 'none',
+              transition: spinning ? 'transform 7s cubic-bezier(0.12, 0.67, 0.15, 1)' : 'none',
             }}
           >
             {SLICE_POINTS.map((p, i) => {

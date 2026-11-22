@@ -10,6 +10,7 @@ import { ComingSoon } from '../shared/components/ComingSoon';
 
 // ===== Tenant Pages =====
 const LoginPage = lazy(() => import('../features/auth/pages/LoginPage'));
+const LandingPage = lazy(() => import('../features/landing/LandingPage'));
 const SetupPage = lazy(() => import('../features/setup/SetupPage'));
 const DashboardPage = lazy(() => import('../features/dashboard/DashboardPage'));
 const UsersPage = lazy(() => import('../features/users/pages/UsersPage'));
@@ -20,8 +21,10 @@ const GroupsPage = lazy(() => import('../features/groups/pages/GroupsPage'));
 const BarcodesPage = lazy(() => import('../features/barcodes/BarcodesPage'));
 const SpinnerPage = lazy(() => import('../features/spinner/pages/SpinnerPage'));
 const SessionsPage = lazy(() => import('../features/sessions/pages/SessionsPage'));
+const ExamsPage = lazy(() => import('../features/exams/pages/ExamsPage'));
 const MorePage = lazy(() => import('../features/more/MorePage'));
 const WhatsAppPage = lazy(() => import('../features/whatsapp/pages/WhatsAppPage'));
+const TelegramPage = lazy(() => import('../features/settings/pages/TelegramPage'));
 const SettingsPage = lazy(() => import('../features/settings/pages/SettingsPage'));
 const FinancePage = lazy(() => import('../features/finance/pages/FinancePage'));
 const FinanceDuesPage = lazy(() => import('../features/finance/pages/DuesPage'));
@@ -40,6 +43,7 @@ const GroupAttendanceReportPage = lazy(() => import('../features/reports/pages/G
 const SessionsListReportPage = lazy(() => import('../features/reports/pages/SessionsListReportPage'));
 const OverdueDuesReportPage = lazy(() => import('../features/reports/pages/OverdueDuesReportPage'));
 const MonthlyCollectionsReportPage = lazy(() => import('../features/reports/pages/MonthlyCollectionsReportPage'));
+const MonthlyDuesStatusReportPage = lazy(() => import('../features/reports/pages/MonthlyDuesStatusReportPage'));
 const GroupGradesReportPage = lazy(() => import('../features/reports/pages/GroupGradesReportPage'));
 const ExamResultReportPage = lazy(() => import('../features/reports/pages/ExamResultReportPage'));
 const HonorBoardReportPage = lazy(() => import('../features/reports/pages/HonorBoardReportPage'));
@@ -136,9 +140,28 @@ const parentPage = (node: ReactNode) => (
   <ParentRoute>{page(node)}</ParentRoute>
 );
 
+// ===== الصفحة الرئيسية "/" =====
+// - مستخدم مسجّل دخوله ← الداشبورد.
+// - جهاز محلي (localhost / شبكة المركز الداخلية: نسخة Desktop أو LAN) ← شاشة الدخول مباشرة زي الأول.
+// - زائر على دومين عام (النسخة الأونلاين) ← صفحة الهبوط التسويقية.
+function isPrivateHost(host: string): boolean {
+  return (
+    host === 'localhost' || host === '127.0.0.1' || host.endsWith('.local') ||
+    /^10\./.test(host) || /^192\.168\./.test(host) || /^172\.(1[6-9]|2\d|3[01])\./.test(host)
+  );
+}
+
+function RootGate() {
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  if (isAuthenticated) return <Navigate to="/dashboard" replace />;
+  if (isPrivateHost(window.location.hostname)) return <Navigate to="/auth/login" replace />;
+  return page(<LandingPage />);
+}
+
 const router = createBrowserRouter([
   // ===== Public =====
-  { path: '/', element: <Navigate to="/dashboard" replace /> },
+  { path: '/', element: <RootGate /> },
+  { path: '/landing', element: page(<LandingPage />) },
   { path: '/auth/login', element: page(<LoginPage />) },
   { path: '/setup', element: page(<SetupPage />) },
 
@@ -150,6 +173,7 @@ const router = createBrowserRouter([
   { path: '/students/:id', element: protectedPage(<StudentProfilePage />) },
   { path: '/groups', element: protectedPage(<GroupsPage />) },
   { path: '/sessions', element: protectedPage(<SessionsPage />) },
+  { path: '/exams', element: protectedPage(<ExamsPage />) },
   { path: '/more', element: protectedPage(<MorePage />) },
   { path: '/attendance', element: protectedPage(<ComingSoon title="الحضور" />) },
   { path: '/finance', element: protectedPage(<FinancePage />) },
@@ -186,6 +210,7 @@ const router = createBrowserRouter([
           { index: true, element: <Navigate to="/reports/finance/collections" replace /> },
           { path: 'collections', element: page(<MonthlyCollectionsReportPage />) },
           { path: 'overdue', element: page(<OverdueDuesReportPage />) },
+          { path: 'monthly-status', element: page(<MonthlyDuesStatusReportPage />) },
         ],
       },
       {
@@ -211,6 +236,7 @@ const router = createBrowserRouter([
   },
   { path: '/settings', element: protectedPage(<SettingsPage />) },
   { path: '/whatsapp', element: protectedPage(<WhatsAppPage />) },
+  { path: '/telegram', element: protectedPage(<TelegramPage />) },
 
   // ===== Platform =====
   { path: '/platform/login', element: page(<PlatformLoginPage />) },

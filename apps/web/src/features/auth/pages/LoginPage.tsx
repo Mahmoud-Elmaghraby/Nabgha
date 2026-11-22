@@ -1,5 +1,31 @@
 import { useState, useEffect } from 'react';
+import axios from 'axios';
 import { useLogin } from '../hooks/useLogin';
+
+// بيحدد رسالة الخطأ المناسبة: لو السيرفر رد فعلاً برفض (بيانات غلط، أو تروتلينج)
+// نعرض رسالة واضحة، ولو الطلب أصلاً معرفش يوصل للسيرفر (مشكلة شبكة/فايروول —
+// بيحصل كتير لما حد بيدخل من الموبايل عبر QR وجهازه على نفس الشبكة بس السيرفر
+// حاجب البورت) نعرض رسالة مختلفة تمامًا بدل ما نوهم المستخدم إن كلمة السر غلط.
+function getLoginErrorMessage(error: unknown): string {
+  if (axios.isAxiosError(error)) {
+    if (!error.response) {
+      // بنضيف كود وتفاصيل الخطأ التقنية (زي ERR_NETWORK أو ERR_CONNECTION_REFUSED)
+      // في نص الرسالة نفسها عشان لو المشكلة حصلت من موبايل بعيد، يقدر المستخدم
+      // ياخد screenshot ويبعته من غير ما يحتاج يوصل الجهاز بالكمبيوتر أو يفتح
+      // أدوات المطورين (DevTools) عشان يشوف الخطأ الحقيقي.
+      const detail = [error.code, error.message].filter(Boolean).join(' — ');
+      return `تعذر الاتصال بالسيرفر — تأكد إن الجهاز على نفس شبكة الواي فاي، وإن الجدار الناري (Firewall) مش حاجب البرنامج${detail ? `
+
+(${detail})` : ''}`;
+    }
+    if (error.response.status === 429) {
+      return 'محاولات دخول كتير في وقت قصير — استنى دقيقة وحاول تاني';
+    }
+    const serverMessage = (error.response.data as any)?.error?.message;
+    if (serverMessage) return serverMessage;
+  }
+  return 'بيانات الدخول غير صحيحة';
+}
 
 export default function LoginPage() {
   // تحقق من الـ setup في Desktop mode
@@ -29,7 +55,12 @@ export default function LoginPage() {
     if (!password.trim()) errors.password = 'كلمة المرور مطلوبة';
     setFormErrors(errors);
     if (Object.keys(errors).length > 0) return;
-    login({ slug, username, password });
+    // كيبورد الموبايل (خصوصًا مع اقتراحات الكلمات) بيضيف مسافة زيادة في الآخر
+    // أحيانًا من غير ما المستخدم يحس — لو بعتنا القيمة زي ما هي من غير trim()،
+    // البيانات بتبقى مختلفة عن المخزّن فعليًا ويترفض تسجيل الدخول بـ"بيانات غير
+    // صحيحة" حتى لو المستخدم كاتب البيانات صح بالظبط. كان بيحصل هنا بس على
+    // الموبايل مش على الكمبيوتر، لأن كيبورد الكمبيوتر مبيضيفش المسافة دي.
+    login({ slug: slug.trim(), username: username.trim(), password: password.trim() });
   };
 
   const inputClass = 'w-full border border-gray-200 rounded-xl pr-11 pl-4 py-3 text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#0E3B2E]/30 focus:border-[#0E3B2E] focus:bg-white transition-all';
@@ -45,8 +76,8 @@ export default function LoginPage() {
         <p className="text-gray-500 text-sm mt-2">أدخل بياناتك للوصول إلى لوحة التحكم</p>
       </div>
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-600 rounded-xl px-4 py-3 mb-5 text-sm text-center">
-          بيانات الدخول غير صحيحة
+        <div className="bg-red-50 border border-red-200 text-red-600 rounded-xl px-4 py-3 mb-5 text-sm text-center whitespace-pre-wrap break-words">
+          {getLoginErrorMessage(error)}
         </div>
       )}
       <form onSubmit={handleSubmit} className="space-y-4" autoComplete="on">
@@ -64,6 +95,9 @@ export default function LoginPage() {
               value={slug}
               onChange={e => setSlug(e.target.value)}
               autoComplete="organization"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               className={inputClass}
             />
           </div>
@@ -84,6 +118,9 @@ export default function LoginPage() {
               value={username}
               onChange={e => setUsername(e.target.value)}
               autoComplete="username"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               className={inputClass}
             />
           </div>

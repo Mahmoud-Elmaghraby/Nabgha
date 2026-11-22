@@ -4,7 +4,7 @@
   "description": "نظام إدارة المراكز التعليمية الخصوصية",
   "start_url": "/",
   "display": "standalone",
-  "orientation": "portrait",
+  "orientation": "any",
   "background_color": "#0E3B2E",
   "theme_color": "#0E3B2E",
   "lang": "ar",
@@ -33,6 +33,48 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
+    }
+  ],
+  "id": "/",
+  "scope": "/",
+  "display_override": [
+    "standalone",
+    "minimal-ui"
+  ],
+  "categories": [
+    "education",
+    "business"
+  ],
+  "shortcuts": [
+    {
+      "name": "الحضور",
+      "url": "/sessions",
+      "icons": [
+        {
+          "src": "/Logo-icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "الطلاب",
+      "url": "/students",
+      "icons": [
+        {
+          "src": "/Logo-icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "المالية",
+      "url": "/finance",
+      "icons": [
+        {
+          "src": "/Logo-icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
     }
   ]
 }

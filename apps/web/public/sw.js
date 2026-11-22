@@ -1,5 +1,5 @@
-const CACHE_NAME = 'nabgha-' + self.registration.scope;
-const STATIC_ASSETS = ['/', '/index.html'];
+const CACHE_NAME = 'nabgha-v2-' + self.registration.scope;
+const STATIC_ASSETS = ['/', '/index.html', '/offline.html', '/Logo-icon-192.png'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -37,7 +37,11 @@ self.addEventListener('fetch', (event) => {
     );
     return;
   }
+  // الصفحات: الشبكة الأول، ولو السيرفر مش متاح نعرض صفحة "مفيش اتصال"
+  // (بدل ما نعرض واجهة فاضية بتفشل في تحميل بياناتها).
   event.respondWith(
-    fetch(event.request).catch(() => caches.match('/index.html'))
+    fetch(event.request).catch(() =>
+      caches.match('/offline.html').then((r) => r || caches.match('/index.html'))
+    )
   );
 });

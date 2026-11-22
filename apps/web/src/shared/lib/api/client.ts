@@ -63,9 +63,19 @@ apiClient.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    // الـ refresh نفسه فشل → اطرد فوراً
-    if (original.url?.includes('/auth/refresh')) {
-      forceLogout();
+    // endpoints الـ auth نفسها (login / refresh / platform login) — لو فشلوا بـ 401
+    // ارفض مباشرة بدون أي محاولة refresh، عشان interceptor ميدخلش في loop
+    // ومايخليش صفحة اللوجين تتعلق أو تعيد التحميل لما تكون البيانات غلط
+    const isAuthEndpoint =
+      original.url?.includes('/auth/login') ||
+      original.url?.includes('/auth/refresh') ||
+      original.url?.includes('/platform/auth/login');
+
+    if (isAuthEndpoint) {
+      // الـ refresh endpoint فشل → اطرد فوراً
+      if (original.url?.includes('/auth/refresh')) {
+        forceLogout();
+      }
       return Promise.reject(error);
     }
 
@@ -108,3 +118,48 @@ apiClient.interceptors.response.use(
     }
   },
 );
+// ===== Proactive Token Refresh =====
+// بيفحص الـ token كل 5 دقايق — لو هينتهي في خلال 10 دقايق، يجدده في الخلفية
+// من غير ما أي API call يفشل بـ 401 أو المستخدم يحس بأي شيء
+
+function getTokenExpiry(token: string): number | null {
+  try {
+    // الـ JWT بيتشفر بـ base64url (بيستخدم - و _ بدل + و /، وبدون padding)
+    // مش base64 عادي — atob() لوحدها بتفشل أو تدي نتيجة غلط لو الـ payload
+    // فيه حروف زي - أو _. لازم نحوّلها لـ base64 عادي الأول.
+    let base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    while (base64.length % 4) base64 += '=';
+    const payload = JSON.parse(atob(base64));
+    return typeof payload.exp === 'number' ? payload.exp * 1000 : null;
+  } catch {
+    return null;
+  }
+}
+
+async function proactiveRefresh(): Promise<void> {
+  const accessToken  = localStorage.getItem('accessToken');
+  const refreshToken = localStorage.getItem('refreshToken');
+  if (!accessToken || !refreshToken) return;
+
+  const expiry = getTokenExpiry(accessToken);
+  if (!expiry) return;
+
+  const msUntilExpiry = expiry - Date.now();
+  // لو في أقل من 10 دقايق → جدّد
+  if (msUntilExpiry > 10 * 60 * 1000) return;
+
+  try {
+    const res = await axios.post(`${API_URL}/auth/refresh`, { refreshToken });
+    const { accessToken: newToken } = res.data.data;
+    localStorage.setItem('accessToken', newToken);
+    // لو في requests معلقة من interceptor بتستنى refresh → أخطرها بالـ token الجديد
+    onRefreshed(newToken);
+  } catch {
+    // لو الـ refreshToken نفسه انتهى → forceLogout
+    forceLogout();
+  }
+}
+
+// شغّل الفحص فوراً عند تحميل الصفحة وبعدين كل 5 دقايق
+proactiveRefresh();
+setInterval(proactiveRefresh, 5 * 60 * 1000);

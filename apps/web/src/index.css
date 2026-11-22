@@ -21,3 +21,23 @@ body {
   background-color: var(--bg);
   direction: rtl;
 }
+
+/* ===== وضع الشاشة التفاعلية / اللمس (class touch-ui على <html>) ===== */
+html.touch-ui {
+  touch-action: manipulation;           /* يمنع تكبير اللمس المزدوج */
+  -webkit-tap-highlight-color: transparent;
+}
+html.touch-ui body { overscroll-behavior: none; }
+html.touch-ui main button,
+html.touch-ui main [role='button'],
+html.touch-ui main select,
+html.touch-ui main input:not([type='checkbox']):not([type='radio']),
+html.touch-ui main textarea {
+  min-height: 46px;
+}
+html.touch-ui main button { min-width: 44px; }
+html.touch-ui main input[type='checkbox'],
+html.touch-ui main input[type='radio'] { width: 22px; height: 22px; }
+html.touch-ui main td,
+html.touch-ui main th { padding-top: 0.75rem; padding-bottom: 0.75rem; }
+html.touch-ui main { font-size: 1.04em; }
