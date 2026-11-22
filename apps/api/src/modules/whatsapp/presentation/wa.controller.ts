@@ -15,6 +15,7 @@ import { HandleInboundUseCase } from '../application/use-cases/handle-inbound.us
 import { WaHealthMonitorUseCase } from '../application/use-cases/wa-health-monitor.usecase';
 import { SendNotificationUseCase } from '../application/use-cases/send-notification.usecase';
 import { GetMessagesUseCase } from '../application/use-cases/get-messages.usecase';
+import { RetryMessageUseCase } from '../application/use-cases/retry-message.usecase';
 import { ResolveAudienceUseCase } from '../application/use-cases/resolve-audience.usecase';
 import {
   UpdateSettingsSchema, UpdateTemplateSchema,
@@ -24,6 +25,7 @@ import { WaTemplateKey } from '../domain/entities/wa-template.entity';
 import { AppError } from '../../../core/errors/app.error';
 import { Inject } from '@nestjs/common';
 import { IWaProvider, WA_PROVIDER } from '../domain/interfaces/wa-provider.interface';
+import { BrandingService } from '../../settings/application/services/branding.service';
 
 @Controller('whatsapp')
 @UseGuards(JwtAuthGuard, TenantGuard, RolesGuard, PermissionGuard)
@@ -37,8 +39,10 @@ export class WaController {
     private readonly healthMonitor: WaHealthMonitorUseCase,
     private readonly sendNotification: SendNotificationUseCase,
     private readonly getMessages: GetMessagesUseCase,
+    private readonly retryMessage: RetryMessageUseCase,
     private readonly resolveAudience: ResolveAudienceUseCase,
     @Inject(WA_PROVIDER) private readonly provider: IWaProvider,
+    private readonly branding: BrandingService,
   ) {}
 
   // ─── Connection ───────────────────────────────────────────
@@ -54,6 +58,13 @@ export class WaController {
   @RequirePermission('settings.edit')
   async disconnect(@Request() req: any) {
     await this.connectDevice.disconnect(req.user.tenantId);
+    return { success: true };
+  }
+
+  @Post('logout')
+  @RequirePermission('settings.edit')
+  async logout(@Request() req: any) {
+    await this.connectDevice.logout(req.user.tenantId);
     return { success: true };
   }
 
@@ -96,7 +107,18 @@ export class WaController {
     const limit = Number(query.limit) || 20;
     const status = query.status || undefined;
     const search = query.search?.trim() || undefined;
-    const data = await this.getMessages.execute(req.user.tenantId, { page, limit, status, search });
+    const from = query.from || undefined;
+    const to = query.to || undefined;
+    const data = await this.getMessages.execute(req.user.tenantId, { page, limit, status, search, from, to });
+    return { success: true, data };
+  }
+
+  // إعادة إرسال يدوية لرسالة واحدة فشلت (زر ↻ في سجل الرسائل) — نفس صلاحية الإرسال
+  // الفعلي (reports.send_whatsapp) مش settings.view، لأنها فعل إرسال حقيقي.
+  @Post('messages/:id/retry')
+  @RequirePermission('reports.send_whatsapp')
+  async retryMessageHandler(@Request() req: any, @Param('id') id: string) {
+    const data = await this.retryMessage.execute(req.user.tenantId, id);
     return { success: true, data };
   }
 
@@ -217,10 +239,13 @@ export class WaController {
   async sendTest(@Request() req: any, @Body() body: any) {
     const parsed = SendTestSchema.safeParse(body);
     if (!parsed.success) throw new AppError('VALIDATION_ERROR', parsed.error.message, 400);
+    // اسم المركز/المدرس الفعلي من إعدادات الهوية — كان مكتوب "نبغة" ثابت
+    const branding = await this.branding.getBrandingInfo(req.user.tenantId);
     const result = await this.sendNotification.execute({
       tenantId: req.user.tenantId,
       phone: parsed.data.phone,
       templateKey: parsed.data.templateKey as WaTemplateKey,
+      allowDuplicate: true,
       vars: {
         student_name: 'أحمد محمد',
         subject: 'الرياضيات',
@@ -229,7 +254,10 @@ export class WaController {
         amount: '500',
         days: '7',
         count: '3',
-        center_name: 'نبغة',
+        degree: '22',
+        out_of: '25',
+        link: 'https://t.me/example',
+        center_name: branding.name,
         group_name: 'الأول الثانوي',
       },
     });

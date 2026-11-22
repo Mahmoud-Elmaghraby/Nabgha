@@ -40,6 +40,8 @@ export interface WaSettingsDto {
   notifyGroupAdded: boolean;
   notifyGroupRemoved: boolean;
   notifyStudentCard: boolean;
+  notifyAbsenceExcused: boolean;
+  notifyGradeRecorded: boolean;
 }
 
 export type UpdateSettingsPayload = Partial<Omit<WaSettingsDto, 'id' | 'tenantId'>>;
@@ -55,7 +57,7 @@ export interface WaTemplateDto {
 export type WaTemplateKey =
   | 'ABSENT' | 'PRESENT' | 'LATE' | 'THREE_ABSENCES'
   | 'PAYMENT_CONFIRM' | 'PAYMENT_DUE' | 'PAYMENT_OVERDUE'
-  | 'NEW_STUDENT' | 'GROUP_ADDED' | 'GROUP_REMOVED' | 'ABSENCE_EXCUSED';
+  | 'NEW_STUDENT' | 'GROUP_ADDED' | 'GROUP_REMOVED' | 'ABSENCE_EXCUSED' | 'GRADE_RECORDED' | 'TELEGRAM_LINK';
 
 export const WA_TEMPLATE_LABELS: Record<WaTemplateKey, string> = {
   ABSENT: 'إشعار الغياب',
@@ -69,20 +71,26 @@ export const WA_TEMPLATE_LABELS: Record<WaTemplateKey, string> = {
   GROUP_ADDED: 'إضافة لمجموعة',
   GROUP_REMOVED: 'إزالة من مجموعة',
   ABSENCE_EXCUSED: 'إعفاء غياب (حضور بديل)',
+  GRADE_RECORDED: 'تسجيل درجة',
+  TELEGRAM_LINK: 'رابط ربط تليجرام',
 };
 
+// لازم تطابق WA_TEMPLATE_VARIABLES في الباك إند (wa-template.entity.ts) — الباك إند
+// بيرفض الحفظ لو أي متغير من دول ناقص من نص القالب.
 export const WA_TEMPLATE_VARIABLES: Record<WaTemplateKey, string[]> = {
-  ABSENT:          ['{student_name}', '{subject}', '{date}'],
-  PRESENT:         ['{student_name}', '{subject}', '{time}'],
-  LATE:            ['{student_name}', '{subject}', '{date}'],
-  THREE_ABSENCES:  ['{student_name}', '{subject}', '{count}'],
+  ABSENT:          ['{student_name}', '{subject}', '{date}', '{center_name}'],
+  PRESENT:         ['{student_name}', '{subject}', '{time}', '{center_name}'],
+  LATE:            ['{student_name}', '{subject}', '{date}', '{center_name}'],
+  THREE_ABSENCES:  ['{student_name}', '{subject}', '{count}', '{center_name}'],
   PAYMENT_CONFIRM: ['{student_name}', '{amount}', '{date}', '{center_name}'],
   PAYMENT_DUE:     ['{student_name}', '{amount}', '{days}', '{center_name}'],
-  PAYMENT_OVERDUE: ['{student_name}', '{amount}', '{days}'],
+  PAYMENT_OVERDUE: ['{student_name}', '{amount}', '{days}', '{center_name}'],
   NEW_STUDENT:     ['{student_name}', '{center_name}'],
-  GROUP_ADDED:     ['{student_name}', '{group_name}', '{days}', '{time}'],
+  GROUP_ADDED:     ['{student_name}', '{group_name}', '{days}', '{time}', '{center_name}'],
   GROUP_REMOVED:   ['{student_name}', '{group_name}', '{center_name}'],
-  ABSENCE_EXCUSED: ['{student_name}', '{subject}', '{date}'],
+  ABSENCE_EXCUSED: ['{student_name}', '{subject}', '{date}', '{center_name}'],
+  GRADE_RECORDED:  ['{student_name}', '{subject}', '{date}', '{degree}', '{out_of}', '{center_name}'],
+  TELEGRAM_LINK:   ['{student_name}', '{link}', '{center_name}'],
 };
 
 export interface WaBulkProgressDto {
@@ -111,7 +119,9 @@ export interface SendBulkPayload {
   scheduledAt?: string;
 }
 
-export type AudienceType = 'all' | 'group' | 'subjectGrade' | 'grade' | 'teacher';
+// 'students': قائمة معرفات صريحة — مستخدمة في الإرسال الفردي لطالب واحد بعينه
+// (شاشة حالة ربط تليجرام) من غير ما تمر بأي فلتر مجموعة/مادة/صف/مدرس
+export type AudienceType = 'all' | 'group' | 'subjectGrade' | 'grade' | 'teacher' | 'students';
 export type PhoneSource = 'parent' | 'student';
 
 export interface ResolveAudienceParams {
@@ -120,11 +130,13 @@ export interface ResolveAudienceParams {
   subjectGradeId?: string;
   grade?: string;
   teacherId?: string;
+  studentIds?: string[];
 }
 
 export interface AudienceStudent {
   studentId: string;
   studentName: string;
+  studentCode: string;
   parentPhone: string | null;
   studentPhone: string | null;
 }

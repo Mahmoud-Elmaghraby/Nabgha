@@ -55,6 +55,8 @@ export interface IWaBulkJobRepository {
   save(job: WaBulkJobEntity): Promise<void>;
   findById(tenantId: string, id: string): Promise<WaBulkJobEntity | null>;
   findByTenantId(tenantId: string, limit?: number): Promise<WaBulkJobEntity[]>;
+  /** يُرجع الـ jobs المجدولة (scheduled_at <= now) ولم تبدأ بعد (status = pending) */
+  findPendingScheduled(tenantId: string, now: Date): Promise<WaBulkJobEntity[]>;
 }
 
 export interface IWaInboundRepository {

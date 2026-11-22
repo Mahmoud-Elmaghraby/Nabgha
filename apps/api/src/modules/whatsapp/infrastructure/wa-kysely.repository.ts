@@ -48,6 +48,14 @@ export class WaSessionRepository implements IWaSessionRepository {
     .onConflict((oc) => oc.column('tenant_id').doUpdateSet({
       phone: data.phone ?? null,
       status: (data.status ?? 'disconnected') as string,
+      qr_code: data.qrCode ?? null,
+      qr_expires_at: data.qrExpiresAt ?? null,
+      connected_at: data.connectedAt ?? null,
+      warmup_started_at: data.warmupStartedAt ?? null,
+      warmup_day: data.warmupDay ?? 0,
+      is_banned: data.isBanned ?? false,
+      banned_until: data.bannedUntil ?? null,
+      last_health_check: data.lastHealthCheck ?? null,
       updated_at: new Date(),
     } as any))
     .returningAll().executeTakeFirstOrThrow();
@@ -104,8 +112,8 @@ export class WaSettingsRepository implements IWaSettingsRepository {
       send_hours_from: data.sendHoursFrom ?? '08:00',
       send_hours_to: data.sendHoursTo ?? '22:00',
       daily_limit: data.dailyLimit ?? 50,
-      delay_min_seconds: data.delayMinSeconds ?? 3,
-      delay_max_seconds: data.delayMaxSeconds ?? 8,
+      delay_min_seconds: data.delayMinSeconds ?? 30,
+      delay_max_seconds: data.delayMaxSeconds ?? 60,
       warmup_enabled: data.warmupEnabled ?? true,
       notify_absent: data.notifyAbsent ?? true,
       notify_present: data.notifyPresent ?? false,
@@ -120,9 +128,35 @@ export class WaSettingsRepository implements IWaSettingsRepository {
       notify_group_added: data.notifyGroupAdded ?? true,
       notify_group_removed: data.notifyGroupRemoved ?? false,
       notify_student_card: data.notifyStudentCard ?? false,
+      notify_absence_excused: data.notifyAbsenceExcused ?? true,
+      notify_grade_recorded: data.notifyGradeRecorded ?? true,
       updated_at: new Date(),
     } as any)
-    .onConflict((oc) => oc.column('tenant_id').doUpdateSet({ updated_at: new Date() } as any))
+    .onConflict((oc) => oc.column('tenant_id').doUpdateSet({
+      wa_enabled: data.waEnabled ?? false,
+      send_hours_from: data.sendHoursFrom ?? '08:00',
+      send_hours_to: data.sendHoursTo ?? '22:00',
+      daily_limit: data.dailyLimit ?? 50,
+      delay_min_seconds: data.delayMinSeconds ?? 30,
+      delay_max_seconds: data.delayMaxSeconds ?? 60,
+      warmup_enabled: data.warmupEnabled ?? true,
+      notify_absent: data.notifyAbsent ?? true,
+      notify_present: data.notifyPresent ?? false,
+      notify_late: data.notifyLate ?? true,
+      notify_3_absences: data.notify3Absences ?? true,
+      late_threshold_min: data.lateThresholdMin ?? 15,
+      notify_payment_confirm: data.notifyPaymentConfirm ?? true,
+      notify_payment_due_7d: data.notifyPaymentDue7d ?? true,
+      notify_payment_due_1d: data.notifyPaymentDue1d ?? true,
+      notify_payment_overdue: data.notifyPaymentOverdue ?? true,
+      notify_new_student: data.notifyNewStudent ?? true,
+      notify_group_added: data.notifyGroupAdded ?? true,
+      notify_group_removed: data.notifyGroupRemoved ?? false,
+      notify_student_card: data.notifyStudentCard ?? false,
+      notify_absence_excused: data.notifyAbsenceExcused ?? true,
+      notify_grade_recorded: data.notifyGradeRecorded ?? true,
+      updated_at: new Date(),
+    } as any))
     .returningAll().executeTakeFirstOrThrow();
     return this.toEntity(row);
   }
@@ -150,6 +184,8 @@ export class WaSettingsRepository implements IWaSettingsRepository {
       notify_group_added: settings.notifyGroupAdded,
       notify_group_removed: settings.notifyGroupRemoved,
       notify_student_card: settings.notifyStudentCard,
+      notify_absence_excused: settings.notifyAbsenceExcused,
+      notify_grade_recorded: settings.notifyGradeRecorded,
       updated_at: new Date(),
     } as any)
     .where('id', '=', sql<string>`${settings.id}::uuid`)
@@ -166,6 +202,7 @@ export class WaSettingsRepository implements IWaSettingsRepository {
       row.notify_payment_due_7d, row.notify_payment_due_1d,
       row.notify_payment_overdue, row.notify_new_student,
       row.notify_group_added, row.notify_group_removed, row.notify_student_card,
+      row.notify_absence_excused, row.notify_grade_recorded,
       row.created_at, row.updated_at,
     );
   }
@@ -175,7 +212,35 @@ export class WaSettingsRepository implements IWaSettingsRepository {
 export class WaTemplateRepository implements IWaTemplateRepository {
   constructor(private readonly kysely: KyselyService) {}
 
+  // ⚠️ تصليح (Oct 2026): القوالب الافتراضية كانت بتتخزّن في قاعدة بيانات كل عميل مرة واحدة
+  // وقت أول تشغيل وبعدين مبتتحدّثش أبدًا، حتى لو النص الافتراضي في الكود اتغيّر — فعملاء كتير
+  // فضلوا بنصوص قديمة (فيها كلمة "نبغة" ثابتة وبدون اسم المركز). المنطق هنا: أي قالب لسه
+  // معلّم is_default=true (يعني المستخدم عمره ما عدّل عليه) بيتحدّث للنص الافتراضي الحالي.
+  // القوالب اللي المستخدم عدّلها (is_default=false) مبتتلمسش. بيتنفّذ مرة واحدة لكل تينانت
+  // في كل تشغيل للتطبيق.
+  private static readonly syncedTenants = new Set<string>();
+
+  private async refreshStaleDefaults(tenantId: string): Promise<void> {
+    const cls = this.constructor as any;
+    if (cls.syncedTenants.has(tenantId)) return;
+    cls.syncedTenants.add(tenantId);
+    try {
+      const db = this.kysely.getTenantDb(tenantId);
+      for (const [key, body] of Object.entries(WA_DEFAULT_TEMPLATES)) {
+        await db.updateTable('wa_templates').set({ body, updated_at: new Date() } as any)
+          .where('tenant_id', '=', sql<string>`${tenantId}::uuid`)
+          .where('key', '=', key)
+          .where('is_default', '=', true)
+          .where('body', '<>', body)
+          .execute();
+      }
+    } catch {
+      cls.syncedTenants.delete(tenantId); // نحاول تاني المرة الجاية
+    }
+  }
+
   async findAllByTenantId(tenantId: string): Promise<WaTemplateEntity[]> {
+    await this.refreshStaleDefaults(tenantId);
     const db = this.kysely.getTenantDb(tenantId);
     const rows = await db.selectFrom('wa_templates').selectAll()
       .where('tenant_id', '=', sql<string>`${tenantId}::uuid`)
@@ -184,6 +249,7 @@ export class WaTemplateRepository implements IWaTemplateRepository {
   }
 
   async findByKey(tenantId: string, key: WaTemplateKey): Promise<WaTemplateEntity | null> {
+    await this.refreshStaleDefaults(tenantId);
     const db = this.kysely.getTenantDb(tenantId);
     const row = await db.selectFrom('wa_templates').selectAll()
       .where('tenant_id', '=', sql<string>`${tenantId}::uuid`)
@@ -263,22 +329,33 @@ export class WaMessageRepository implements IWaMessageRepository {
       .where('tenant_id', '=', sql<string>`${tenantId}::uuid`)
       .orderBy('created_at', 'desc');
     if (opts?.status) query = query.where('status', '=', opts.status) as any;
-    const countRow = await db.selectFrom('wa_messages_log')
+    let countQuery = db.selectFrom('wa_messages_log')
       .select(db.fn.count('id').as('total'))
-      .where('tenant_id', '=', sql<string>`${tenantId}::uuid`)
-      .executeTakeFirst();
-    const data = await query.limit(opts?.limit ?? 20).offset(opts?.offset ?? 0).execute();
+      .where('tenant_id', '=', sql<string>`${tenantId}::uuid`);
+    if (opts?.status) countQuery = countQuery.where('status', '=', opts.status) as any;
+    const [countRow, data] = await Promise.all([
+      countQuery.executeTakeFirst(),
+      query.limit(opts?.limit ?? 20).offset(opts?.offset ?? 0).execute(),
+    ]);
     return { data: data.map(this.toEntity), total: Number(countRow?.total ?? 0) };
   }
 
   async countTodayByTenantId(tenantId: string): Promise<number> {
     const db = this.kysely.getTenantDb(tenantId);
-    const today = new Date(); today.setHours(0, 0, 0, 0);
+    // نعدّ كل رسالة "مُلتزم" بإرسالها اليوم: pending + sent + delivered
+    // الـ pending لازم تتعدّ عشان لو فيه bulk job شغّال ورسايل notification
+    // بتتبعت بالتوازي — كلهم بيقروا sentToday من الـ DB في نفس اللحظة.
+    // لو بنعدّ sent/delivered بس، كل use case هيلاقي عداد أقل من الحقيقي
+    // ويبدأ يبعت، والنتيجة تعدّي الحد اليومي.
     const row = await db.selectFrom('wa_messages_log')
       .select(db.fn.count('id').as('total'))
       .where('tenant_id', '=', sql<string>`${tenantId}::uuid`)
-      .where('created_at', '>=', today)
-      .where('status', '!=', 'failed')
+      .where(
+        sql`(created_at AT TIME ZONE 'Africa/Cairo')::date`,
+        '=',
+        sql`(NOW() AT TIME ZONE 'Africa/Cairo')::date`,
+      )
+      .where('status', 'in', ['pending', 'sent', 'delivered'])
       .executeTakeFirst();
     return Number(row?.total ?? 0);
   }
@@ -288,6 +365,7 @@ export class WaMessageRepository implements IWaMessageRepository {
       row.id, row.tenant_id, row.phone, row.template_key,
       row.body, row.status as WaMessageStatus, row.error_message,
       row.sent_at, row.delivered_at, row.bulk_job_id, row.created_at,
+      row.retry_count ?? 0,
     );
   }
 }
@@ -337,6 +415,18 @@ export class WaBulkJobRepository implements IWaBulkJobRepository {
     return rows.map(this.toEntity);
   }
 
+  async findPendingScheduled(tenantId: string, now: Date): Promise<WaBulkJobEntity[]> {
+    const db = this.kysely.getTenantDb(tenantId);
+    const rows = await db.selectFrom('wa_bulk_jobs').selectAll()
+      .where('tenant_id', '=', sql<string>`${tenantId}::uuid`)
+      .where('status', '=', 'pending')
+      .where('scheduled_at', 'is not', null)
+      .where('scheduled_at', '<=', now)
+      .orderBy('scheduled_at', 'asc')
+      .execute();
+    return rows.map(this.toEntity);
+  }
+
   private toEntity(row: any): WaBulkJobEntity {
     return new WaBulkJobEntity(
       row.id, row.tenant_id, row.title, row.body,
@@ -379,11 +469,16 @@ export class WaInboundRepository implements IWaInboundRepository {
       .orderBy('received_at', 'desc');
     if (opts?.unreadOnly) query = query.where('is_read', '=', false) as any;
     if (opts?.studentId) query = query.where('student_id', '=', opts.studentId) as any;
-    const countRow = await db.selectFrom('wa_inbound_messages')
+    // الـ count يأخذ نفس الفلاتر عشان الـ pagination يكون صح
+    let countQuery = db.selectFrom('wa_inbound_messages')
       .select(db.fn.count('id').as('total'))
-      .where('tenant_id', '=', sql<string>`${tenantId}::uuid`)
-      .executeTakeFirst();
-    const data = await query.limit(opts?.limit ?? 20).offset(opts?.offset ?? 0).execute();
+      .where('tenant_id', '=', sql<string>`${tenantId}::uuid`);
+    if (opts?.unreadOnly) countQuery = countQuery.where('is_read', '=', false) as any;
+    if (opts?.studentId) countQuery = countQuery.where('student_id', '=', opts.studentId) as any;
+    const [countRow, data] = await Promise.all([
+      countQuery.executeTakeFirst(),
+      query.limit(opts?.limit ?? 20).offset(opts?.offset ?? 0).execute(),
+    ]);
     return { data: data.map(this.toEntity), total: Number(countRow?.total ?? 0) };
   }
 

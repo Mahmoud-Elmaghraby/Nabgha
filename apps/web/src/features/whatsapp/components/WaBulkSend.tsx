@@ -75,8 +75,15 @@ export function WaBulkSend() {
     if (!body.trim()) return setError('نص الرسالة مطلوب');
     if (resolvedPhones.length === 0) return setError('لا يوجد أي رقم صحيح ضمن الجمهور المختار');
 
-    const result = await sendBulk.mutateAsync({ title, body, phones: resolvedPhones });
-    setJobId(result.jobId);
+    try {
+      const result = await sendBulk.mutateAsync({ title, body, phones: resolvedPhones });
+      setJobId(result.jobId);
+    } catch (err: any) {
+      const msg = err?.response?.data?.message ?? err?.message ?? 'حدث خطأ أثناء الإرسال';
+      setError(msg === 'not_connected' ? 'الواتساب غير متصل — يرجى الاتصال أولاً من تبويب الاتصال' :
+               msg === 'wa_disabled' ? 'الواتساب معطّل — يرجى تفعيله من الإعدادات' :
+               msg === 'bulk_job_already_running' ? 'فيه إرسال جماعي شغال بالفعل — انتظر لحد ما يخلص قبل ما تبدأ واحد جديد' : msg);
+    }
   };
 
   const resetAll = () => {

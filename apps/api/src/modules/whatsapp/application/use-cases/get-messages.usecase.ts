@@ -10,9 +10,9 @@ export class GetMessagesUseCase {
     private readonly kysely: KyselyService,
   ) {}
 
-  async execute(tenantId: string, params: { page: number; limit: number; status?: string; search?: string }) {
+  async execute(tenantId: string, params: { page: number; limit: number; status?: string; search?: string; from?: string; to?: string }) {
     const db = this.kysely.getTenantDb(tenantId);
-    const { page, limit, status, search } = params;
+    const { page, limit, status, search, from, to } = params;
     const offset = (page - 1) * limit;
 
     // Use DISTINCT ON to avoid duplicate rows from joining both student_phone and parent_phone
@@ -59,6 +59,13 @@ export class GetMessagesUseCase {
       ) as any;
     }
 
+    if (from) {
+      query = query.where(sql`(m.created_at AT TIME ZONE 'Africa/Cairo')::date`, '>=', sql`${from}::date`) as any;
+    }
+    if (to) {
+      query = query.where(sql`(m.created_at AT TIME ZONE 'Africa/Cairo')::date`, '<=', sql`${to}::date`) as any;
+    }
+
     // Total count — simpler query without GROUP BY / HAVING overhead
     let countQuery = db
       .selectFrom('wa_messages_log as m')
@@ -85,6 +92,13 @@ export class GetMessagesUseCase {
           eb('s.full_name', 'ilike', term),
         ]),
       );
+    }
+
+    if (from) {
+      countQuery = countQuery.where(sql`(m.created_at AT TIME ZONE 'Africa/Cairo')::date`, '>=', sql`${from}::date`);
+    }
+    if (to) {
+      countQuery = countQuery.where(sql`(m.created_at AT TIME ZONE 'Africa/Cairo')::date`, '<=', sql`${to}::date`);
     }
 
     const countRow = await countQuery.executeTakeFirst();

@@ -13,6 +13,7 @@ export class WaMessageEntity {
     public deliveredAt: Date | null,
     public readonly bulkJobId: string | null,
     public readonly createdAt: Date,
+    public retryCount: number = 0,
   ) {}
 
   markSent(): void {
@@ -30,3 +31,4 @@ export class WaMessageEntity {
     this.errorMessage = error;
   }
 }
+

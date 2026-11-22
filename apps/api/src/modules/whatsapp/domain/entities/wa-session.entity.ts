@@ -23,14 +23,18 @@ export class WaSessionEntity {
   }
 
   // بيرجع الحد اليومي الفعلي: أثناء فترة التسخين بيصعد تدريجياً، وبعدها بيستخدم
-  // الحد اللي المستخدم حدده في الإعدادات فعلياً (كان قبل كده متجمد على 50 للأبد بتجاهل الإعداد)
-  getCurrentDailyLimit(targetLimit: number): number {
+  // الحد اللي المستخدم حدده في الإعدادات فعلياً.
+  // بنحسب يوم التسخين من الوقت الفعلي المنقضي من warmupStartedAt، مش من warmupDay
+  // المُخزّن (اللي بيتحدث بواسطة cron يومي بيشترط إن الجلسة تكون متصلة بالظبط وقت
+  // نص الليل) — عشان لو الجلسة قطعت واتصلت تاني قبل/بعد نص الليل بيوم واحد،
+  // التسخين يفضل يتقدم طبيعي مع الوقت بدل ما يتجمد عند نفس اليوم لأجل غير مسمى.
+  getCurrentDailyLimit(targetLimit: number, warmupEnabled = true): number {
+    if (!warmupEnabled) return targetLimit;
     if (!this.warmupStartedAt) return Math.min(10, targetLimit);
     const warmupCurve = [10, 10, 25, 25, 25, 50, 50, 50, 50, 50];
-    if (this.warmupDay >= warmupCurve.length - 1) {
-      return targetLimit;
-    }
-    const day = Math.min(this.warmupDay, warmupCurve.length - 1);
+    const elapsedMs = Date.now() - this.warmupStartedAt.getTime();
+    const elapsedDays = Math.max(0, Math.floor(elapsedMs / (24 * 60 * 60 * 1000)));
+    const day = Math.min(elapsedDays, warmupCurve.length - 1);
     return Math.min(warmupCurve[day], targetLimit);
   }
 

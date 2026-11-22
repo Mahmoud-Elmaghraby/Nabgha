@@ -1,4 +1,7 @@
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { apiClient } from '../../../shared/lib/api/client';
+import { useToast } from '@/shared/components/Toast';
 import { useConfirm } from '@/shared/components/Confirm';
 import { useWaTemplates, useWaMutations } from '../hooks/useWhatsapp';
 import { usePermissions } from '@/shared/hooks/usePermissions';
@@ -13,13 +16,28 @@ const PREVIEW_VARS: Record<string, string> = {
   amount: '500',
   days: '7',
   count: '3',
-  center_name: 'نبغة',
+  degree: '22',
+  out_of: '25',
+  link: 'https://t.me/example',
   group_name: 'الأول الثانوي',
 };
 
-function renderPreview(body: string): string {
+// اسم المركز/المدرس الفعلي من إعدادات الهوية (نفس مصدر الرسائل الحقيقية)
+function useCenterName(): string {
+  const { data } = useQuery({
+    queryKey: ['branding-info', null],
+    queryFn: async () => {
+      const res = await apiClient.get('/settings/branding-info');
+      return res.data.data as { name: string };
+    },
+    staleTime: 1000 * 30,
+  });
+  return data?.name || 'اسم المركز';
+}
+
+function renderPreview(body: string, centerName: string): string {
   let result = body;
-  for (const [key, value] of Object.entries(PREVIEW_VARS)) {
+  for (const [key, value] of Object.entries({ ...PREVIEW_VARS, center_name: centerName })) {
     result = result.replaceAll(`{${key}}`, value);
   }
   return result;
@@ -34,17 +52,34 @@ function TemplateEditor({ template, onClose }: TemplateEditorProps) {
   const [body, setBody] = useState(template.body);
   const confirm = useConfirm();
   const { updateTemplate, resetTemplate } = useWaMutations();
+  const toast = useToast();
+  const centerName = useCenterName();
   const vars = WA_TEMPLATE_VARIABLES[template.key as WaTemplateKey] ?? [];
+  const missing = vars.filter(v => !body.includes(v));
 
   const handleSave = async () => {
-    await updateTemplate.mutateAsync({ key: template.key as WaTemplateKey, body });
-    onClose();
+    if (missing.length > 0) {
+      toast.error(`القالب لازم يحتوي على: ${missing.join('  ')}`);
+      return;
+    }
+    try {
+      await updateTemplate.mutateAsync({ key: template.key as WaTemplateKey, body });
+      toast.success('تم حفظ القالب');
+      onClose();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error?.message || err?.response?.data?.message || 'تعذر حفظ القالب');
+    }
   };
 
   const handleReset = async () => {
     if (!(await confirm('هل تريد الرجوع للنص الافتراضي؟'))) return;
-    await resetTemplate.mutateAsync(template.key as WaTemplateKey);
-    onClose();
+    try {
+      await resetTemplate.mutateAsync(template.key as WaTemplateKey);
+      toast.success('تم الرجوع للنص الافتراضي');
+      onClose();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error?.message || 'تعذر الرجوع للافتراضي');
+    }
   };
 
   return (
@@ -75,6 +110,7 @@ function TemplateEditor({ template, onClose }: TemplateEditorProps) {
             <div className="flex flex-wrap gap-1.5 mt-1">
               {vars.map(v => (
                 <button
+                  type="button"
                   key={v}
                   onClick={() => setBody(prev => prev + v)}
                   className="text-xs px-2 py-0.5 bg-[#0E3B2E]/10 text-[#0E3B2E] rounded hover:bg-[#0E3B2E]/20 transition-colors"
@@ -83,12 +119,17 @@ function TemplateEditor({ template, onClose }: TemplateEditorProps) {
                 </button>
               ))}
             </div>
+            {missing.length > 0 && (
+              <p className="text-xs text-red-500 mt-2">
+                متغيرات ناقصة (مطلوبة للحفظ): {missing.join('  ')}
+              </p>
+            )}
           </div>
 
           <div>
             <label className="text-xs text-gray-500 mb-2 block">معاينة</label>
-            <div className="bg-[#DCF8C6] rounded-xl rounded-tl-sm p-3 text-sm text-gray-800 leading-relaxed">
-              {renderPreview(body)}
+            <div className="bg-[#DCF8C6] rounded-xl rounded-tl-sm p-3 text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">
+              {renderPreview(body, centerName)}
             </div>
             <p className="text-xs text-gray-400 mt-1 text-left">✓✓ الآن</p>
           </div>

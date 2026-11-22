@@ -6,6 +6,7 @@ import type { ResolveAudienceDto } from '../dtos/wa.dto';
 export interface AudienceStudent {
   studentId: string;
   studentName: string;
+  studentCode: string;
   parentPhone: string | null;
   studentPhone: string | null;
 }
@@ -44,6 +45,11 @@ export class ResolveAudienceUseCase {
         .where('groups.deleted_at', 'is', null)
         .execute();
       studentIdFilter = [...new Set(rows.map(r => r.student_id as string))];
+    } else if (params.type === 'students') {
+      // قائمة معرفات صريحة (إرسال فردي لطالب واحد أو مجموعة محددة بالـ ID
+      // مباشرة) — بدون أي استعلام إضافي، الفلترة النهائية (deleted_at/is_active)
+      // بتتطبق تحت زي أي نوع تاني.
+      studentIdFilter = params.studentIds ?? [];
     }
 
     // لو الفلتر رجّع مجموعة فاضية (مفيش طلاب في المجموعة/المادة/المدرس دي أصلاً)
@@ -52,7 +58,7 @@ export class ResolveAudienceUseCase {
     }
 
     let query = db.selectFrom('students')
-      .select(['id', 'full_name', 'parent_phone', 'student_phone'])
+      .select(['id', 'full_name', 'student_code', 'parent_phone', 'student_phone'])
       .where('deleted_at', 'is', null)
       .where('is_active', '=', true);
 
@@ -67,6 +73,7 @@ export class ResolveAudienceUseCase {
     const data: AudienceStudent[] = rows.map(r => ({
       studentId: r.id as string,
       studentName: r.full_name as string,
+      studentCode: r.student_code as string,
       parentPhone: (r.parent_phone as string) ?? null,
       studentPhone: (r.student_phone as string) ?? null,
     }));

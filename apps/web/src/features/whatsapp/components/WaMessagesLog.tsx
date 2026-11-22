@@ -1,7 +1,9 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/shared/lib/api/client';
 import { useDebounce } from '@/shared/hooks/useDebounce';
+import { useToast } from '@/shared/components/Toast';
+import { WA_QUERY_KEYS } from '../hooks/useWhatsapp';
 
 const STATUS_LABELS: Record<string, { label: string; class: string }> = {
   sent:    { label: 'أُرسلت', class: 'bg-emerald-50 text-emerald-700 border border-emerald-200' },
@@ -20,6 +22,8 @@ const TEMPLATE_LABELS: Record<string, string> = {
   PAYMENT_DUE:     'تذكير دفع',
   PAYMENT_OVERDUE: 'تأخر دفع',
   NEW_STUDENT:     'طالب جديد',
+  ABSENCE_EXCUSED: 'إعفاء غياب',
+  GRADE_RECORDED:  'تسجيل درجة',
 };
 
 const ERROR_LABELS: Record<string, string> = {
@@ -39,20 +43,28 @@ const STATUS_FILTER_OPTIONS = [
   { value: 'failed',  label: 'فشلت' },
 ];
 
+function todayStr(): string {
+  return new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD (local)
+}
+
 export function WaMessagesLog() {
   const [statusFilter, setStatusFilter] = useState('');
   const [search, setSearch] = useState('');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
   const [page, setPage] = useState(1);
   const limit = 15;
 
   const debouncedSearch = useDebounce(search, 400);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['wa-messages', statusFilter, debouncedSearch, page],
+    queryKey: WA_QUERY_KEYS.messages({ status: statusFilter, search: debouncedSearch, from: fromDate, to: toDate, page }),
     queryFn: async () => {
       const params: Record<string, any> = { page, limit };
       if (statusFilter) params.status = statusFilter;
       if (debouncedSearch) params.search = debouncedSearch;
+      if (fromDate) params.from = fromDate;
+      if (toDate) params.to = toDate;
       const res = await apiClient.get('/whatsapp/messages', { params });
       return res.data.data;
     },
@@ -64,6 +76,21 @@ export function WaMessagesLog() {
   const total    = data?.total || 0;
   const totalPages = Math.ceil(total / limit);
 
+  const toast = useToast();
+  const qc = useQueryClient();
+
+  // إعادة إرسال يدوية لرسالة فشلت (زر ↻) — الباك إند بيتحقق من كل شروط الأمان
+  // (اتصال، ساعات إرسال، الحد اليومي) قبل أي محاولة فعلية، فمفيش داعي نكرر التحقق هنا.
+  const retryMessage = useMutation({
+    mutationFn: (id: string) => apiClient.post(`/whatsapp/messages/${id}/retry`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['wa', 'messages'] });
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.error?.message || 'فشلت إعادة الإرسال');
+    },
+  });
+
   const handleStatusChange = (value: string) => {
     setStatusFilter(value);
     setPage(1);
@@ -71,6 +98,29 @@ export function WaMessagesLog() {
 
   const handleSearchChange = (value: string) => {
     setSearch(value);
+    setPage(1);
+  };
+
+  const handleFromChange = (value: string) => {
+    setFromDate(value);
+    setPage(1);
+  };
+
+  const handleToChange = (value: string) => {
+    setToDate(value);
+    setPage(1);
+  };
+
+  const handleToday = () => {
+    const t = todayStr();
+    setFromDate(t);
+    setToDate(t);
+    setPage(1);
+  };
+
+  const clearDates = () => {
+    setFromDate('');
+    setToDate('');
     setPage(1);
   };
 
@@ -126,6 +176,48 @@ export function WaMessagesLog() {
         </span>
       </div>
 
+      {/* ─── Date range filter ──────────────────────── */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+        <div className="flex items-center gap-2 flex-1">
+          <label className="text-xs text-gray-400 flex-shrink-0">من</label>
+          <input
+            type="date"
+            value={fromDate}
+            max={toDate || undefined}
+            onChange={e => handleFromChange(e.target.value)}
+            className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0E3B2E]/20 focus:border-[#0E3B2E]/40"
+          />
+          <label className="text-xs text-gray-400 flex-shrink-0">إلى</label>
+          <input
+            type="date"
+            value={toDate}
+            min={fromDate || undefined}
+            onChange={e => handleToChange(e.target.value)}
+            className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0E3B2E]/20 focus:border-[#0E3B2E]/40"
+          />
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <button
+            onClick={handleToday}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all border ${
+              fromDate === todayStr() && toDate === todayStr()
+                ? 'bg-[#0E3B2E] text-white border-[#0E3B2E]'
+                : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+            }`}
+          >
+            اليوم
+          </button>
+          {(fromDate || toDate) && (
+            <button
+              onClick={clearDates}
+              className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition-colors"
+            >
+              مسح
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* ─── Messages ────────────────────────────────── */}
       {isLoading ? (
         <div className="space-y-2">
@@ -139,7 +231,7 @@ export function WaMessagesLog() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
           </svg>
           <p className="text-sm">
-            {search || statusFilter ? 'لا توجد رسائل تطابق البحث' : 'لا توجد رسائل بعد'}
+            {search || statusFilter || fromDate || toDate ? 'لا توجد رسائل تطابق البحث' : 'لا توجد رسائل بعد'}
           </p>
         </div>
       ) : (
@@ -190,12 +282,29 @@ export function WaMessagesLog() {
                   </div>
                 </div>
 
-                {/* Status badge */}
-                <span className={`shrink-0 text-xs px-2.5 py-1 rounded-full font-medium ${
-                  STATUS_LABELS[msg.status]?.class || 'bg-gray-100 text-gray-500 border border-gray-200'
-                }`}>
-                  {STATUS_LABELS[msg.status]?.label || msg.status}
-                </span>
+                {/* Status badge + إعادة إرسال */}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${
+                    STATUS_LABELS[msg.status]?.class || 'bg-gray-100 text-gray-500 border border-gray-200'
+                  }`}>
+                    {STATUS_LABELS[msg.status]?.label || msg.status}
+                  </span>
+                  {msg.status === 'failed' && (
+                    <button
+                      onClick={() => retryMessage.mutate(msg.id)}
+                      disabled={retryMessage.isPending && retryMessage.variables === msg.id}
+                      title="إعادة الإرسال"
+                      className="p-1.5 rounded-full text-gray-400 hover:text-[#0E3B2E] hover:bg-[#0E3B2E]/5 disabled:opacity-40 transition-colors"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg"
+                        className={`w-3.5 h-3.5 ${retryMessage.isPending && retryMessage.variables === msg.id ? 'animate-spin' : ''}`}
+                        fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                          d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           ))}

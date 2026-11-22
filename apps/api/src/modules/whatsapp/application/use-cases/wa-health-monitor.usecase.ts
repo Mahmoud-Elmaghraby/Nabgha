@@ -1,9 +1,10 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { IWaProvider, WA_PROVIDER } from '../../domain/interfaces/wa-provider.interface';
 import { IWaSessionRepository, WA_SESSION_REPOSITORY } from '../../domain/repositories/wa.repository.interface';
 import { IWaSettingsRepository, WA_SETTINGS_REPOSITORY } from '../../domain/repositories/wa.repository.interface';
+import { IWaProvider, WA_PROVIDER } from '../../domain/interfaces/wa-provider.interface';
 import { PrismaService } from '../../../../shared/infrastructure/database/prisma.service';
+import { ConnectDeviceUseCase } from './connect-device.usecase';
 
 @Injectable()
 export class WaHealthMonitorUseCase {
@@ -14,6 +15,7 @@ export class WaHealthMonitorUseCase {
     @Inject(WA_SESSION_REPOSITORY) private readonly sessionRepo: IWaSessionRepository,
     @Inject(WA_SETTINGS_REPOSITORY) private readonly settingsRepo: IWaSettingsRepository,
     private readonly prisma: PrismaService,
+    private readonly connectDeviceUseCase: ConnectDeviceUseCase,
   ) {}
 
   @Cron(CronExpression.EVERY_5_MINUTES)
@@ -37,7 +39,9 @@ export class WaHealthMonitorUseCase {
 
     for (const tenant of tenants) {
       const session = await this.sessionRepo.findByTenantId(tenant.id);
-      if (session?.isConnected && session.isWarmingUp) {
+      const settings = await this.settingsRepo.findByTenantId(tenant.id);
+      // لا تزيد أيام الـ warmup لو المستخدم عطّله من الإعدادات
+      if (session?.isConnected && session.isWarmingUp && (settings?.warmupEnabled ?? true)) {
         session.incrementWarmupDay();
         await this.sessionRepo.save(session);
         this.logger.log(`Tenant ${tenant.id} warmup day: ${session.warmupDay}`);
@@ -50,15 +54,21 @@ export class WaHealthMonitorUseCase {
       const session = await this.sessionRepo.findByTenantId(tenantId);
       if (!session) return;
 
-      if (session.status === 'disconnected' || session.status === 'banned') return;
+      if (session.status === 'banned') return;
 
       const state = await this.provider.getConnectionState(tenantId);
 
       session.lastHealthCheck = new Date();
 
       if (state.status === 'disconnected' && session.status === 'connected') {
-        this.logger.warn(`Health check failed for tenant ${tenantId} — marking disconnected`);
+        this.logger.warn(`Health check: tenant ${tenantId} disconnected — attempting reconnect`);
         session.markDisconnected();
+        await this.sessionRepo.save(session);
+        // أعد تشغيل ConnectDeviceUseCase لتسجيل الـ callbacks وإعادة الاتصال
+        this.connectDeviceUseCase.execute(tenantId).catch(err =>
+          this.logger.error(`Auto-reconnect failed for tenant ${tenantId}: ${err.message}`)
+        );
+        return;
       }
 
       await this.sessionRepo.save(session);
@@ -83,7 +93,7 @@ export class WaHealthMonitorUseCase {
       status: state.status,
       phone: state.phone ?? session?.phone ?? undefined,
       warmupDay: session?.warmupDay ?? 0,
-      dailyLimit: session ? session.getCurrentDailyLimit(settings?.dailyLimit ?? 50) : 10,
+      dailyLimit: session ? session.getCurrentDailyLimit(settings?.dailyLimit ?? 50, settings?.warmupEnabled ?? true) : 10,
       lastHealthCheck: session?.lastHealthCheck ?? undefined,
       isBanned: session?.isBanned ?? false,
     };

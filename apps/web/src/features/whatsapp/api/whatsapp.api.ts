@@ -19,6 +19,8 @@ export const whatsappApi = {
     apiClient.post<{ status: string; qrCode?: string }>('/whatsapp/connect'),
   disconnect: () =>
     apiClient.post('/whatsapp/disconnect'),
+  logout: () =>
+    apiClient.post('/whatsapp/logout'),
   getStatus: () =>
     apiClient.get<WaStatusDto>('/whatsapp/status'),
   getHealth: () =>

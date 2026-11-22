@@ -22,6 +22,8 @@ export class WaSettingsEntity {
     public notifyGroupAdded: boolean,
     public notifyGroupRemoved: boolean,
     public notifyStudentCard: boolean,
+    public notifyAbsenceExcused: boolean,
+    public notifyGradeRecorded: boolean,
     public readonly createdAt: Date,
     public updatedAt: Date,
   ) {}
@@ -32,13 +34,30 @@ export class WaSettingsEntity {
 
   isWithinSendHours(): boolean {
     const now = new Date();
-    const egyptTime = new Intl.DateTimeFormat('en-GB', {
+    const egyptTimeStr = new Intl.DateTimeFormat('en-GB', {
       timeZone: 'Africa/Cairo',
       hour: '2-digit',
       minute: '2-digit',
       hour12: false,
     }).format(now);
-    return egyptTime >= this.sendHoursFrom && egyptTime < this.sendHoursTo;
+
+    // تحويل "HH:MM" لعدد دقائق من منتصف الليل لمقارنة دقيقة
+    const toMinutes = (t: string): number => {
+      const [h, m] = t.split(':').map(Number);
+      return h * 60 + m;
+    };
+
+    const currentMin = toMinutes(egyptTimeStr);
+    const fromMin = toMinutes(this.sendHoursFrom);
+    const toMin = toMinutes(this.sendHoursTo);
+
+    if (fromMin <= toMin) {
+      // نطاق عادي: مثلاً 08:00 → 22:00
+      return currentMin >= fromMin && currentMin < toMin;
+    } else {
+      // نطاق يمتد لفجر اليوم التالي: مثلاً 22:00 → 02:00
+      return currentMin >= fromMin || currentMin < toMin;
+    }
   }
 
   update(data: Partial<Omit<WaSettingsEntity, 'id' | 'tenantId' | 'createdAt' | 'updatedAt'>>): void {

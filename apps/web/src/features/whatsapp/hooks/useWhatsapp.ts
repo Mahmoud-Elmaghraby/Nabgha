@@ -7,15 +7,26 @@ const KEYS = {
   health: ['wa', 'health'],
   settings: ['wa', 'settings'],
   templates: ['wa', 'templates'],
+  messages: (params?: any) => ['wa', 'messages', params],
   inbound: (params?: any) => ['wa', 'inbound', params],
   bulk: (jobId: string) => ['wa', 'bulk', jobId],
 };
+
+export { KEYS as WA_QUERY_KEYS };
 
 export function useWaStatus() {
   return useQuery({
     queryKey: KEYS.status,
     queryFn: () => whatsappApi.getStatus().then(r => r.data.data),
-    refetchInterval: 5000,
+    // بولينج ذكي: سريع عند connecting، بطيء عند connected، موقوف عند disconnected
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      if (status === 'connecting') return 4000;
+      if (status === 'connected')  return 30_000;
+      // disconnected / banned: نتحقق كل دقيقتين بس منش كل 5 ثواني
+      return 120_000;
+    },
+    refetchIntervalInBackground: false,
   });
 }
 
@@ -121,9 +132,15 @@ export function useWaMutations() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['wa', 'inbound'] }),
   });
 
+  const logout = useMutation({
+    mutationFn: () => whatsappApi.logout(),
+    onSuccess: () => qc.invalidateQueries({ queryKey: KEYS.status }),
+  });
+
   return {
     connect,
     disconnect,
+    logout,
     updateSettings,
     updateTemplate,
     resetTemplate,

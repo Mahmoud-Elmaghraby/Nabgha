@@ -25,6 +25,7 @@ export interface UpdateSettingsInput {
   notifyGroupAdded?: boolean;
   notifyGroupRemoved?: boolean;
   notifyStudentCard?: boolean;
+  notifyAbsenceExcused?: boolean;
 }
 
 @Injectable()

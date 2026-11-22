@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useWaStatus, useWaMutations } from '../hooks/useWhatsapp';
 import { usePermissions } from '@/shared/hooks/usePermissions';
+import { useConfirm } from '@/shared/components/Confirm';
 
 const STATUS_CONFIG = {
   connected: { label: 'متصل', dot: 'bg-emerald-500', badge: 'bg-emerald-50 text-emerald-700' },
@@ -12,15 +13,22 @@ const STATUS_CONFIG = {
 export function WaConnectionCard() {
   const { hasPermission } = usePermissions();
   const canEdit = hasPermission('settings.edit');
-  const { data: status, isLoading } = useWaStatus();
-  const { connect, disconnect } = useWaMutations();
+  const { data: status } = useWaStatus();
+  const { connect, disconnect, logout } = useWaMutations();
   const [showQr, setShowQr] = useState(false);
+  const confirm = useConfirm();
 
-  const cfg = STATUS_CONFIG[status?.status ?? 'disconnected'];
+  const cfg = STATUS_CONFIG[(status?.status ?? 'disconnected') as keyof typeof STATUS_CONFIG];
 
   const handleConnect = async () => {
     const result = await connect.mutateAsync();
     if (result?.qrCode) setShowQr(true);
+  };
+
+  const handleLogout = async () => {
+    if (!(await confirm('هل تريد تسجيل الخروج الكامل من الواتساب؟ ستحتاج لإعادة مسح QR من جديد.'))) return;
+    await logout.mutateAsync();
+    setShowQr(false);
   };
 
   return (
@@ -42,12 +50,29 @@ export function WaConnectionCard() {
         {canEdit && (
           <div className="flex gap-2">
             {status?.status === 'connected' ? (
+              <>
+                <button
+                  onClick={handleLogout}
+                  disabled={logout.isPending}
+                  className="px-3 py-1.5 text-sm text-red-600 border border-red-100 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50"
+                >
+                  تسجيل خروج
+                </button>
+                <button
+                  onClick={() => disconnect.mutate()}
+                  disabled={disconnect.isPending}
+                  className="px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+                >
+                  قطع مؤقت
+                </button>
+              </>
+            ) : status?.status === 'banned' ? (
               <button
-                onClick={() => disconnect.mutate()}
-                disabled={disconnect.isPending}
+                onClick={handleLogout}
+                disabled={logout.isPending}
                 className="px-3 py-1.5 text-sm text-red-600 border border-red-100 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50"
               >
-                قطع الاتصال
+                {logout.isPending ? 'جاري المسح...' : 'مسح الجلسة وإعادة المحاولة'}
               </button>
             ) : (
               <button
@@ -71,7 +96,7 @@ export function WaConnectionCard() {
           <div className="w-full bg-gray-200 rounded-full h-1.5">
             <div
               className="bg-[#4FBF9F] h-1.5 rounded-full transition-all"
-              style={{ width: `${Math.min((status.warmupDay / 14) * 100, 100)}%` }}
+              style={{ width: `${Math.min((status.warmupDay / 10) * 100, 100)}%` }}
             />
           </div>
         </div>

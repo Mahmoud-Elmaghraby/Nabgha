@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useWaSettings, useWaMutations } from '../hooks/useWhatsapp';
 import { usePermissions } from '@/shared/hooks/usePermissions';
+import { useToast } from '@/shared/components/Toast';
 import type { WaSettingsDto } from '../types/whatsapp.types';
 
 interface ToggleRowProps {
@@ -38,21 +39,37 @@ export function WaSettingsCard() {
   const canEdit = hasPermission('settings.edit');
   const { data: settings, isLoading } = useWaSettings();
   const { updateSettings } = useWaMutations();
+  const toast = useToast();
   const [local, setLocal] = useState<Partial<WaSettingsDto>>({});
   const [saved, setSaved] = useState(false);
+  const [initialized, setInitialized] = useState(false);
 
+  // بنحمّل القيم من السيرفر مرة واحدة بس عند أول فتح للصفحة.
+  // لو عملناها على كل تغيير في `settings`، أي refetch في الخلفية (زي رجوع
+  // التركيز للنافذة) هيمسح أي تعديل المستخدم عمله لسه ما حفظوش — ده كان بيخلي
+  // تغييرات زي إيقاف الـ warmup تترجع تلقائي من غير ما المستخدم يحس.
   useEffect(() => {
-    if (settings) setLocal(settings);
-  }, [settings]);
+    if (settings && !initialized) {
+      setLocal(settings);
+      setInitialized(true);
+    }
+  }, [settings, initialized]);
 
   const update = (key: keyof WaSettingsDto, value: any) => {
     setLocal(prev => ({ ...prev, [key]: value }));
   };
 
   const handleSave = async () => {
-    await updateSettings.mutateAsync(local);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    try {
+      const savedSettings = await updateSettings.mutateAsync(local);
+      // بنحدّث local بالقيمة اللي فعلاً رجعت من السيرفر بعد الحفظ، عشان نتأكد
+      // إن الشاشة بتعرض اللي اتخزن فعلاً مش بس اللي المستخدم ضغط عليه
+      if (savedSettings) setLocal(savedSettings);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error?.message || 'حدث خطأ أثناء حفظ الإعدادات، حاول تاني');
+    }
   };
 
   if (isLoading) return (
@@ -130,12 +147,45 @@ export function WaSettingsCard() {
         </div>
       </div>
 
+      {/* تأخير الإرسال — Anti-Spam */}
+      <div>
+        <p className="text-xs font-medium text-gray-500 mb-2">تأخير بين الرسائل (Anti-Spam)</p>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">الحد الأدنى (ثانية)</label>
+            <input
+              type="number"
+              min={1}
+              max={60}
+              value={local.delayMinSeconds ?? 3}
+              onChange={e => update('delayMinSeconds', Number(e.target.value))}
+              disabled={!canEdit}
+              className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0E3B2E]/20 disabled:opacity-50"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">الحد الأقصى (ثانية)</label>
+            <input
+              type="number"
+              min={1}
+              max={120}
+              value={local.delayMaxSeconds ?? 8}
+              onChange={e => update('delayMaxSeconds', Number(e.target.value))}
+              disabled={!canEdit}
+              className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0E3B2E]/20 disabled:opacity-50"
+            />
+          </div>
+        </div>
+        <p className="text-xs text-gray-400 mt-1">تأخير عشوائي بين الرسائل لتجنب الحظر</p>
+      </div>
+
       <div>
         <p className="text-xs font-medium text-gray-500 mb-2">إشعارات الحضور</p>
         <ToggleRow label="إشعار الغياب" subtitle="للأهل فور إغلاق الكشف" checked={local.notifyAbsent ?? true} onChange={v => update('notifyAbsent', v)} disabled={!canEdit} />
         <ToggleRow label="إشعار الحضور" subtitle="تأكيد وصول الطالب" checked={local.notifyPresent ?? false} onChange={v => update('notifyPresent', v)} disabled={!canEdit} />
         <ToggleRow label="إشعار التأخير" checked={local.notifyLate ?? true} onChange={v => update('notifyLate', v)} disabled={!canEdit} />
         <ToggleRow label="تنبيه 3 غيابات متتالية" checked={local.notify3Absences ?? true} onChange={v => update('notify3Absences', v)} disabled={!canEdit} />
+        <ToggleRow label="إشعار التعويض (الحضور البديل)" subtitle="إعلام الأهل لما يُعذَّر غياب الطالب بحضور بديل" checked={local.notifyAbsenceExcused ?? true} onChange={v => update('notifyAbsenceExcused', v)} disabled={!canEdit} />
       </div>
 
       <div>
@@ -152,6 +202,11 @@ export function WaSettingsCard() {
         <ToggleRow label="إضافة لمجموعة" checked={local.notifyGroupAdded ?? true} onChange={v => update('notifyGroupAdded', v)} disabled={!canEdit} />
         <ToggleRow label="إزالة من مجموعة" checked={local.notifyGroupRemoved ?? false} onChange={v => update('notifyGroupRemoved', v)} disabled={!canEdit} />
         <ToggleRow label="إرسال كارت الطالب" checked={local.notifyStudentCard ?? false} onChange={v => update('notifyStudentCard', v)} disabled={!canEdit} />
+      </div>
+
+      <div>
+        <p className="text-xs font-medium text-gray-500 mb-2">إشعارات الدرجات</p>
+        <ToggleRow label="إشعار تسجيل الدرجة" subtitle="إعلام الأهل فور رصد درجة الطالب في الحصة" checked={local.notifyGradeRecorded ?? true} onChange={v => update('notifyGradeRecorded', v)} disabled={!canEdit} />
       </div>
 
       <div>

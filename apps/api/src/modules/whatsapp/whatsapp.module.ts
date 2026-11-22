@@ -15,6 +15,7 @@ import { GetMessagesUseCase } from './application/use-cases/get-messages.usecase
 import { ResolveAudienceUseCase } from './application/use-cases/resolve-audience.usecase';
 import { RestoreSessionsUseCase } from './application/use-cases/restore-sessions.usecase';
 import { RetryFailedMessagesUseCase } from './application/use-cases/retry-failed-messages.usecase';
+import { RetryMessageUseCase } from './application/use-cases/retry-message.usecase';
 import { SendBulkUseCase } from './application/use-cases/send-bulk.usecase';
 import { UpdateSettingsUseCase } from './application/use-cases/update-settings.usecase';
 import { UpdateTemplateUseCase } from './application/use-cases/update-template.usecase';
@@ -30,9 +31,13 @@ import {
   WA_INBOUND_REPOSITORY,
 } from './domain/repositories/wa.repository.interface';
 import { WA_PROVIDER as WA_PROVIDER_TOKEN } from './domain/interfaces/wa-provider.interface';
+import { SettingsModule } from '../settings/settings.module';
 
 @Module({
-  imports: [],
+  // SettingsModule: عشان WaController.sendTest يجيب اسم المركز/المدرس الفعلي
+  // (BrandingService) بدل "نبغة" الثابتة — SettingsModule مبيستوردش WhatsAppModule
+  // فمفيش circular dependency.
+  imports: [SettingsModule],
   controllers: [WaController],
   providers: [
     { provide: WA_PROVIDER_TOKEN, useClass: BaileysProvider },
@@ -48,6 +53,7 @@ import { WA_PROVIDER as WA_PROVIDER_TOKEN } from './domain/interfaces/wa-provide
     ResolveAudienceUseCase,
     RestoreSessionsUseCase,
     RetryFailedMessagesUseCase,
+    RetryMessageUseCase,
     SendBulkUseCase,
     UpdateSettingsUseCase,
     UpdateTemplateUseCase,
@@ -55,7 +61,7 @@ import { WA_PROVIDER as WA_PROVIDER_TOKEN } from './domain/interfaces/wa-provide
     WaHealthMonitorUseCase,
   ],
   exports: [
-    SendNotificationUseCase, GetMessagesUseCase,
+    SendNotificationUseCase, GetMessagesUseCase, ResolveAudienceUseCase,
     WA_PROVIDER_TOKEN, WA_SESSION_REPOSITORY, WA_SETTINGS_REPOSITORY,
     WA_MESSAGE_REPOSITORY, WA_BULK_JOB_REPOSITORY,
   ],

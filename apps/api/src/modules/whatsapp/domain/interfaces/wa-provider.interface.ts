@@ -14,6 +14,7 @@ export interface WaConnectionState {
 export interface IWaProvider {
   connect(tenantId: string): Promise<void>;
   disconnect(tenantId: string): Promise<void>;
+  logout(tenantId: string): Promise<void>;
   getConnectionState(tenantId: string): Promise<WaConnectionState>;
   sendMessage(tenantId: string, phone: string, body: string): Promise<WaSendResult>;
   sendDocument(

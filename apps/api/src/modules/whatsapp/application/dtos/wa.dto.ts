@@ -21,6 +21,8 @@ export const UpdateSettingsSchema = z.object({
   notifyGroupAdded: z.boolean().optional(),
   notifyGroupRemoved: z.boolean().optional(),
   notifyStudentCard: z.boolean().optional(),
+  notifyAbsenceExcused: z.boolean().optional(),
+  notifyGradeRecorded: z.boolean().optional(),
 }).refine((data) => {
   if (data.delayMinSeconds !== undefined && data.delayMaxSeconds !== undefined) {
     return data.delayMinSeconds <= data.delayMaxSeconds;
@@ -40,16 +42,22 @@ export const SendBulkSchema = z.object({
 });
 
 export const ResolveAudienceSchema = z.object({
-  type: z.enum(['all', 'group', 'subjectGrade', 'grade', 'teacher']),
+  type: z.enum(['all', 'group', 'subjectGrade', 'grade', 'teacher', 'students']),
   groupId: z.string().uuid().optional(),
   subjectGradeId: z.string().uuid().optional(),
   grade: z.string().optional(),
   teacherId: z.string().uuid().optional(),
+  // 'students': قائمة صريحة بمعرفات طلاب محددين — مضافة لدعم الإرسال الفردي
+  // (زرار "إرسال رابط" لطالب واحد بعينه في شاشة حالة ربط تليجرام) من غير ما
+  // نكرر منطق resolveAudience/SendTelegramLinksUseCase لمسار منفصل، ومن غير
+  // ما نلمس أي نوع جمهور موجود قبل كده.
+  studentIds: z.array(z.string().uuid()).optional(),
 }).refine((data) => {
   if (data.type === 'group') return !!data.groupId;
   if (data.type === 'subjectGrade') return !!data.subjectGradeId;
   if (data.type === 'grade') return !!data.grade;
   if (data.type === 'teacher') return !!data.teacherId;
+  if (data.type === 'students') return !!data.studentIds && data.studentIds.length > 0;
   return true;
 }, { message: 'بيانات ناقصة حسب نوع الجمهور المختار' });
 

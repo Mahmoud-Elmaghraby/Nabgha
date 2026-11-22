@@ -11,6 +11,7 @@ export const WA_TEMPLATE_KEYS = [
   'GROUP_REMOVED',
   'ABSENCE_EXCUSED',
   'GRADE_RECORDED',
+  'TELEGRAM_LINK',
 ] as const;
 
 export type WaTemplateKey = typeof WA_TEMPLATE_KEYS[number];
@@ -28,21 +29,26 @@ export const WA_DEFAULT_TEMPLATES: Record<WaTemplateKey, string> = {
   GROUP_REMOVED:    '{center_name}: تم إخراج الطالب {student_name} من مجموعة {group_name}',
   ABSENCE_EXCUSED:  '{center_name}: تم اعتبار غياب الطالب {student_name} عن حصة {subject} بتاريخ {date} معذوراً نظراً لحضوره حصة بديلة',
   GRADE_RECORDED:   '{center_name}: درجة الطالب {student_name} في {subject} بتاريخ {date}: {degree} من {out_of}',
+  TELEGRAM_LINK:    '{center_name}: لمتابعة إشعارات الطالب {student_name} على تليجرام، افتح الرابط واضغط Start:\n{link}',
 };
 
+// ملحوظة (Sept 2026): {center_name} بقى إلزامي في كل القوالب من غير استثناء —
+// عشان نضمن إن أي رسالة فعلية بتتبعت للأهالي لازم تحمل اسم المركز أو المدرس (حسب
+// إعدادات الهوية) ومستحيل حد يعدّل قالب من واجهة الإعدادات ويشيل الهوية بالغلط.
 export const WA_TEMPLATE_VARIABLES: Record<WaTemplateKey, string[]> = {
-  ABSENT:          ['{student_name}', '{subject}', '{date}'],
-  PRESENT:         ['{student_name}', '{subject}', '{time}'],
-  LATE:            ['{student_name}', '{subject}', '{date}'],
-  THREE_ABSENCES:  ['{student_name}', '{subject}', '{count}'],
+  ABSENT:          ['{student_name}', '{subject}', '{date}', '{center_name}'],
+  PRESENT:         ['{student_name}', '{subject}', '{time}', '{center_name}'],
+  LATE:            ['{student_name}', '{subject}', '{date}', '{center_name}'],
+  THREE_ABSENCES:  ['{student_name}', '{subject}', '{count}', '{center_name}'],
   PAYMENT_CONFIRM: ['{student_name}', '{amount}', '{date}', '{center_name}'],
   PAYMENT_DUE:     ['{student_name}', '{amount}', '{days}', '{center_name}'],
-  PAYMENT_OVERDUE: ['{student_name}', '{amount}', '{days}'],
+  PAYMENT_OVERDUE: ['{student_name}', '{amount}', '{days}', '{center_name}'],
   NEW_STUDENT:     ['{student_name}', '{center_name}'],
   GROUP_ADDED:     ['{student_name}', '{group_name}', '{days}', '{time}', '{center_name}'],
   GROUP_REMOVED:   ['{student_name}', '{group_name}', '{center_name}'],
-  ABSENCE_EXCUSED: ['{student_name}', '{subject}', '{date}'],
-  GRADE_RECORDED: ['{student_name}', '{subject}', '{date}', '{degree}', '{out_of}'],
+  ABSENCE_EXCUSED: ['{student_name}', '{subject}', '{date}', '{center_name}'],
+  GRADE_RECORDED: ['{student_name}', '{subject}', '{date}', '{degree}', '{out_of}', '{center_name}'],
+  TELEGRAM_LINK: ['{student_name}', '{link}', '{center_name}'],
 };
 
 export class WaTemplateEntity {
