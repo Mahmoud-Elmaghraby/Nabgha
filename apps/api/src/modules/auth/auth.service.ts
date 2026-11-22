@@ -1,4 +1,4 @@
-﻿import { Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../shared/infrastructure/database/prisma.service';
@@ -130,8 +130,8 @@ export class AuthService {
     const permissions = Array.isArray(user.permissions) ? user.permissions : [];
     const payload = { sub: user.id, tenantId: tenant.id, role: user.role, permissions, type: 'tenant' };
     const secret = this.config.get<string>('JWT_SECRET') as string;
-    const accessToken = this.jwt.sign(payload, { secret, expiresIn: '15m' });
-    const refreshToken = this.jwt.sign(payload, { secret, expiresIn: '30d' });
+    const accessToken = this.jwt.sign(payload, { secret, expiresIn: this.accessExpiry() } as any);
+    const refreshToken = this.jwt.sign(payload, { secret, expiresIn: this.refreshExpiry() } as any);
     return {
       accessToken,
       refreshToken,
@@ -150,8 +150,8 @@ export class AuthService {
     }
     const payload = { sub: admin.id, tenantId: null as unknown as string, role: 'super_admin', type: 'platform' };
     const secret = this.config.get<string>('PLATFORM_JWT_SECRET') as string;
-    const accessToken = this.jwt.sign(payload, { secret, expiresIn: '15m' });
-    const refreshToken = this.jwt.sign(payload, { secret, expiresIn: '30d' });
+    const accessToken = this.jwt.sign(payload, { secret, expiresIn: this.accessExpiry() } as any);
+    const refreshToken = this.jwt.sign(payload, { secret, expiresIn: this.refreshExpiry() } as any);
     return { accessToken, refreshToken, user: { id: admin.id, name: admin.name, email: admin.email, role: 'super_admin' } };
   }
 
@@ -167,11 +167,21 @@ export class AuthService {
           permissions: payload.permissions ?? [],
           type: payload.type,
         },
-        { secret, expiresIn: '15m' },
+        { secret, expiresIn: this.accessExpiry() } as any,
       );
       return { accessToken: newAccessToken };
     } catch {
       throw AppError.unauthorized('الجلسة منتهية — سجل دخولك مرة أخرى', 'TOKEN_EXPIRED');
     }
+  }
+
+  /** مدة صلاحية access token — قابلة للتعديل من .env (JWT_ACCESS_EXPIRY) بدون تعديل الكود */
+  private accessExpiry(): string {
+    return this.config.get<string>('JWT_ACCESS_EXPIRY') || '8h';
+  }
+
+  /** مدة صلاحية refresh token — قابلة للتعديل من .env (JWT_REFRESH_EXPIRY) بدون تعديل الكود */
+  private refreshExpiry(): string {
+    return this.config.get<string>('JWT_REFRESH_EXPIRY') || '30d';
   }
 }

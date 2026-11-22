@@ -24,8 +24,13 @@ export class SettingsController {
     private readonly capabilities: TenantCapabilitiesService,
   ) {}
 
+  // مقصود إنها من غير @RequirePermission('settings.view') — الـ endpoint ده بيرجع
+  // بس أعلام true/false (فيه أكتر من مادة؟ فيه أكتر من مدرس؟) مش بيانات إعدادات حساسة،
+  // وبيتستخدم في شاشات كتير (تقارير الحصص، تقارير المالية، تقارير الطلاب) عشان يقرر
+  // يظهر فلتر المادة/المدرس ولا لأ. لو سبناه محتاج settings.view، أي حد مش أدمن
+  // (سكرتارية، مدرس) هيفشل يجيبه بصمت، والفلتر هيفضل مختفي حتى لو فعلاً فيه أكتر من
+  // مادة — بالظبط المشكلة اللي واجهها صاحب النظام.
   @Get('capabilities')
-  @RequirePermission('settings.view')
   async getCapabilities(@Request() req: any) {
     const data = await this.capabilities.getCapabilities(req.user.tenantId);
     return { success: true, data };
@@ -47,21 +52,9 @@ export class SettingsController {
     return { success: true, data };
   }
 
-  @Get('telegram')
-  @RequirePermission('settings.view')
-  async getTelegramSettings(@Request() req: any) {
-    const token = await this.moduleSettings.get(req.user.tenantId, 'telegram_bot_token');
-    return { success: true, data: { hasToken: !!token } };
-  }
-
-  @Put('telegram')
-  @RequirePermission('settings.edit')
-  async saveTelegramToken(@Request() req: any, @Body() body: any) {
-    if (body.token !== undefined) {
-      await this.moduleSettings.set(req.user.tenantId, 'telegram_bot_token', body.token);
-    }
-    return { success: true };
-  }
+  // GET/PUT /settings/telegram اتنقلوا لـ /telegram/settings (telegram.controller.ts)
+  // — حفظ التوكن محتاج يبدأ Long Polling فورًا، وده منطقي يعيش جوه موديول تيليجرام
+  // نفسه بدل ما نعمل تبعية دائرية بين SettingsModule و TelegramModule.
 
   @Get('card-designer')
   @RequirePermission('settings.view')

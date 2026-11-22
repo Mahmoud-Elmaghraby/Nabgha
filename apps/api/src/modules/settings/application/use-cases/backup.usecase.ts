@@ -65,11 +65,15 @@ export class BackupUseCase {
       await execFileAsync(
         pgDumpPath,
         ['-U', dbUser, '-h', dbHost, '-p', dbPort, '-d', dbName, '-F', 'c', '-f', dumpFilePath],
-        { env: { ...process.env, PGPASSWORD: dbPassword } },
+        { env: { ...process.env, PGPASSWORD: dbPassword }, maxBuffer: 10 * 1024 * 1024 },
       );
     } catch (err: any) {
-      this.logger.error(`pg_dump failed: ${err.message}`);
-      throw new AppError('BACKUP_FAILED', 'فشل أخذ نسخة قاعدة البيانات', 500);
+      // السبب الحقيقي بيجي في stderr (مثلاً: password authentication failed / invalid page / version mismatch)
+      const stderr = String(err?.stderr ?? '').trim();
+      const reason = (stderr || String(err?.message ?? '')).split('\n').filter(Boolean).slice(0, 3).join(' | ').slice(0, 300);
+      this.logger.error(`pg_dump failed (path=${pgDumpPath}, user=${dbUser}, host=${dbHost}:${dbPort}, db=${dbName}, code=${err?.code ?? ''}): ${reason}`);
+      fs.rmSync(dumpFilePath, { force: true });
+      throw new AppError('BACKUP_FAILED', `فشل أخذ نسخة قاعدة البيانات — السبب: ${reason}`, 500);
     }
 
     // 2) ضغط الـ dump + ملفات التخزين المحلية + manifest في zip واحد

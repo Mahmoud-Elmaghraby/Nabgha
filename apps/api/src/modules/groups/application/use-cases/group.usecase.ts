@@ -3,6 +3,7 @@ import { GroupRepository } from '../../infrastructure/group.repository';
 import { GroupEntity, GroupStudentEntity } from '../../domain/entities/group.entity';
 import { AppError } from '../../../../core/errors/app.error';
 import { SendNotificationUseCase } from '../../../whatsapp/application/use-cases/send-notification.usecase';
+import { TelegramNotifyUseCase } from '../../../telegram/application/use-cases/telegram-notify.usecase';
 import { KyselyService } from '../../../../shared/infrastructure/database/kysely.service';
 import { BrandingService } from '../../../settings/application/services/branding.service';
 import { FinanceUseCase } from '../../../finance/application/use-cases/finance.usecase';
@@ -16,6 +17,7 @@ export class GroupUseCase {
   constructor(
     private readonly repo: GroupRepository,
     private readonly sendNotification: SendNotificationUseCase,
+    private readonly telegramNotify: TelegramNotifyUseCase,
     private readonly kysely: KyselyService,
     private readonly branding: BrandingService,
     private readonly financeUseCase: FinanceUseCase,
@@ -169,6 +171,19 @@ export class GroupUseCase {
       },
     });
     this.logger.log('SendNotification result: ' + JSON.stringify(result));
+
+    this.telegramNotify.execute({
+      tenantId, entityType: 'student', entityId: studentId,
+      templateKey: 'GROUP_ADDED',
+      vars: {
+        student_name: student.full_name,
+        group_name: group.name,
+        days,
+        time,
+        center_name: branding.name,
+      },
+    }).catch((err) => this.logger.error('Telegram GROUP_ADDED failed: ' + err.message));
+
     return result;
   }
 
@@ -199,5 +214,15 @@ export class GroupUseCase {
         center_name: branding.name,
       },
     });
+
+    this.telegramNotify.execute({
+      tenantId, entityType: 'student', entityId: studentId,
+      templateKey: 'GROUP_REMOVED',
+      vars: {
+        student_name: student.full_name,
+        group_name: group.name,
+        center_name: branding.name,
+      },
+    }).catch((err) => this.logger.error('Telegram GROUP_REMOVED failed: ' + err.message));
   }
 }

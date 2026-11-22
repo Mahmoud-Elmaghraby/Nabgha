@@ -5,6 +5,7 @@ import { AppError } from '../../../../core/errors/app.error';
 import type { CreateStudentDto, UpdateStudentDto, ListStudentsDto } from '../dtos/student.dto';
 import { randomUUID } from 'crypto';
 import { SendNotificationUseCase } from '../../../whatsapp/application/use-cases/send-notification.usecase';
+import { TelegramNotifyUseCase } from '../../../telegram/application/use-cases/telegram-notify.usecase';
 import { BrandingService } from '../../../settings/application/services/branding.service';
 
 @Injectable()
@@ -14,6 +15,7 @@ export class StudentUseCase {
   constructor(
     private readonly repo: StudentRepository,
     private readonly sendNotification: SendNotificationUseCase,
+    private readonly telegramNotify: TelegramNotifyUseCase,
     private readonly branding: BrandingService,
   ) {}
 
@@ -127,5 +129,14 @@ export class StudentUseCase {
     });
 
     this.logger.log('NEW_STUDENT SendNotification result: ' + JSON.stringify(result));
+
+    this.telegramNotify.execute({
+      tenantId, entityType: 'student', entityId: student.id,
+      templateKey: 'NEW_STUDENT',
+      vars: {
+        student_name: student.fullName,
+        center_name: branding.name,
+      },
+    }).catch((err) => this.logger.error('Telegram NEW_STUDENT failed: ' + err.message));
   }
 }
