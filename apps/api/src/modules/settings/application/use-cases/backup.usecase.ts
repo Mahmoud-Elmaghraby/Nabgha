@@ -65,9 +65,18 @@ export class BackupUseCase {
       await execFileAsync(
         pgDumpPath,
         ['-U', dbUser, '-h', dbHost, '-p', dbPort, '-d', dbName, '-F', 'c', '-f', dumpFilePath],
-        { env: { ...process.env, PGPASSWORD: dbPassword }, maxBuffer: 10 * 1024 * 1024 },
+        {
+          env: { ...process.env, PGPASSWORD: dbPassword },
+          maxBuffer: 10 * 1024 * 1024,
+          windowsHide: true,
+          cwd: backupsDir,
+        },
       );
     } catch (err: any) {
+      // لو الملف نفسه مش قابل للتشغيل، نمسح المسار المحفوظ عشان المحاولة الجاية تدوّر على غيره
+      if (err?.code === 'UNKNOWN' || err?.code === 'ENOENT' || err?.code === 'EACCES') {
+        this.pgDumpLocator.resetCache();
+      }
       // السبب الحقيقي بيجي في stderr (مثلاً: password authentication failed / invalid page / version mismatch)
       const stderr = String(err?.stderr ?? '').trim();
       const reason = (stderr || String(err?.message ?? '')).split('\n').filter(Boolean).slice(0, 3).join(' | ').slice(0, 300);
