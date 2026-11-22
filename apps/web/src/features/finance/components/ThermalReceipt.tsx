@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '../../../shared/lib/api/client';
 
@@ -28,6 +28,12 @@ const PAYMENT_METHOD_AR: Record<string, string> = {
   vodafone: 'فودافون كاش', bank: 'تحويل بنكي', other: 'أخرى',
 };
 
+// طول صفحة ثابت للطباعة (مم) — بدل القياس التلقائي بالجافاسكريبت (كان بيعتمد
+// على توقيت رندر/تحميل خطوط مختلف من جهاز لجهاز، وده اللي كان بيسبب مشاكل
+// غير ثابتة). 150مم كافي جدًا لأي إيصال عادي (الإيصال الطبيعي حوالي 90-120مم)،
+// فبيضمن صفحة واحدة دايمًا على أي جهاز، بفارق بسيط من الورق الفاضي في الآخر.
+const FIXED_PAGE_HEIGHT_MM = 150;
+
 function useBrandingInfo(monthlyDueId?: string) {
   return useQuery({
     queryKey: ['branding-info', monthlyDueId ?? null],
@@ -49,6 +55,7 @@ function useBrandingInfo(monthlyDueId?: string) {
 
 export function ThermalReceipt({ receipt, onClose, autoPrint = false }: ThermalReceiptProps) {
   const { data: branding } = useBrandingInfo(receipt.monthlyDueId);
+  const printRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (autoPrint && branding) {
@@ -57,6 +64,7 @@ export function ThermalReceipt({ receipt, onClose, autoPrint = false }: ThermalR
   }, [autoPrint, branding]);
 
   const handlePrint = () => window.print();
+  const pageSizeValue = `${FIXED_PAGE_HEIGHT_MM}mm`;
 
   const d = new Date(receipt.paidAt);
   const date = `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
@@ -74,15 +82,20 @@ export function ThermalReceipt({ receipt, onClose, autoPrint = false }: ThermalR
           body * { visibility: hidden; }
           #thermal-receipt-print, #thermal-receipt-print * { visibility: visible; }
           #thermal-receipt-print {
-            position: absolute;
-            top: 0;
-            left: 0;
-            display: block !important;
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
           }
-          @page { size: 80mm auto; margin: 0; }
+          /* دفاع إضافي: حتى لو عناصر الصفحة المخفية (visibility:hidden) فضلت
+             شاغلة مساحتها، بنقفل ارتفاع جذر التطبيق فعليًا عشان الطول الكلي
+             المستخدم في حساب الصفحة يقرب من طول الإيصال بس مش طول الشاشة كلها. */
+          #root { height: 0 !important; overflow: hidden !important; }
+          @page { size: 80mm ${pageSizeValue}; margin: 0; }
         }
         #thermal-receipt-print {
-          display: none;
+          position: absolute;
+          top: -10000px;
+          left: -10000px;
           width: 76mm;
           font-family: 'Arial', sans-serif;
           font-size: 12px;
@@ -103,14 +116,13 @@ export function ThermalReceipt({ receipt, onClose, autoPrint = false }: ThermalR
         #thermal-receipt-print .value { font-weight: bold; }
         #thermal-receipt-print .amount-box { text-align: center; margin: 3mm 0; padding: 2mm 0; border-top: 2px solid #000; border-bottom: 2px solid #000; }
         #thermal-receipt-print .amount-num { font-size: 22px; font-weight: bold; }
-        #thermal-receipt-print .amount-label { font-size: 10px; margin-bottom: 1mm; }
         #thermal-receipt-print .receipt-num { font-size: 10px; text-align: center; color: #555; }
         #thermal-receipt-print .footer { text-align: center; font-size: 10px; margin-top: 2mm; }
         #thermal-receipt-print .footer-phone { font-size: 11px; font-weight: bold; }
       `}</style>
 
       {/* Printable Content */}
-      <div id="thermal-receipt-print">
+      <div id="thermal-receipt-print" ref={printRef}>
 
         {/* Header */}
         <div className="name">{centerName}</div>
@@ -118,7 +130,7 @@ export function ThermalReceipt({ receipt, onClose, autoPrint = false }: ThermalR
         <div className="line-double"/>
 
         {/* Receipt Info */}
-        
+
         <div className="row">
           <span className="label">التاريخ:</span>
           <span className="value">{date}</span>

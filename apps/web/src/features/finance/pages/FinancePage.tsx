@@ -1,5 +1,6 @@
 import { useFinanceStats, useTreasuries } from '../hooks/useFinance';
 import { FinanceLayout } from '../components/FinanceLayout';
+import { MaskedAmount } from '../components/MaskedAmount';
 import { useNavigate } from 'react-router-dom';
 
 const getCurrentMonth = () => new Date().toISOString().slice(0, 7);
@@ -23,16 +24,18 @@ export default function FinancePage() {
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-[#0E3B2E] rounded-2xl p-5 text-white col-span-2">
             <p className="text-sm text-white/70">إجمالي رصيد الخزائن</p>
-            <p className="text-3xl font-black mt-1">{totalBalance.toLocaleString('ar-EG')} <span className="text-base font-normal">جنيه</span></p>
+            <p className="text-3xl font-black mt-1">
+              <MaskedAmount maskWidth="lg">{totalBalance.toLocaleString('ar-EG')} <span className="text-base font-normal">جنيه</span></MaskedAmount>
+            </p>
           </div>
           <div className="bg-emerald-50 rounded-2xl p-4 border border-emerald-100">
             <p className="text-xs text-emerald-600 font-medium">محصّل الشهر</p>
-            <p className="text-2xl font-bold text-emerald-700 mt-1">{(stats?.totalCollected ?? 0).toLocaleString('ar-EG')}</p>
+            <p className="text-2xl font-bold text-emerald-700 mt-1"><MaskedAmount>{(stats?.totalCollected ?? 0).toLocaleString('ar-EG')}</MaskedAmount></p>
             <p className="text-xs text-emerald-500 mt-0.5">جنيه</p>
           </div>
           <div className="bg-red-50 rounded-2xl p-4 border border-red-100">
             <p className="text-xs text-red-600 font-medium">متبقي الشهر</p>
-            <p className="text-2xl font-bold text-red-700 mt-1">{(stats?.totalPending ?? 0).toLocaleString('ar-EG')}</p>
+            <p className="text-2xl font-bold text-red-700 mt-1"><MaskedAmount>{(stats?.totalPending ?? 0).toLocaleString('ar-EG')}</MaskedAmount></p>
             <p className="text-xs text-red-500 mt-0.5">جنيه</p>
           </div>
         </div>
@@ -43,7 +46,7 @@ export default function FinancePage() {
             <div className="flex justify-between items-center mb-2">
               <p className="text-sm font-medium text-gray-700">نسبة التحصيل</p>
               <p className="text-sm font-bold text-[#0E3B2E]">
-                {Math.round((stats.totalCollected / stats.totalDues) * 100)}%
+                <MaskedAmount maskWidth="sm">{Math.round((stats.totalCollected / stats.totalDues) * 100)}%</MaskedAmount>
               </p>
             </div>
             <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
@@ -61,12 +64,12 @@ export default function FinancePage() {
         <div className="bg-white rounded-2xl p-4 border border-gray-100">
           <div className="flex justify-between items-center">
             <p className="text-sm font-medium text-gray-700">مصروفات الشهر</p>
-            <p className="text-sm font-bold text-red-600">{(stats?.totalExpenses ?? 0).toLocaleString('ar-EG')} ج</p>
+            <p className="text-sm font-bold text-red-600"><MaskedAmount>{(stats?.totalExpenses ?? 0).toLocaleString('ar-EG')} ج</MaskedAmount></p>
           </div>
           <div className="flex justify-between mt-1">
             <p className="text-xs text-gray-400">صافي الربح</p>
             <p className="text-xs font-bold text-gray-700">
-              {((stats?.totalCollected ?? 0) - (stats?.totalExpenses ?? 0)).toLocaleString('ar-EG')} ج
+              <MaskedAmount>{((stats?.totalCollected ?? 0) - (stats?.totalExpenses ?? 0)).toLocaleString('ar-EG')} ج</MaskedAmount>
             </p>
           </div>
         </div>

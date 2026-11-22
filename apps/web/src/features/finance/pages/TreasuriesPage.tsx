@@ -6,6 +6,7 @@ import { useTreasuries, useTreasuryMutations } from '../hooks/useFinance';
 import { TREASURY_TYPE_LABELS } from '../types/finance.types';
 import { FinanceLayout } from '../components/FinanceLayout';
 import { TransferTreasuryModal } from '../components/TransferTreasuryModal';
+import { MaskedAmount } from '../components/MaskedAmount';
 import { usePermissions } from '@/shared/hooks/usePermissions';
 import type { Treasury, TreasuryType } from '../types/finance.types';
 
@@ -50,7 +51,9 @@ export default function TreasuriesPage() {
         {/* Total */}
         <div className="bg-[#0E3B2E] rounded-2xl p-5 text-white">
           <p className="text-sm text-white/70">إجمالي رصيد الخزائن</p>
-          <p className="text-3xl font-black mt-1">{totalBalance.toLocaleString('ar-EG')} <span className="text-base font-normal">جنيه</span></p>
+          <p className="text-3xl font-black mt-1">
+            <MaskedAmount maskWidth="lg">{totalBalance.toLocaleString('ar-EG')} <span className="text-base font-normal">جنيه</span></MaskedAmount>
+          </p>
           <p className="text-xs text-white/50 mt-2">{treasuries.length} خزينة نشطة</p>
         </div>
 
@@ -79,7 +82,7 @@ export default function TreasuriesPage() {
                   )}
                 </div>
                 <div className="mt-4 pt-4 border-t border-gray-50">
-                  <p className="text-2xl font-bold text-[#0E3B2E]">{t.balance.toLocaleString('ar-EG')}</p>
+                  <p className="text-2xl font-bold text-[#0E3B2E]"><MaskedAmount>{t.balance.toLocaleString('ar-EG')}</MaskedAmount></p>
                   <p className="text-xs text-gray-400">جنيه</p>
                 </div>
                 {!t.isActive && <span className="text-xs text-red-500 mt-2 block">غير نشطة</span>}

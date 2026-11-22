@@ -209,15 +209,21 @@ export class FinanceRepository implements IFinanceRepository {
     opts?: { trx?: Kysely<TenantDatabase>; forUpdate?: boolean },
   ): Promise<MonthlyDueEntity | null> {
     const db = opts?.trx ?? this.kysely.getTenantDb(tenantId);
+    if (opts?.forUpdate) {
+      const row = await db.selectFrom('monthly_dues')
+        .selectAll()
+        .where('id', '=', sql<string>`${id}::uuid`)
+        .forUpdate()
+        .executeTakeFirst();
+      return row ? this.toMonthlyDue(row) : null;
+    }
+
     let query = db.selectFrom('monthly_dues')
       .leftJoin('students', 'students.id', 'monthly_dues.student_id')
       .leftJoin('subject_grades', 'subject_grades.id', 'monthly_dues.subject_grade_id')
       .leftJoin('subjects', 'subjects.id', 'subject_grades.subject_id')
       .select(this.dueSelect())
       .where('monthly_dues.id', '=', sql<string>`${id}::uuid`);
-    // forUpdate(of) بيقفل monthly_dues بس (الجدول اللي بنعدله فعلياً) — من غير ما يحاول
-    // يقفل صفوف الـ LEFT JOIN (students/subjects) اللي مش محتاجين نقفلها
-    if (opts?.forUpdate) query = query.forUpdate('monthly_dues');
     const row = await query.executeTakeFirst();
     return row ? this.toMonthlyDue(row) : null;
   }
@@ -335,7 +341,10 @@ export class FinanceRepository implements IFinanceRepository {
 
     let countQuery = db.selectFrom('payments').select(db.fn.countAll<string>().as('count'));
     if (params.studentId) countQuery = countQuery.where('student_id', '=', sql<string>`${params.studentId}::uuid`);
+    if (params.treasuryId) countQuery = countQuery.where('treasury_id', '=', sql<string>`${params.treasuryId}::uuid`);
     if (params.status)    countQuery = countQuery.where('status', '=', params.status);
+    if (params.from)      countQuery = countQuery.where('paid_at', '>=', new Date(params.from) as any);
+    if (params.to)        countQuery = countQuery.where('paid_at', '<=', new Date(`${params.to}T23:59:59.999Z`) as any);
 
     const [rows, countResult] = await Promise.all([
       query.orderBy('payments.paid_at', 'desc').limit(params.limit).offset(offset).execute(),
@@ -557,6 +566,7 @@ export class FinanceRepository implements IFinanceRepository {
           db.fn.countAll<string>().as('dues_count'),
         ])
         .where('month', '=', month)
+        .where('status', '!=', 'cancelled' as any)
         .executeTakeFirst(),
       db.selectFrom('expenses')
         .select(db.fn.sum<string>('amount').as('total_expenses'))

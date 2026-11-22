@@ -1,4 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom';
+import { FinancePrivacyToggle } from './FinancePrivacyToggle';
 
 const FINANCE_NAV = [
   { path: '/finance', label: 'الرئيسية', icon: '📊', end: true },
@@ -13,9 +14,15 @@ export function FinanceLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-[#F7F7F7]" dir="rtl">
       {/* Header */}
-      <div className="bg-white border-b border-gray-100 px-4 sm:px-6 py-4">
-        <h1 className="text-xl font-bold text-gray-900">الإدارة المالية</h1>
-        <p className="text-sm text-gray-400 mt-0.5">متابعة الفواتير والمدفوعات والمصروفات</p>
+      <div className="bg-white border-b border-gray-100 px-4 sm:px-6 py-4 flex items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold text-gray-900">الإدارة المالية</h1>
+          <p className="text-sm text-gray-400 mt-0.5">متابعة الفواتير والمدفوعات والمصروفات</p>
+        </div>
+        {/* وضع الخصوصية — بيخفي الأرقام الإجمالية بس (رصيد خزينة/إحصائيات)،
+            مش أرقام العمليات الفردية. تفضيل بصري محفوظ على الجهاز ده بس، مش
+            صلاحية حقيقية — راجع finance-privacy.store.ts */}
+        <FinancePrivacyToggle />
       </div>
 
       {/* Sub Nav */}

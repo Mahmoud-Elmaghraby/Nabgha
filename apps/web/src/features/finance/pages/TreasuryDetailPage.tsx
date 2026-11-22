@@ -4,6 +4,8 @@ import { useTreasuryDetail, useTreasuries } from '../hooks/useFinance';
 import { usePermissions } from '@/shared/hooks/usePermissions';
 import { TREASURY_TYPE_LABELS, TRANSACTION_TYPE_LABELS } from '../types/finance.types';
 import { TransferTreasuryModal } from '../components/TransferTreasuryModal';
+import { MaskedAmount } from '../components/MaskedAmount';
+import { FinancePrivacyToggle } from '../components/FinancePrivacyToggle';
 
 export default function TreasuryDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -39,10 +41,11 @@ export default function TreasuryDetailPage() {
               <path d="M9 18l6-6-6-6" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </button>
-          <div>
+          <div className="flex-1">
             <h1 className="text-lg font-bold text-gray-900">{treasury.name}</h1>
             <p className="text-xs text-gray-400">{TREASURY_TYPE_LABELS[treasury.type]}</p>
           </div>
+          <FinancePrivacyToggle />
         </div>
       </div>
 
@@ -51,7 +54,9 @@ export default function TreasuryDetailPage() {
         {/* بطاقة الرصيد */}
         <div className="bg-[#0E3B2E] rounded-2xl p-5 text-white">
           <p className="text-sm text-white/70">الرصيد الحالي</p>
-          <p className="text-3xl font-black mt-1">{treasury.balance.toLocaleString('ar-EG')} <span className="text-base font-normal">جنيه</span></p>
+          <p className="text-3xl font-black mt-1">
+            <MaskedAmount maskWidth="lg">{treasury.balance.toLocaleString('ar-EG')} <span className="text-base font-normal">جنيه</span></MaskedAmount>
+          </p>
           {!treasury.isActive && <span className="text-xs text-red-300 mt-2 block">غير نشطة</span>}
           {canManage && (
             <button onClick={() => setShowTransfer(true)}
@@ -68,27 +73,27 @@ export default function TreasuryDetailPage() {
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
           <div className="bg-emerald-50 rounded-xl p-3 text-center border border-emerald-100">
             <p className="text-xs text-emerald-600 mb-1">إجمالي الإيرادات</p>
-            <p className="text-base font-bold text-emerald-700">{summary.totalIncome.toLocaleString('ar-EG')}</p>
+            <p className="text-base font-bold text-emerald-700"><MaskedAmount maskWidth="sm">{summary.totalIncome.toLocaleString('ar-EG')}</MaskedAmount></p>
           </div>
           <div className="bg-red-50 rounded-xl p-3 text-center border border-red-100">
             <p className="text-xs text-red-500 mb-1">إجمالي المصروفات</p>
-            <p className="text-base font-bold text-red-600">{summary.totalExpenses.toLocaleString('ar-EG')}</p>
+            <p className="text-base font-bold text-red-600"><MaskedAmount maskWidth="sm">{summary.totalExpenses.toLocaleString('ar-EG')}</MaskedAmount></p>
           </div>
           <div className="bg-blue-50 rounded-xl p-3 text-center border border-blue-100">
             <p className="text-xs text-blue-600 mb-1">تحويلات واردة</p>
-            <p className="text-base font-bold text-blue-700">{summary.totalTransfersIn.toLocaleString('ar-EG')}</p>
+            <p className="text-base font-bold text-blue-700"><MaskedAmount maskWidth="sm">{summary.totalTransfersIn.toLocaleString('ar-EG')}</MaskedAmount></p>
           </div>
           <div className="bg-purple-50 rounded-xl p-3 text-center border border-purple-100">
             <p className="text-xs text-purple-600 mb-1">تحويلات صادرة</p>
-            <p className="text-base font-bold text-purple-700">{summary.totalTransfersOut.toLocaleString('ar-EG')}</p>
+            <p className="text-base font-bold text-purple-700"><MaskedAmount maskWidth="sm">{summary.totalTransfersOut.toLocaleString('ar-EG')}</MaskedAmount></p>
           </div>
           <div className="bg-gray-50 rounded-xl p-3 text-center border border-gray-200">
             <p className="text-xs text-gray-500 mb-1">إيصالات ملغاة</p>
-            <p className="text-base font-bold text-gray-600">{summary.totalCancellations.toLocaleString('ar-EG')}</p>
+            <p className="text-base font-bold text-gray-600"><MaskedAmount maskWidth="sm">{summary.totalCancellations.toLocaleString('ar-EG')}</MaskedAmount></p>
           </div>
           <div className="bg-orange-50 rounded-xl p-3 text-center border border-orange-100">
             <p className="text-xs text-orange-600 mb-1">مبالغ مسترجعة</p>
-            <p className="text-base font-bold text-orange-700">{summary.totalRefunds.toLocaleString('ar-EG')}</p>
+            <p className="text-base font-bold text-orange-700"><MaskedAmount maskWidth="sm">{summary.totalRefunds.toLocaleString('ar-EG')}</MaskedAmount></p>
           </div>
         </div>
 
@@ -126,7 +131,7 @@ export default function TreasuryDetailPage() {
                         <p className={`text-sm font-bold ${isCredit ? 'text-emerald-700' : 'text-red-600'}`}>
                           {isCredit ? '+' : '−'}{tx.amount.toLocaleString('ar-EG')} ج
                         </p>
-                        <p className="text-xs text-gray-400">رصيد: {tx.balanceAfter.toLocaleString('ar-EG')}</p>
+                        <p className="text-xs text-gray-400">رصيد: <MaskedAmount maskWidth="sm">{tx.balanceAfter.toLocaleString('ar-EG')}</MaskedAmount></p>
                       </div>
                     </div>
                   );

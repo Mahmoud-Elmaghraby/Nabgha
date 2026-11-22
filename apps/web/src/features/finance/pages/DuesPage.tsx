@@ -5,6 +5,7 @@ import { useDebounce } from '@/shared/hooks/useDebounce';
 import { useDues, useDueMutations, useTreasuries, usePaymentMutations } from '../hooks/useFinance';
 import { DUE_STATUS_LABELS } from '../types/finance.types';
 import { FinanceLayout } from '../components/FinanceLayout';
+import { MaskedAmount } from '../components/MaskedAmount';
 import { usePermissions } from '@/shared/hooks/usePermissions';
 import { DataTable } from '@/shared/components/DataTable';
 import type { Column } from '@/shared/components/DataTable';
@@ -12,6 +13,11 @@ import { ActionsDropdown } from '@/shared/components/ActionsDropdown';
 import type { MonthlyDue, DueStatus } from '../types/finance.types';
 
 const getCurrentMonth = () => new Date().toISOString().slice(0, 7);
+// أول يوم في الشهر الحالي بصيغة YYYY-MM-DD — قيمة افتراضية لفلتر "من" (بدل مايفضل فاضي ويجيب كل السجلات القديمة)
+const getMonthStartDate = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+};
 const PAGE_SIZE = 30;
 
 export default function DuesPage() {
@@ -21,7 +27,7 @@ export default function DuesPage() {
   // فاضي = كل الشهور (مش بس الشهر الحالي)
   const [month, setMonth] = useState('');
   const [statusFilter, setStatusFilter] = useState<DueStatus | ''>('');
-  const [fromDate, setFromDate] = useState('');
+  const [fromDate, setFromDate] = useState(getMonthStartDate());
   const [toDate, setToDate] = useState('');
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 300);
@@ -63,7 +69,7 @@ export default function DuesPage() {
 
   const handlePay = (due: MonthlyDue) => {
     setSelectedDue(due);
-    const remaining = due.dueAmount - due.discountApplied - due.paidAmount;
+    const remaining = Math.max(0, due.dueAmount - due.discountApplied - due.paidAmount);
     setPayForm({ treasuryId: treasuries[0]?.id || '', amount: String(remaining), paymentMethod: 'cash', notes: '' });
     setShowPayModal(true);
   };
@@ -183,11 +189,11 @@ export default function DuesPage() {
             <p className="text-xs text-gray-400 mt-1">إجمالي</p>
           </div>
           <div className="bg-emerald-50 rounded-2xl p-4 border border-emerald-100 text-center">
-            <p className="text-xl font-bold text-emerald-600">{totalPaid.toLocaleString('ar-EG')}</p>
+            <p className="text-xl font-bold text-emerald-600"><MaskedAmount>{totalPaid.toLocaleString('ar-EG')}</MaskedAmount></p>
             <p className="text-xs text-emerald-500 mt-1">محصّل</p>
           </div>
           <div className="bg-red-50 rounded-2xl p-4 border border-red-100 text-center">
-            <p className="text-xl font-bold text-red-500">{(totalDues - totalPaid).toLocaleString('ar-EG')}</p>
+            <p className="text-xl font-bold text-red-500"><MaskedAmount>{(totalDues - totalPaid).toLocaleString('ar-EG')}</MaskedAmount></p>
             <p className="text-xs text-red-400 mt-1">متبقي</p>
           </div>
         </div>

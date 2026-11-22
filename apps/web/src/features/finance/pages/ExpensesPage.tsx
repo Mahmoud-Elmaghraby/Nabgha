@@ -4,6 +4,7 @@ import { useConfirm } from '@/shared/components/Confirm';
 import { useExpenses, useExpenseMutations, useTreasuries } from '../hooks/useFinance';
 import { EXPENSE_CATEGORY_LABELS } from '../types/finance.types';
 import { FinanceLayout } from '../components/FinanceLayout';
+import { MaskedAmount } from '../components/MaskedAmount';
 import { usePermissions } from '@/shared/hooks/usePermissions';
 import { DataTable } from '@/shared/components/DataTable';
 import type { Column } from '@/shared/components/DataTable';
@@ -113,7 +114,7 @@ export default function ExpensesPage() {
         {/* Header Stats */}
         <div className="bg-red-50 border border-red-100 rounded-2xl p-4 flex items-center justify-between">
           <p className="text-sm text-red-700 font-medium">إجمالي مصروفات الشهر</p>
-          <p className="text-xl font-bold text-red-700">{total.toLocaleString('ar-EG')} جنيه</p>
+          <p className="text-xl font-bold text-red-700"><MaskedAmount maskWidth="lg">{total.toLocaleString('ar-EG')} جنيه</MaskedAmount></p>
         </div>
 
         {/* By Category */}
@@ -128,7 +129,7 @@ export default function ExpensesPage() {
                   <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
                     <div className="h-full bg-red-400 rounded-full" style={{ width: `${Math.round((c.amount / total) * 100)}%` }} />
                   </div>
-                  <p className="text-xs font-bold text-gray-700 w-20 text-left">{c.amount.toLocaleString('ar-EG')} ج</p>
+                  <p className="text-xs font-bold text-gray-700 w-20 text-left"><MaskedAmount>{c.amount.toLocaleString('ar-EG')} ج</MaskedAmount></p>
                 </div>
               ))}
             </div>

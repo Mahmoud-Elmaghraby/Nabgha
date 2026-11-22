@@ -3,6 +3,7 @@ import { useToast } from '@/shared/components/Toast';
 import { usePayments, usePaymentMutations } from '../hooks/useFinance';
 import { PAYMENT_METHOD_LABELS, PAYMENT_STATUS_LABELS } from '../types/finance.types';
 import { FinanceLayout } from '../components/FinanceLayout';
+import { MaskedAmount } from '../components/MaskedAmount';
 import { ThermalReceipt } from '../components/ThermalReceipt';
 import { usePermissions } from '@/shared/hooks/usePermissions';
 import { DataTable } from '@/shared/components/DataTable';
@@ -10,13 +11,18 @@ import type { Column } from '@/shared/components/DataTable';
 import { ActionsDropdown } from '@/shared/components/ActionsDropdown';
 import type { Payment, PaymentStatus } from '../types/finance.types';
 
+// أول يوم في الشهر الحالي بصيغة YYYY-MM-DD — قيمة افتراضية لفلتر "من" (بدل مايفضل فاضي ويجيب كل السجلات القديمة)
+const getMonthStartDate = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+};
 const PAGE_SIZE = 30;
 
 export default function PaymentsPage() {
   const { hasPermission } = usePermissions();
   const canManage = hasPermission('finance.manage');
   const [statusFilter, setStatusFilter] = useState<PaymentStatus | ''>('');
-  const [fromDate, setFromDate] = useState('');
+  const [fromDate, setFromDate] = useState(getMonthStartDate());
   const [toDate, setToDate] = useState('');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -143,7 +149,7 @@ export default function PaymentsPage() {
         {/* Stats */}
         <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-4 flex items-center justify-between">
           <p className="text-sm text-emerald-700 font-medium">إجمالي المحصّل</p>
-          <p className="text-xl font-bold text-emerald-700">{totalAmount.toLocaleString('ar-EG')} جنيه</p>
+          <p className="text-xl font-bold text-emerald-700"><MaskedAmount maskWidth="lg">{totalAmount.toLocaleString('ar-EG')} جنيه</MaskedAmount></p>
         </div>
 
         {/* Search + Filter */}

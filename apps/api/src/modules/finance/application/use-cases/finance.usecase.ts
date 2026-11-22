@@ -6,6 +6,7 @@ import type { TenantDatabase } from '@nabgha/db';
 import { IFinanceRepository, FINANCE_REPOSITORY } from '../../domain/repositories/finance.repository.interface';
 import { AppError } from '../../../../core/errors/app.error';
 import { SendNotificationUseCase } from '../../../whatsapp/application/use-cases/send-notification.usecase';
+import { TelegramNotifyUseCase } from '../../../telegram/application/use-cases/telegram-notify.usecase';
 import { KyselyService } from "../../../../shared/infrastructure/database/kysely.service";
 import { PrismaService } from "../../../../shared/infrastructure/database/prisma.service";
 import type { PaymentEntity } from '../../domain/entities/finance.entity';
@@ -24,6 +25,7 @@ export class FinanceUseCase {
     @Inject(FINANCE_REPOSITORY)
     private readonly repo: IFinanceRepository,
     private readonly sendNotification: SendNotificationUseCase,
+    private readonly telegramNotify: TelegramNotifyUseCase,
     private readonly kysely: KyselyService,
     private readonly prisma: PrismaService,
   ) {}
@@ -295,6 +297,7 @@ export class FinanceUseCase {
     if (!treasury.isActive) throw new AppError('TREASURY_INACTIVE', 'الخزينة متوقفة — لا يمكن التحصيل فيها', 400);
     if (due.status === 'paid') throw new AppError('ALREADY_PAID', 'الفاتورة مدفوعة بالكامل', 400);
     if (due.status === 'waived') throw new AppError('INVALID_STATUS', 'الفاتورة معفاة', 400);
+    if (due.status === 'cancelled') throw new AppError('INVALID_STATUS', 'الفاتورة ملغاة — لا يمكن سدادها', 400);
     if (data.amount > due.remainingAmount) {
       throw new AppError('AMOUNT_EXCEEDED', `المبلغ يتجاوز المتبقي (${due.remainingAmount} جنيه)`, 400);
     }
@@ -548,8 +551,17 @@ export class FinanceUseCase {
     });
 
     // WhatsApp — بعد ما الـ transaction اتأكدت ونجحت بالكامل بس
+    // ⚠️ تصليح: التحصيل المتعدد (أكثر من مادة/فاتورة في عملية واحدة) كان بيبعت رسالة
+    // "تم استلام مبلغ" منفصلة لكل فاتورة — ولي الأمر بيستلم 2-3 رسائل لدفعة واحدة.
+    // دلوقتي رسالة واحدة لكل طالب بإجمالي المبلغ.
+    const totalsByStudent = new Map<string, { amount: number; receipt: number }>();
     for (const payment of results) {
-      this.sendPaymentConfirmNotification(tenantId, payment.studentId, payment.amount, payment.receiptNumber)
+      const cur = totalsByStudent.get(payment.studentId);
+      if (cur) cur.amount += Number(payment.amount);
+      else totalsByStudent.set(payment.studentId, { amount: Number(payment.amount), receipt: payment.receiptNumber });
+    }
+    for (const [studentId, t] of totalsByStudent) {
+      this.sendPaymentConfirmNotification(tenantId, studentId, t.amount, t.receipt)
         .catch(err => this.logger.error('PAYMENT_CONFIRM WA failed: ' + err.message));
     }
 
@@ -606,7 +618,249 @@ export class FinanceUseCase {
       },
     });
 
+    // تليجرام — نداء إضافي مستقل، من غير أي تعديل على نداء الواتساب اللي فوق
+    this.telegramNotify.execute({
+      tenantId, entityType: 'student', entityId: studentId,
+      templateKey: 'PAYMENT_CONFIRM',
+      vars: {
+        student_name: (studentRow as any).full_name,
+        amount: amount.toString(),
+        date: today,
+        center_name: (centerSettings as any)?.center_name || 'المركز',
+      },
+    }).catch((err) => this.logger.error('Telegram PAYMENT_CONFIRM failed: ' + err.message));
+
     this.logger.log(`PAYMENT_CONFIRM result for student ${studentId}: ${JSON.stringify(result)}`);
+  }
+
+  /**
+   * منع تكرار نفس الإشعار: بيشوف لو رسالة من نفس النوع اتبعتت (أو اتحطّت في الانتظار)
+   * لنفس ولي الأمر/الطالب خلال آخر N ساعة — على الواتساب أو التليجرام.
+   */
+  private async alreadyNotified(
+    db: Kysely<TenantDatabase>,
+    phone: string,
+    studentId: string,
+    studentName: string,
+    templateKey: string,
+    withinHours: number,
+  ): Promise<boolean> {
+    try {
+      const since = new Date(Date.now() - withinHours * 3600 * 1000);
+      const wa = await db
+        .selectFrom('wa_messages_log' as any)
+        .select('id' as any)
+        .where('phone' as any, '=', phone)
+        .where('template_key' as any, '=', templateKey)
+        .where('body' as any, 'like', `%${studentName}%`)
+        .where('created_at' as any, '>=', since)
+        .limit(1)
+        .executeTakeFirst();
+      if (wa) return true;
+      const tg = await db
+        .selectFrom('telegram_messages' as any)
+        .select('id' as any)
+        .where('entity_id' as any, '=', studentId)
+        .where('template_key' as any, '=', templateKey)
+        .where('created_at' as any, '>=', since)
+        .limit(1)
+        .executeTakeFirst();
+      return !!tg;
+    } catch (err: any) {
+      this.logger.warn(`alreadyNotified check failed: ${err.message}`);
+      return false;
+    }
+  }
+
+  // ─── Cron: Payment Due Reminders ──────────────────────────
+  /**
+   * يعمل كل يوم الساعة 10 صباحاً (Cairo time = 8 UTC).
+   * يبحث عن الفواتير:
+   *   - المستحقة خلال 7 أيام → PAYMENT_DUE (days=7)
+   *   - المستحقة خلال يوم    → PAYMENT_DUE (days=1)
+   *   - المتأخرة أكثر من 3 أيام → PAYMENT_OVERDUE
+   * يبعت واتساب فقط لو الإعداد المقابل مفعّل في wa_settings.
+   */
+  @Cron('0 8 * * *') // 10 صباحاً Cairo = 8 UTC
+  async sendPaymentReminders(): Promise<void> {
+    this.logger.log('🔔 Starting payment due reminders...');
+    try {
+      const tenants = await this.prisma.tenant.findMany({ where: { isActive: true } });
+
+      for (const tenant of tenants) {
+        try {
+          await this.sendPaymentRemindersForTenant(tenant.id);
+        } catch (err: any) {
+          this.logger.error(`Payment reminders failed for tenant ${tenant.id}: ${err.message}`);
+        }
+      }
+    } catch (err: any) {
+      this.logger.error(`sendPaymentReminders cron failed: ${err.message}`);
+    }
+  }
+
+  private async sendPaymentRemindersForTenant(tenantId: string): Promise<void> {
+    const db = this.kysely.getTenantDb(tenantId);
+
+    // جلب إعدادات المركز
+    const centerSettings = await db
+      .selectFrom('center_settings')
+      .select(['center_name'])
+      .executeTakeFirst();
+    const centerName = (centerSettings as any)?.center_name || 'المركز';
+
+    // ── تذكير 7 أيام ─────────────────────────────────────────
+    // ⚠️ تصليح (Oct 2026): كان بيجيب كل فواتير الشهر اللي بيقع فيه (النهارده + 7 أيام)
+    // وبيبعت "باقي 7 أيام" **كل يوم** لكل ولي أمر عليه فاتورة — تكرار يومي لنفس الرسالة.
+    // موعد استحقاق فاتورة الشهر = أول يوم فيه، فالتذكير بيتبعت مرة واحدة بس: لما يكون
+    // (النهارده + 7) أو (النهارده + 1) هو يوم 1 من الشهر ده بالظبط.
+    const monthKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const sevenDaysFromNow = new Date();
+    sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
+    const sevenDaysStr = monthKey(sevenDaysFromNow);
+    const isDue7Today = sevenDaysFromNow.getDate() === 1;
+
+    const dues7d = !isDue7Today ? [] : await db
+      .selectFrom('monthly_dues as d')
+      .innerJoin('students as s', 's.id', 'd.student_id')
+      .select(['d.id', 'd.student_id', 'd.due_amount', 'd.paid_amount', 'd.discount_applied', 'd.month',
+               's.full_name as student_name', 's.parent_phone'])
+      .where('d.status', 'in', ['unpaid', 'partial'])
+      .where('d.month', '=', sevenDaysStr)
+      .where('s.parent_phone', 'is not', null)
+      .where('s.deleted_at', 'is', null)
+      .where('s.is_active', '=', true)
+      .execute();
+
+    for (const due of dues7d) {
+      const remaining = Math.max(0, Number(due.due_amount) - Number(due.discount_applied ?? 0) - Number(due.paid_amount));
+      if (remaining <= 0) continue;
+      if (await this.alreadyNotified(db, (due as any).parent_phone, due.student_id as string, (due as any).student_name, 'PAYMENT_DUE', 20)) continue;
+      await this.sendNotification.execute({
+        tenantId,
+        phone: (due as any).parent_phone,
+        templateKey: 'PAYMENT_DUE',
+        vars: {
+          student_name: (due as any).student_name,
+          amount: remaining.toString(),
+          days: '7',
+          center_name: centerName,
+        },
+      }).catch((err) => this.logger.warn(`PAYMENT_DUE 7d failed for ${due.student_id}: ${err.message}`));
+      this.telegramNotify.execute({
+        tenantId, entityType: 'student', entityId: due.student_id as string,
+        templateKey: 'PAYMENT_DUE',
+        vars: {
+          student_name: (due as any).student_name,
+          amount: remaining.toString(),
+          days: '7',
+          center_name: centerName,
+        },
+      }).catch((err) => this.logger.error(`Telegram PAYMENT_DUE 7d failed for ${due.student_id}: ${err.message}`));
+    }
+
+    // ── تذكير يوم واحد ───────────────────────────────────────
+    const oneDayFromNow = new Date();
+    oneDayFromNow.setDate(oneDayFromNow.getDate() + 1);
+    const oneDayStr = monthKey(oneDayFromNow);
+
+    if (oneDayFromNow.getDate() === 1) {
+      const dues1d = await db
+        .selectFrom('monthly_dues as d')
+        .innerJoin('students as s', 's.id', 'd.student_id')
+        .select(['d.id', 'd.student_id', 'd.due_amount', 'd.paid_amount', 'd.discount_applied', 'd.month',
+                 's.full_name as student_name', 's.parent_phone'])
+        .where('d.status', 'in', ['unpaid', 'partial'])
+        .where('d.month', '=', oneDayStr)
+        .where('s.parent_phone', 'is not', null)
+      .where('s.deleted_at', 'is', null)
+      .where('s.is_active', '=', true)
+        .execute();
+
+      for (const due of dues1d) {
+        const remaining = Math.max(0, Number(due.due_amount) - Number(due.discount_applied ?? 0) - Number(due.paid_amount));
+        if (remaining <= 0) continue;
+        if (await this.alreadyNotified(db, (due as any).parent_phone, due.student_id as string, (due as any).student_name, 'PAYMENT_DUE', 20)) continue;
+        await this.sendNotification.execute({
+          tenantId,
+          phone: (due as any).parent_phone,
+          templateKey: 'PAYMENT_DUE',
+          vars: {
+            student_name: (due as any).student_name,
+            amount: remaining.toString(),
+            days: '1',
+            center_name: centerName,
+          },
+        }).catch((err) => this.logger.warn(`PAYMENT_DUE 1d failed for ${due.student_id}: ${err.message}`));
+        this.telegramNotify.execute({
+          tenantId, entityType: 'student', entityId: due.student_id as string,
+          templateKey: 'PAYMENT_DUE',
+          vars: {
+            student_name: (due as any).student_name,
+            amount: remaining.toString(),
+            days: '1',
+            center_name: centerName,
+          },
+        }).catch((err) => this.logger.error(`Telegram PAYMENT_DUE 1d failed for ${due.student_id}: ${err.message}`));
+      }
+    }
+
+    // ── متأخرة (overdue) ──────────────────────────────────────
+    const now = new Date();
+    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    // الفواتير المتأخرة = الشهور الماضية + الشهر الحالي لو تجاوزنا اليوم 5
+    const overdueMonths: string[] = [];
+    for (let i = 1; i <= 3; i++) {
+      const d = new Date(now);
+      d.setMonth(d.getMonth() - i);
+      overdueMonths.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+    }
+
+    const overdues = await db
+      .selectFrom('monthly_dues as d')
+      .innerJoin('students as s', 's.id', 'd.student_id')
+      .select(['d.id', 'd.student_id', 'd.due_amount', 'd.paid_amount', 'd.discount_applied', 'd.month',
+               's.full_name as student_name', 's.parent_phone'])
+      .where('d.status', 'in', ['unpaid', 'partial'])
+      .where('d.month', 'in', overdueMonths)
+      .where('s.parent_phone', 'is not', null)
+      .where('s.deleted_at', 'is', null)
+      .where('s.is_active', '=', true)
+      .execute();
+
+    for (const due of overdues) {
+      const remaining = Math.max(0, Number(due.due_amount) - Number(due.discount_applied ?? 0) - Number(due.paid_amount));
+      if (remaining <= 0) continue;
+      // ⚠️ تصليح: كان بيتبعت كل يوم لكل فاتورة متأخرة — دلوقتي مرة كل 7 أيام بس لكل طالب
+      if (await this.alreadyNotified(db, (due as any).parent_phone, due.student_id as string, (due as any).student_name, 'PAYMENT_OVERDUE', 24 * 7)) continue;
+      const dueMonth = new Date((due as any).month + '-01');
+      const daysOverdue = Math.floor((now.getTime() - dueMonth.getTime()) / (1000 * 60 * 60 * 24));
+      await this.sendNotification.execute({
+        tenantId,
+        phone: (due as any).parent_phone,
+        templateKey: 'PAYMENT_OVERDUE',
+        vars: {
+          student_name: (due as any).student_name,
+          amount: remaining.toString(),
+          days: daysOverdue.toString(),
+          center_name: centerName,
+        },
+      }).catch((err) => this.logger.warn(`PAYMENT_OVERDUE failed for ${due.student_id}: ${err.message}`));
+      this.telegramNotify.execute({
+        tenantId, entityType: 'student', entityId: due.student_id as string,
+        templateKey: 'PAYMENT_OVERDUE',
+        vars: {
+          student_name: (due as any).student_name,
+          amount: remaining.toString(),
+          days: daysOverdue.toString(),
+          center_name: centerName,
+        },
+      }).catch((err) => this.logger.error(`Telegram PAYMENT_OVERDUE failed for ${due.student_id}: ${err.message}`));
+    }
+
+    this.logger.log(
+      `Payment reminders done for tenant ${tenantId} — 7d: ${dues7d.length}, overdue: ${overdues.length}`,
+    );
   }
 
   // ─── Cron: Auto Generate Dues ─────────────────────────────
