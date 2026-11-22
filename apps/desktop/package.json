@@ -47,7 +47,11 @@
       },
       {
         "from": "../api/node_modules_real/node_modules",
-        "to": "api/node_modules"
+        "to": "api/node_modules",
+        "filter": [
+          "**/*",
+          "!puppeteer/.local-chromium/chrome/**"
+        ]
       },
       {
         "from": "../../packages/types",

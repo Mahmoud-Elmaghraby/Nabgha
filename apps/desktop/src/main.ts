@@ -63,14 +63,30 @@ function findNodePath(): string {
   throw new Error('لم يتم العثور على Node.js على هذا الجهاز — تثبيت نبغة غير مكتمل');
 }
 
+// كروت الشبكة الافتراضية (VPN, VMware, VirtualBox, Docker/WSL, Hyper-V) بتاخد IP
+// خاص بيها من غير أي وصول حقيقي للشبكة اللي باقي الأجهزة عليها — الكود القديم كان
+// بياخد أول كارت IPv4 غير داخلي يلاقيه من غير أي فلترة، فلو الجهاز فيه كارت افتراضي
+// كان ممكن يطلع IP مش قابل للوصول خالص من موبايل/تابلت على نفس الشبكة (نفس المنطق
+// المستخدم في apps/api/src/core/health/health.controller.ts).
+const VIRTUAL_ADAPTER_PATTERN = /virtualbox|vmware|vmnet|hyper-v|virtual|docker|wsl|npcap|tap-?windows|\btun\b|\bppp\b|bluetooth|isatap|loopback|vethernet/i;
+const PHYSICAL_ADAPTER_HINT = /wi-?fi|wireless|ethernet|local area connection|lan\b/i;
+
 function getLanIP(): string {
   const interfaces = os.networkInterfaces();
+  const candidates: { name: string; address: string }[] = [];
   for (const name of Object.keys(interfaces)) {
     for (const iface of interfaces[name] || []) {
-      if (iface.family === 'IPv4' && !iface.internal) return iface.address;
+      if (iface.family === 'IPv4' && !iface.internal) {
+        candidates.push({ name, address: iface.address });
+      }
     }
   }
-  return 'localhost';
+  if (candidates.length === 0) return 'localhost';
+
+  const real = candidates.filter((c) => !VIRTUAL_ADAPTER_PATTERN.test(c.name));
+  const pool = real.length > 0 ? real : candidates;
+  const preferred = pool.find((c) => PHYSICAL_ADAPTER_HINT.test(c.name));
+  return (preferred ?? pool[0]).address;
 }
 
 function waitForAPI(retries = 60): Promise<void> {

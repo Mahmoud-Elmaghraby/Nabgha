@@ -92,6 +92,17 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     ],
   },
   {
+    group: 'exams',
+    groupLabel: 'بنك الأسئلة والامتحانات',
+    permissions: [
+      { key: 'exams.view',   label: 'عرض الأسئلة والامتحانات' },
+      { key: 'exams.create', label: 'إنشاء أسئلة وامتحانات' },
+      { key: 'exams.edit',   label: 'تعديل الأسئلة والامتحانات' },
+      { key: 'exams.delete', label: 'حذف الأسئلة والامتحانات' },
+      { key: 'exams.export', label: 'تصدير امتحانات PDF' },
+    ],
+  },
+  {
     group: 'settings',
     groupLabel: 'الإعدادات',
     permissions: [
@@ -116,7 +127,7 @@ export function getPermissionLabel(key: string): string {
 // ===== الصلاحيات الافتراضية لكل دور =====
 export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, string[]> = {
   tenant_admin: ['*'],
-  teacher: ['students.view', 'groups.view', 'sessions.view', 'sessions.attendance', 'reports.view', 'teachers.view'],
+  teacher: ['students.view', 'groups.view', 'sessions.view', 'sessions.attendance', 'reports.view', 'teachers.view', 'exams.view', 'exams.create', 'exams.edit', 'exams.delete', 'exams.export'],
   secretary: ['students.view', 'students.create', 'students.edit', 'sessions.view', 'sessions.create', 'sessions.edit', 'sessions.attendance', 'finance.view', 'finance.collect', 'teachers.view', 'groups.view'],
   parent: ['students.view'],
 };

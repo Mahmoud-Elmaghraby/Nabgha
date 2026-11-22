@@ -24,6 +24,7 @@ import { TelegramModule } from './modules/telegram/telegram.module';
 import { PlatformModule } from './modules/platform/platform.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { ParentPortalModule } from './modules/parent-portal/parent-portal.module';
+import { ExamsModule }        from './modules/exams/exam.module';
 
 @Module({
   imports: [
@@ -59,6 +60,7 @@ import { ParentPortalModule } from './modules/parent-portal/parent-portal.module
     PlatformModule,
     ReportsModule,
     ParentPortalModule,
+    ExamsModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: ZodValidationFilter },

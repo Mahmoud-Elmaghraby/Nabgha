@@ -5,4 +5,4 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('print-labels', options),
   getPrinters: () =>
     ipcRenderer.invoke('get-printers'),
-});
+});
