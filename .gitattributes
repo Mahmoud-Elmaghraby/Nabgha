@@ -1,0 +1,10 @@
+# توحيد نهايات الأسطر: LF جوه git، والـ checkout على ويندوز يحوّلها CRLF تلقائي
+* text=auto
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.nsi text eol=crlf
+*.png binary
+*.jpg binary
+*.ico binary
+*.exe binary
+*.pem binary
