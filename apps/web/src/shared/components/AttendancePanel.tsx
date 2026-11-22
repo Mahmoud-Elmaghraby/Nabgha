@@ -19,7 +19,9 @@ function SessionBlock({ session }: { session: Session }) {
   const scanRef = useRef<HTMLInputElement>(null);
 
   const { data: attendance = [] } = useSessionAttendance(session.id);
-  const { updateOne, scanQr } = useAttendanceMutations(session.id);
+  const { updateOne, scanQr, addExternal } = useAttendanceMutations(session.id);
+  const scanTimerRef = useRef<number | undefined>(undefined);
+  const lastScanRef  = useRef<{ code: string; at: number } | null>(null);
   const { data: previousAbsent = [] } = usePreviousAbsent(session.id);
   const { data: unpaidStudents = [] } = useUnpaidStudents(session.id);
 
@@ -42,18 +44,48 @@ function SessionBlock({ session }: { session: Session }) {
   };
 
   const handleScan = async (qrCode: string) => {
+    window.clearTimeout(scanTimerRef.current);
     if (!qrCode.trim()) return;
     const normalised = normaliseScannerInput(qrCode.trim());
     let code = normalised;
     try { const p = JSON.parse(code); if (p.code) code = p.code; } catch {}
+    // السكانر بيبعت Enter + كان فيه تايمر بيبعت نفس الكود تاني — نتجاهل التكرار خلال ثانيتين
+    const now = Date.now();
+    if (lastScanRef.current && lastScanRef.current.code === code && now - lastScanRef.current.at < 2000) {
+      setScanInput('');
+      return;
+    }
+    lastScanRef.current = { code, at: now };
+    setScanInput('');
     try {
       const record = await scanQr.mutateAsync(code);
-      showCheckInResult(record.studentName, record.studentId);
+      if (record.alreadyMarked) {
+        setScanMsg({ text: `ℹ️ ${record.studentName} — متسجّل ${record.status === 'late' ? 'متأخر' : 'حاضر'} قبل كده`, level: 'success' });
+        setTimeout(() => setScanMsg(null), 2500);
+      } else {
+        showCheckInResult(record.studentName, record.studentId);
+      }
     } catch (err: any) {
+      // الطالب مش من مجموعة الحصة دي — نسجّله "بديل" زي شاشة الحضور بالظبط
+      if (err?.response?.data?.error?.code === 'NOT_FOUND') {
+        try {
+          const result = await addExternal.mutateAsync({ studentCode: code });
+          showCheckInResult(`${result.attendance.studentName} (بديل)`, result.attendance.studentId);
+          scanRef.current?.focus();
+          return;
+        } catch (extErr: any) {
+          const m = extErr?.response?.data?.error?.message;
+          if (m) {
+            setScanMsg({ text: '❌ ' + m, level: 'error' });
+            setTimeout(() => setScanMsg(null), 3000);
+            scanRef.current?.focus();
+            return;
+          }
+        }
+      }
       setScanMsg({ text: '❌ ' + (err?.response?.data?.error?.message || 'غير موجود'), level: 'error' });
       setTimeout(() => setScanMsg(null), 2500);
     }
-    setScanInput('');
     scanRef.current?.focus();
   };
 
@@ -115,11 +147,11 @@ function SessionBlock({ session }: { session: Session }) {
                 <input ref={scanRef} type="text" value={scanInput}
                   onChange={e => {
                     setScanInput(e.target.value);
+                    // سكانرات مش بتبعت Enter في الآخر — لو الكتابة وقفت نبعت لوحدنا
+                    window.clearTimeout(scanTimerRef.current);
                     if (e.target.value.length > 3) {
-                      clearTimeout((window as any)['_scan_' + session.id]);
-                      (window as any)['_scan_' + session.id] = setTimeout(() => {
-                        handleScan(e.target.value);
-                      }, 150);
+                      const v = e.target.value;
+                      scanTimerRef.current = window.setTimeout(() => handleScan(v), 400);
                     }
                   }}
                   onKeyDown={e => e.key === 'Enter' && handleScan(scanInput)}

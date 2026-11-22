@@ -40,6 +40,8 @@ export interface AttendanceRecord {
   parentPhone: string;
   /** طالب من مجموعة تانية حضر هنا كبديل */
   isExternal?: boolean;
+  /** راجعة من السكان: الطالب كان متسجّل حاضر/متأخر قبل كده (ماتغيّرش حاجة) */
+  alreadyMarked?: boolean;
 }
 
 export interface Session {

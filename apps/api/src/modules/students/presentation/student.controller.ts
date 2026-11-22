@@ -106,12 +106,9 @@ export class StudentController {
   async getQr(@Request() req: any, @Param('id') id: string, @Res() res: Response) {
     const student = await this.useCase.getById(req.user.tenantId, id);
     const QRCode = await import('qrcode');
-    const qrData = JSON.stringify({
-      code: student.studentCode,
-      name: student.fullName,
-      id: student.id,
-    });
-    const svg = await QRCode.toString(qrData, { type: 'svg', width: 200 });
+    // نفس محتوى الليبلات والكروت: كود الطالب بس (نص عادي). الشكل القديم (JSON فيه أقواس)
+    // كان بيبوظ مع السكانر لما الكيبورد عربي. الكروت القديمة لسه شغالة لأن السكان بيقبل الشكلين.
+    const svg = await QRCode.toString(student.studentCode ?? student.qrCode, { type: 'svg', width: 200, margin: 1 });
     res.setHeader('Content-Type', 'image/svg+xml');
     res.send(svg);
   }

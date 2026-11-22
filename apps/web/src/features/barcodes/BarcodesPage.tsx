@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/shared/lib/api/client';
-import { generateLabelsPDF, generateCardsPDF } from '@/shared/services/pdf/pdf.service';
+import { generateLabelsPDF, generateCardsPDF, A4_LABEL_TEMPLATES, type A4LabelTemplateKey } from '@/shared/services/pdf/pdf.service';
 import { useToast } from '@/shared/components/Toast';
 import { LabelsPreviewModal } from './LabelsPreviewModal';
 import { useGroups } from '@/features/groups/hooks/useGroups';
@@ -51,6 +51,13 @@ export default function BarcodesPage() {
   const [printMode, setPrintMode] = useState<PrintMode>('label-pdf');
   const [loading, setLoading] = useState(false);
   const [showLabelsPreview, setShowLabelsPreview] = useState(false);
+  const [sheetKey, setSheetKey] = useState<A4LabelTemplateKey>(() => {
+    try { return (localStorage.getItem('nabgha-a4-label-sheet') as A4LabelTemplateKey) || '3x4'; } catch { return '3x4'; }
+  });
+  const pickSheet = (k: A4LabelTemplateKey) => {
+    setSheetKey(k);
+    try { localStorage.setItem('nabgha-a4-label-sheet', k); } catch { /* ignore */ }
+  };
 
   const { data: groupsData } = useGroups({ limit: 1000 });
   const groups = groupsData?.data || [];
@@ -68,26 +75,41 @@ export default function BarcodesPage() {
 
   const centerName = centerSettings?.centerName || 'نبغة';
 
+  // كل طالب بيتعلّم بالمجموعات اللي جه منها — لو مجموعة اتشالت والطالب في مجموعة تانية
+  // متختارة يفضل موجود (قبل كده كان بيتشال)، والطالب اللي اتضاف بالبحث مابيتشالش أبداً
   const toggleGroup = async (groupId: string) => {
     if (selectedGroups.includes(groupId)) {
       setSelectedGroups(prev => prev.filter(g => g !== groupId));
-      setSelectedStudents(prev => prev.filter(s => !(s as any).fromGroup?.includes(groupId)));
+      setSelectedStudents(prev => prev.flatMap((s: any) => {
+        if (!s.fromGroup?.includes(groupId)) return [s];
+        const rest = s.fromGroup.filter((g: string) => g !== groupId);
+        return rest.length > 0 || s.manual ? [{ ...s, fromGroup: rest }] : [];
+      }));
     } else {
       setSelectedGroups(prev => [...prev, groupId]);
       try {
         const res = await apiClient.get(`/groups/${groupId}/students`);
-        const students = (res.data.data ?? []).map((s: any) => ({
-          id: s.studentId || s.id,
-          studentCode: s.studentCode,
-          fullName: s.studentName || s.fullName,
-          grade: s.grade,
-          fromGroup: [groupId],
-        }));
+        const students = (res.data.data ?? [])
+          .filter((s: any) => s.isActive !== false) // الموقوفين مالهمش كارت
+          .map((s: any) => ({
+            id: s.studentId || s.id,
+            studentCode: s.studentCode,
+            fullName: s.studentName || s.fullName,
+            grade: s.grade,
+            fromGroup: [groupId],
+          }));
         setSelectedStudents(prev => {
-          const existingIds = new Set(prev.map(s => s.id));
-          return [...prev, ...students.filter((s: StudentQRData) => !existingIds.has(s.id))];
+          const byId = new Map(prev.map((s: any) => [s.id, s]));
+          const merged = prev.map((s: any) => {
+            const hit = students.find((x: any) => x.id === s.id);
+            return hit ? { ...s, fromGroup: [...(s.fromGroup ?? []), groupId] } : s;
+          });
+          return [...merged, ...students.filter((s: StudentQRData) => !byId.has(s.id))];
         });
-      } catch {}
+      } catch {
+        toast.error('تعذّر تحميل طلاب المجموعة');
+        setSelectedGroups(prev => prev.filter(g => g !== groupId));
+      }
     }
   };
 
@@ -98,7 +120,10 @@ export default function BarcodesPage() {
         studentCode: student.studentCode,
         fullName: student.fullName,
         grade: student.grade,
-      }]);
+        manual: true,
+      } as StudentQRData]);
+    } else {
+      setSelectedStudents(prev => prev.map((s: any) => (s.id === student.id ? { ...s, manual: true } : s)));
     }
     setSearchQ('');
   };
@@ -116,7 +141,13 @@ export default function BarcodesPage() {
     setLoading(true);
     try {
       if (printMode === 'label-pdf') {
-        await generateLabelsPDF(selectedStudents, { centerName });
+        const sheet = A4_LABEL_TEMPLATES.find(t => t.key === sheetKey) ?? A4_LABEL_TEMPLATES[0];
+        await generateLabelsPDF(selectedStudents, {
+          centerName,
+          cols: sheet.cols, rows: sheet.rows,
+          marginXmm: sheet.marginXmm, marginYmm: sheet.marginYmm,
+          gapXmm: sheet.gapXmm, gapYmm: sheet.gapYmm,
+        });
       } else if (printMode === 'card-pdf') {
         if (!cardSettings?.frontImage) {
           toast.error('لم يتم إعداد صورة الكارت — اذهب للإعدادات → إعداد الكارت');
@@ -167,7 +198,7 @@ export default function BarcodesPage() {
           <p className="text-sm font-bold text-gray-700 mb-3">طريقة الطباعة</p>
           <div className="grid grid-cols-3 gap-2">
             {[
-              { key: 'label-pdf', icon: '📄', label: 'ليبل PDF', desc: 'A4 شبكة 3×4' },
+              { key: 'label-pdf', icon: '📄', label: 'ليبل PDF', desc: 'ورق A4' },
               { key: 'label-print', icon: '🖨️', label: 'طباعة مباشرة', desc: 'Label Printer' },
               { key: 'card-pdf', icon: '🪪', label: 'كارت PDF', desc: 'إعدادات الكارت' },
             ].map(m => (
@@ -181,6 +212,16 @@ export default function BarcodesPage() {
               </button>
             ))}
           </div>
+          {printMode === 'label-pdf' && (
+            <div className="mt-3">
+              <label className="text-xs text-gray-500 mb-1.5 block">نوع ورق الاستيكر (A4)</label>
+              <select value={sheetKey} onChange={e => pickSheet(e.target.value as A4LabelTemplateKey)}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0E3B2E]/20">
+                {A4_LABEL_TEMPLATES.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
+              </select>
+              <p className="text-[11px] text-gray-400 mt-1">اطبع من الـ PDF بمقاس "الحجم الفعلي / 100%" مش "ملاءمة الصفحة"</p>
+            </div>
+          )}
           {printMode === 'card-pdf' && cardSettings?.frontImage && (
             <div className="mt-3 flex items-center gap-2 text-xs text-emerald-600 bg-emerald-50 rounded-xl p-2">
               <span>✅</span>

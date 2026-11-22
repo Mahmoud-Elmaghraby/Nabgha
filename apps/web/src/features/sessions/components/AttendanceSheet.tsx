@@ -22,10 +22,13 @@ import {
 import type { AttendanceAlertMessage, AttendanceWarnings } from '../lib/attendanceAlerts';
 
 interface CheckInResult {
-  studentId: string;
-  studentName: string;
-  isUnpaid: boolean;
-  wasPrevAbsent: boolean;
+  studentId?: string;
+  studentName?: string;
+  isUnpaid?: boolean;
+  wasPrevAbsent?: boolean;
+  alreadyMarked?: boolean;
+  /** رسالة الخطأ الحقيقية — عشان شاشة الكاميرا تعرضها بدل "QR غير صحيح" دايماً */
+  error?: string;
 }
 
 interface Props {
@@ -175,11 +178,17 @@ export function AttendanceSheet({ session, onClose }: Props) {
     const normalised = normaliseScannerInput(qrCode.trim());
     try {
       const record = await scanQr.mutateAsync(normalised);
-      const warnings = checkAttendanceWarnings(record.studentId, previousAbsent, unpaidStudents);
-      showCheckInResult(record.studentName, warnings);
       scanRef.current?.focus();
       setScanInput('');
       setSearchFilter('');
+      if (record.alreadyMarked) {
+        const label = record.status === 'late' ? 'متأخر' : 'حاضر';
+        setScanMsg({ text: `ℹ️ ${record.studentName} — متسجّل ${label} قبل كده`, level: 'success' });
+        setTimeout(() => setScanMsg(null), 2500);
+        return { studentId: record.studentId, studentName: record.studentName, alreadyMarked: true };
+      }
+      const warnings = checkAttendanceWarnings(record.studentId, previousAbsent, unpaidStudents);
+      showCheckInResult(record.studentName, warnings);
       return { studentId: record.studentId, studentName: record.studentName, ...warnings };
     } catch (err: any) {
       const code = err?.response?.data?.error?.code;
@@ -209,7 +218,7 @@ export function AttendanceSheet({ session, onClose }: Props) {
             setTimeout(() => setScanMsg(null), 3000);
             scanRef.current?.focus();
             setScanInput('');
-            return;
+            return { error: externalMsg };
           }
         }
       }
@@ -217,6 +226,8 @@ export function AttendanceSheet({ session, onClose }: Props) {
       setScanMsg({ text: `❌ ${msg}`, level: 'error' });
       setTimeout(() => setScanMsg(null), 3000);
       scanRef.current?.focus();
+      setScanInput('');
+      return { error: msg };
     }
     setScanInput('');
   };

@@ -31,7 +31,23 @@ export interface LabelOptions {
   centerName?: string;
   labelWidthMm?: number;
   labelHeightMm?: number;
+  /** هوامش ورقة الـ A4 (للقوالب الجاهزة من ورق الاستيكر) */
+  marginXmm?: number;
+  marginYmm?: number;
+  /** مسافة بين الليبلات */
+  gapXmm?: number;
+  gapYmm?: number;
 }
+
+/** قوالب ورق استيكر A4 الشائعة في السوق — 3×4 هو الإعداد القديم وبيفضل الافتراضي */
+export const A4_LABEL_TEMPLATES = [
+  { key: '3x4',  label: '3×4 (12 في الصفحة)',  cols: 3, rows: 4,  marginXmm: 8,    marginYmm: 8,     gapXmm: 0,   gapYmm: 0 },
+  { key: '2x7',  label: '2×7 (14 — 99×38مم)',  cols: 2, rows: 7,  marginXmm: 4.65, marginYmm: 15.15, gapXmm: 2.5, gapYmm: 0 },
+  { key: '3x7',  label: '3×7 (21 — 63.5×38مم)', cols: 3, rows: 7,  marginXmm: 7.2,  marginYmm: 15.15, gapXmm: 2.5, gapYmm: 0 },
+  { key: '3x8',  label: '3×8 (24 — 70×37مم)',  cols: 3, rows: 8,  marginXmm: 0,    marginYmm: 0.5,   gapXmm: 0,   gapYmm: 0 },
+  { key: '4x10', label: '4×10 (40 — 52.5×29.7مم)', cols: 4, rows: 10, marginXmm: 0,  marginYmm: 0,     gapXmm: 0,   gapYmm: 0 },
+] as const;
+export type A4LabelTemplateKey = typeof A4_LABEL_TEMPLATES[number]['key'];
 
 export interface CardOptions {
   backgroundImage: string;
@@ -163,10 +179,12 @@ export async function generateLabelsPDF(
 
   const pageW = 210;
   const pageH = 297;
-  const marginX = 8;
-  const marginY = 8;
-  const cellW = (pageW - marginX * 2) / cols;
-  const cellH = (pageH - marginY * 2) / rows;
+  const marginX = options.marginXmm ?? 8;
+  const marginY = options.marginYmm ?? 8;
+  const gapX = options.gapXmm ?? 0;
+  const gapY = options.gapYmm ?? 0;
+  const cellW = (pageW - marginX * 2 - gapX * (cols - 1)) / cols;
+  const cellH = (pageH - marginY * 2 - gapY * (rows - 1)) / rows;
   const perPage = cols * rows;
 
   for (let i = 0; i < students.length; i++) {
@@ -176,8 +194,9 @@ export async function generateLabelsPDF(
 
     const col = indexOnPage % cols;
     const row = Math.floor(indexOnPage / cols);
-    const x = marginX + col * cellW;
-    const y = marginY + row * cellH;
+    // RTL: أول ليبل في الصف على اليمين زي ما المدرس بيقرا الورقة
+    const x = pageW - marginX - (col + 1) * cellW - col * gapX;
+    const y = marginY + row * (cellH + gapY);
 
     const imgData = await drawLabelCanvas(students[i], cellW, cellH, options);
     doc.addImage(imgData, 'PNG', x, y, cellW, cellH);

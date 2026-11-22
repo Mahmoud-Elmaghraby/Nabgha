@@ -27,7 +27,7 @@ export function LabelsPreviewModal({ students, centerName, onClose }: Props) {
   const [error, setError] = useState(false);
   const [size, setSize] = useState(loadSavedSize);
   const [printing, setPrinting] = useState(false);
-  const [printResult, setPrintResult] = useState<{ success: boolean } | null>(null);
+  const [printResult, setPrintResult] = useState<{ success: boolean; errorType?: string } | null>(null);
 
   // توليد صور الليبلز للمعاينة
   useEffect(() => {

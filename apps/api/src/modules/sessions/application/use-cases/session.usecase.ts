@@ -13,6 +13,7 @@ import { SessionRepository } from '../../infrastructure/session.repository';
 import { SessionEntity, AttendanceEntity } from '../../domain/entities/session.entity';
 import { AppError } from '../../../../core/errors/app.error';
 import { AttendanceCreditService } from '../services/attendance-credit.service';
+import { normalizeScannedCode } from '../../../../shared/utils/student-code.util';
 import type {
   CreateSessionDto, UpdateSessionDto, ListSessionsDto,
   UpdateAttendanceDto, BulkUpdateAttendanceDto, ScanQrDto,
@@ -492,7 +493,7 @@ export class SessionUseCase {
 
     let studentId = identifier.studentId;
     if (!studentId && identifier.studentCode) {
-      const resolved = await this.repo.resolveStudentIdByCode(tenantId, identifier.studentCode);
+      const resolved = await this.repo.resolveStudentIdByCode(tenantId, normalizeScannedCode(identifier.studentCode));
       if (!resolved) throw new AppError('NOT_FOUND', 'كود الطالب غير موجود', 404);
       studentId = resolved;
     }
@@ -761,15 +762,15 @@ export class SessionUseCase {
   async scanQr(tenantId: string, sessionId: string, data: ScanQrDto): Promise<AttendanceEntity> {
     const session = await this.getById(tenantId, sessionId);
     if (!session.isOpen) throw new AppError('SESSION_CLOSED', 'الحصة مغلقة', 400);
-    // الـ QR ممكن يكون JSON أو student_code مباشرة
-    let qrCode = data.qrCode;
-    try {
-      const parsed = JSON.parse(data.qrCode);
-      if (parsed.code) qrCode = parsed.code;
-    } catch {}
+    // الكود ممكن ييجي JSON (QR قديم) أو مكتوب بكيبورد عربي أو حروف صغيرة — بنوحّده
+    const qrCode = normalizeScannedCode(data.qrCode);
+    if (!qrCode) throw new AppError('NOT_FOUND', 'QR غير موجود أو الطالب غير مسجل', 404);
     const record = await this.repo.findAttendanceByQr(tenantId, sessionId, qrCode);
     if (!record) throw new AppError('NOT_FOUND', 'QR غير موجود أو الطالب غير مسجل', 404);
-    if (record.status === 'present') return record;
+    // متسجّل قبل كده (حاضر أو متأخر) — مانغيّرش حالته (المتأخر كان بيتقلب حاضر)
+    if (record.status === 'present' || record.status === 'late') {
+      return Object.assign(record, { alreadyMarked: true });
+    }
     await this.changeStatus(tenantId, session, record, 'present', { notify: true, scannedAt: new Date() });
     this.logger.log(`QR scan: ${record.studentCode} → present in session ${sessionId}`);
     return record;

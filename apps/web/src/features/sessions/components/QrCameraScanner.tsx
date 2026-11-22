@@ -4,11 +4,16 @@ import { buildAttendanceMessage, playAttendanceWarningAlarm } from '../lib/atten
 import type { AttendanceAlertMessage } from '../lib/attendanceAlerts';
 
 interface ScanResult {
-  studentId: string;
-  studentName: string;
-  isUnpaid: boolean;
-  wasPrevAbsent: boolean;
+  studentId?: string;
+  studentName?: string;
+  isUnpaid?: boolean;
+  wasPrevAbsent?: boolean;
+  alreadyMarked?: boolean;
+  error?: string;
 }
+
+// نفس الكارت لو فضل قدام الكاميرا مايتسكّنش تاني إلا بعد المدة دي
+const SAME_CODE_WINDOW_MS = 8000;
 
 interface Props {
   onScan: (qrCode: string) => Promise<ScanResult | void>;
@@ -21,6 +26,21 @@ export function QrCameraScanner({ onScan, onClose }: Props) {
   const [isStarting, setIsStarting] = useState(true);
   const [scanMsg, setScanMsg] = useState<AttendanceAlertMessage | null>(null);
   const cooldownRef = useRef(false);
+  const lastCodeRef = useRef<{ code: string; at: number } | null>(null);
+  // AudioContext واحد بس — المتصفح ليه حد، وكان بيتعمل واحد جديد مع كل سكان فالصوت بيقف بعد شوية
+  const audioRef = useRef<AudioContext | null>(null);
+  const beep = (freq: number) => {
+    try {
+      const ctx = audioRef.current ?? (audioRef.current = new AudioContext());
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      gain.gain.value = 0.15;
+      osc.frequency.value = freq;
+      osc.connect(gain).connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.1);
+    } catch { /* الصوت اختياري */ }
+  };
   const containerId = 'qr-camera-container';
 
   useEffect(() => {
@@ -32,12 +52,21 @@ export function QrCameraScanner({ onScan, onClose }: Props) {
       { fps: 10, qrbox: { width: 250, height: 250 } },
       async (decodedText) => {
         if (cooldownRef.current) return;
+        const now = Date.now();
+        const last = lastCodeRef.current;
+        if (last && last.code === decodedText && now - last.at < SAME_CODE_WINDOW_MS) return;
+        lastCodeRef.current = { code: decodedText, at: now };
         cooldownRef.current = true;
+        let ok = false;
         try {
           const result = await onScan(decodedText);
-          if (result?.studentId) {
-            const msg = buildAttendanceMessage(result.studentName, {
-              isUnpaid: result.isUnpaid, wasPrevAbsent: result.wasPrevAbsent,
+          ok = !!result?.studentId;
+          if (result?.alreadyMarked) {
+            setScanMsg({ text: `ℹ️ ${result.studentName} — متسجّل قبل كده`, level: 'success' });
+            setTimeout(() => setScanMsg(null), 2500);
+          } else if (result?.studentId) {
+            const msg = buildAttendanceMessage(result.studentName ?? '', {
+              isUnpaid: !!result.isUnpaid, wasPrevAbsent: !!result.wasPrevAbsent,
             });
             setScanMsg(msg);
             if (msg.level === 'warning') {
@@ -47,22 +76,14 @@ export function QrCameraScanner({ onScan, onClose }: Props) {
               setTimeout(() => setScanMsg(null), 2500);
             }
           } else {
-            setScanMsg({ text: '❌ QR غير صحيح أو غير مسجل', level: 'error' });
-            setTimeout(() => setScanMsg(null), 2500);
+            setScanMsg({ text: `❌ ${result?.error || 'QR غير صحيح أو غير مسجل'}`, level: 'error' });
+            setTimeout(() => setScanMsg(null), 3000);
           }
         } catch {
           setScanMsg({ text: '❌ QR غير صحيح أو غير مسجل', level: 'error' });
           setTimeout(() => setScanMsg(null), 2500);
         }
-        // beep
-        try {
-          const ctx = new AudioContext();
-          const osc = ctx.createOscillator();
-          osc.connect(ctx.destination);
-          osc.frequency.value = 880;
-          osc.start();
-          osc.stop(ctx.currentTime + 0.1);
-        } catch {}
+        beep(ok ? 880 : 300);
         // cooldown ثانية واحدة بين كل سكان
         setTimeout(() => { cooldownRef.current = false; }, 1500);
       },
@@ -76,6 +97,7 @@ export function QrCameraScanner({ onScan, onClose }: Props) {
 
     return () => {
       try { scanner.stop().catch(() => {}); } catch {}
+      audioRef.current?.close().catch(() => {});
     };
   }, []);
 

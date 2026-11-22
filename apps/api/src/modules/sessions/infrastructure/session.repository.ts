@@ -234,7 +234,11 @@ export class SessionRepository {
         'students.student_phone', 'students.parent_phone',
       ])
       .where('attendance.session_id', '=', sql<string>`${sessionId}::uuid`)
-      .where('students.student_code', '=', qrCode)
+      // الكود متطبّع (كابيتال) — بنقارن من غير حساسية للحروف، وبنقبل الكود السري (qr_code) كمان
+      .where((eb) => eb.or([
+        eb(eb.fn('upper', ['students.student_code']), '=', qrCode),
+        eb(eb.fn('upper', ['students.qr_code']), '=', qrCode),
+      ]))
       .executeTakeFirst();
     return row ? this.toAttendanceEntity(row) : null;
   }
@@ -479,7 +483,10 @@ export class SessionRepository {
     const db = this.kysely.getTenantDb(tenantId);
     const row = await db.selectFrom('students')
       .select('id')
-      .where('student_code', '=', studentCode)
+      .where((eb) => eb.or([
+        eb(eb.fn('upper', ['student_code']), '=', studentCode),
+        eb(eb.fn('upper', ['qr_code']), '=', studentCode),
+      ]))
       .where('deleted_at', 'is', null)
       .executeTakeFirst();
     return row ? (row.id as string) : null;
