@@ -112,7 +112,7 @@ async logout() {
 
 ---
 
-### [AUTH-006] 🟡 Refresh Token Rotation مش موجود
+### [AUTH-006] 🟡 Refresh Token Rotation مش موجود ✅ **تم الإصلاح**
 
 **الموديول:** `auth` — Backend  
 **الملف:** `apps/api/src/modules/auth/auth.service.ts` (السطر 158–176)
@@ -141,7 +141,7 @@ localStorage.setItem('refreshToken', refreshToken);
 
 ---
 
-### [AUTH-008] 🟡 `tenantId: null` مع Cast غير آمن في Platform Login
+### [AUTH-008] 🟡 `tenantId: null` مع Cast غير آمن في Platform Login ✅ **تم الإصلاح**
 
 **الموديول:** `auth` — Backend  
 **الملف:** `apps/api/src/modules/auth/auth.service.ts` (السطر 151)
@@ -211,7 +211,7 @@ async delete(tenantId: string, id: string): Promise<void> {
 
 ---
 
-### [AUTH-009] 🟢 Default expiry متعارض بين `auth.module.ts` والـ `auth.service.ts`
+### [AUTH-009] 🟢 Default expiry متعارض بين `auth.module.ts` والـ `auth.service.ts` ✅ **تم الإصلاح**
 
 **الموديول:** `auth` — Backend
 
@@ -300,6 +300,24 @@ async autoTransitionSessions()
 | ATT-011 | 🔴 | رسالة "3 غيابات متتالية" عمرها ما اتبعتت: الاستعلام كان SQL خام من غير schema المركز فبيفشل | subquery من الـ query builder + `getTenantSchema()` لأي SQL خام |
 | ATT-012 | 🟡 | الدرجة صفر كانت بتتقري "مارتصدتش" (مابتظهرش ومابتتبعتش) | قراية صحيحة للصفر |
 | DB-001 | 🟡 | migration 024 (بنك الأسئلة) بتعمل GRANT لـ role اسمه `nabgha` ثابت — بتفشل على أي سيرفر باسم مستخدم مختلف (LAN/SaaS) | **لسه مفتوحة** — محتاجة تتعدل قبل أي نشر LAN/SaaS |
+
+---
+
+## 🔍 مراجعة تسجيل الدخول والجلسات (2026-11-22)
+
+| الـ ID | الأولوية | المشكلة | الإصلاح |
+|---|---|---|---|
+| AUTH-011 | 🔴 | رسائل الدخول كانت بتظهر كود إنجليزي (`TENANT_NOT_FOUND`) بدل الرسالة العربي — ترتيب معاملات `AppError.unauthorized` مقلوب في 6 أماكن | اتصلح الترتيب + رسائل أوضح |
+| AUTH-012 | 🔴 | الـ refresh token (30 يوم) كان نفس شكل الـ access token، فينفع يتستخدم مباشرة للدخول على الـ API | `tokenUse: 'refresh'` والـ strategies بترفضه |
+| AUTH-013 | 🔴 | التجديد مابيراجعش قاعدة البيانات: مستخدم اتوقف أو مركز اتقفل بيفضل شغال 30 يوم، وتعديل الصلاحيات مابيتطبقش غير بعد خروج ودخول | التجديد بيقرا المستخدم والمركز والصلاحيات من جديد كل مرة |
+| AUTH-014 | 🟡 | تجديد جلسة لوحة المنصة كان بيستخدم سر المراكز، فأدمن المنصة بيطلع برة كل 8 ساعات | كل نوع توكن بيتجدد بالسر بتاعه |
+| AUTH-015 | 🟡 | كود المركز بحروف كابيتال أو مسافة (Tcronix) بيترفض | توحيد الكود (trim + lowercase) في السيرفر والواجهة، والإيميل في دخول المنصة |
+| AUTH-016 | 🟡 | صفحة دخول المنصة: باسورد غلط كان بيحاول refresh ويطلّع المستخدم بدل ما يوريه الرسالة | استثناء `/auth/platform/login` في الـ interceptor |
+| AUTH-017 | 🟢 | سرعة الرد بتكشف إذا كان اسم المستخدم موجود | مقارنة bcrypt دايمًا (hash وهمي لما المستخدم مش موجود) |
+| AUTH-006 | 🟡 | (موجودة قبل كده) مفيش rotation | التجديد بيرجع refresh token جديد والواجهة بتحفظه |
+
+⚠️ بعد النشر: أي حد مسجّل دخول قبل التحديث هيحتاج يسجّل دخول مرة واحدة لما توكن الدخول بتاعه يخلص (الـ refresh tokens القديمة مالهاش العلامة الجديدة).
+ℹ️ AUTH-005 (الخروج مابيبطّلش التوكن على السيرفر) و AUTH-007 (التوكنات في localStorage) لسه مفتوحين.
 
 ---
 

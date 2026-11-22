@@ -102,9 +102,10 @@ apiClient.interceptors.response.use(
       }
 
       const res = await axios.post(`${API_URL}/auth/refresh`, { refreshToken });
-      const { accessToken } = res.data.data;
-
+      const { accessToken, refreshToken: rotated } = res.data.data;
       localStorage.setItem('accessToken', accessToken);
+      // السيرفر بيرجع refresh token جديد كل مرة — المستخدم النشط مابيطلعش برة
+      if (rotated) localStorage.setItem('refreshToken', rotated);
       isRefreshing = false;
       onRefreshed(accessToken);
 
@@ -150,8 +151,9 @@ async function proactiveRefresh(): Promise<void> {
 
   try {
     const res = await axios.post(`${API_URL}/auth/refresh`, { refreshToken });
-    const { accessToken: newToken } = res.data.data;
+    const { accessToken: newToken, refreshToken: rotated } = res.data.data;
     localStorage.setItem('accessToken', newToken);
+    if (rotated) localStorage.setItem('refreshToken', rotated);
     // لو في requests معلقة من interceptor بتستنى refresh → أخطرها بالـ token الجديد
     onRefreshed(newToken);
   } catch {

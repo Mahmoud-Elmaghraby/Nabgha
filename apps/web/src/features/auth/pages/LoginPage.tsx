@@ -80,7 +80,7 @@ export default function LoginPage() {
     // كيبورد الموبايل (خصوصًا مع اقتراحات الكلمات) بيضيف مسافة زيادة في الآخر
     // أحيانًا من غير ما المستخدم يحس — من غير trim() البيانات بتبقى مختلفة عن
     // المخزّن ويترفض الدخول بـ"بيانات غير صحيحة" حتى لو المستخدم كاتب صح.
-    login({ slug: slug.trim(), username: username.trim(), password: password.trim() });
+    login({ slug: slug.trim().toLowerCase(), username: username.trim(), password: password.trim() });
   };
 
   const fieldWrap = (hasError: boolean) =>
@@ -88,7 +88,8 @@ export default function LoginPage() {
      focus-within:border-[#1F6B4E] focus-within:ring-4 focus-within:ring-[#1F6B4E]/10
      ${hasError ? 'border-red-300' : 'border-gray-200 hover:border-gray-300'}`;
   const iconCls = 'w-5 h-5 text-gray-400 group-focus-within:text-[#1F6B4E] transition-colors shrink-0';
-  const inputCls = 'flex-1 min-w-0 bg-transparent text-[15px] text-gray-900 placeholder:text-gray-300 focus:outline-none';
+  // autofill: كروم بيلوّن الخانة أزرق لما يملاها لوحده — نخليها بيضا زي باقي الخانة
+  const inputCls = 'flex-1 min-w-0 bg-transparent text-[15px] text-gray-900 placeholder:text-gray-300 focus:outline-none autofill:shadow-[inset_0_0_0_1000px_#fff] [-webkit-text-fill-color:#111827]';
 
   return (
     <div className="min-h-screen flex bg-[#F6F7F5] font-cairo" dir="rtl">
@@ -179,7 +180,7 @@ export default function LoginPage() {
           </div>
         </div>
 
-        <footer className="pb-6 px-6 flex items-center justify-center lg:justify-between gap-4 text-xs text-gray-400">
+        <footer className="pb-6 px-6 lg:pl-16 flex items-center justify-center lg:justify-between gap-4 text-xs text-gray-400">
           <span>© {new Date().getFullYear()} نبغة</span>
           {isPublic && <a href="/" className="hidden lg:inline hover:text-[#0E3B2E]">الصفحة الرئيسية</a>}
         </footer>

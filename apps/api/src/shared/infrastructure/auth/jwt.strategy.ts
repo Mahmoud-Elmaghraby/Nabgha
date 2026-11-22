@@ -25,7 +25,8 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     // ملاحظة أمان: كان بيتحقق بس من وجود sub/tenantId من غير ما يتأكد إن
     // type فعلاً 'tenant' — يعني أي توكن تاني موقّع بنفس JWT_SECRET وفيه
     // sub/tenantId كان ممكن يعدي هنا. ضفنا التحقق من type صراحة كطبقة حماية إضافية.
-    if (!payload.sub || !payload.tenantId || payload.type !== 'tenant') {
+    // tokenUse = 'refresh' → ده refresh token، مش مسموح يتستخدم للدخول على الـ API
+    if (!payload.sub || !payload.tenantId || payload.type !== 'tenant' || (payload as any).tokenUse === 'refresh') {
       throw new UnauthorizedException();
     }
     return payload;
@@ -43,7 +44,7 @@ export class PlatformJwtStrategy extends PassportStrategy(Strategy, 'platform-jw
   }
 
   async validate(payload: JwtPayload) {
-    if (!payload.sub || payload.type !== 'platform') {
+    if (!payload.sub || payload.type !== 'platform' || (payload as any).tokenUse === 'refresh') {
       throw new UnauthorizedException();
     }
     return payload;

@@ -66,3 +66,6 @@ nabgha-setup*/
 # أسرار ودوكمنتيشن محلية
 *.local.md
 !.env.example
+
+# ملفات بيعملها تطبيق Claude على الجهاز
+Claude outputs/

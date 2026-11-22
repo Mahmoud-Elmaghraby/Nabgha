@@ -12,8 +12,8 @@ import { JwtStrategy, PlatformJwtStrategy } from '../../shared/infrastructure/au
     JwtModule.registerAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
+        // مدة الصلاحية الفعلية بتتحدد في AuthService (JWT_ACCESS_EXPIRY / JWT_REFRESH_EXPIRY)
         secret: config.get<string>('JWT_SECRET') as string,
-        signOptions: { expiresIn: '15m' },
       }),
     }),
   ],

@@ -58,6 +58,11 @@ platformClient.interceptors.response.use(
       forcePlatformLogout();
       return Promise.reject(error);
     }
+    // بيانات دخول غلط في صفحة دخول المنصة — نرجّع الخطأ للصفحة على طول
+    // (قبل كده كان بيحاول يعمل refresh ويطلّع المستخدم بدل ما يوريه الرسالة)
+    if (original.url?.includes('/auth/platform/login')) {
+      return Promise.reject(error);
+    }
     original._retry = true;
     if (isRefreshing) {
       return new Promise((resolve) => {
@@ -75,8 +80,9 @@ platformClient.interceptors.response.use(
         return Promise.reject(error);
       }
       const res = await axios.post(`${API_URL}/auth/refresh`, { refreshToken });
-      const { accessToken } = res.data.data;
+      const { accessToken, refreshToken: rotated } = res.data.data;
       localStorage.setItem('platform_accessToken', accessToken);
+      if (rotated) localStorage.setItem('platform_refreshToken', rotated);
       isRefreshing = false;
       onRefreshed(accessToken);
       original.headers.Authorization = `Bearer ${accessToken}`;
