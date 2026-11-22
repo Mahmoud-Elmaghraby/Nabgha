@@ -7,6 +7,7 @@ import { LabelsPreviewModal } from './LabelsPreviewModal';
 import { useGroups } from '@/features/groups/hooks/useGroups';
 import { DAY_LABELS } from '@/features/groups/types/group.types';
 import type { StudentQRData } from '@/shared/services/pdf/pdf.service';
+import { loadLabelStyle } from '@/shared/services/pdf/label-renderer';
 
 function useStudentsSearch(q: string) {
   return useQuery({
@@ -48,7 +49,16 @@ export default function BarcodesPage() {
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
   const [selectedStudents, setSelectedStudents] = useState<StudentQRData[]>([]);
   const [searchQ, setSearchQ] = useState('');
-  const [printMode, setPrintMode] = useState<PrintMode>('label-pdf');
+  // الطباعة المباشرة على طابعة الليبل هي الأكتر استخدام — بقت الافتراضي
+  const [printMode, setPrintMode] = useState<PrintMode>('label-print');
+  // عدد النسخ: رقم عام لكل الطلاب + تعديل لطالب معيّن (مثلاً معاه ملزمتين زيادة)
+  const [defaultCopies, setDefaultCopies] = useState(1);
+  const [copyOverrides, setCopyOverrides] = useState<Record<string, number>>({});
+  const copiesOf = (id: string) => copyOverrides[id] ?? defaultCopies;
+  const setStudentCopies = (id: string, n: number) =>
+    setCopyOverrides(prev => ({ ...prev, [id]: Math.min(20, Math.max(1, n)) }));
+  const copiesMap = Object.fromEntries(selectedStudents.map(s => [s.id, copiesOf(s.id)]));
+  const totalLabels = selectedStudents.reduce((a, s) => a + copiesOf(s.id), 0);
   const [loading, setLoading] = useState(false);
   const [showLabelsPreview, setShowLabelsPreview] = useState(false);
   const [sheetKey, setSheetKey] = useState<A4LabelTemplateKey>(() => {
@@ -142,7 +152,9 @@ export default function BarcodesPage() {
     try {
       if (printMode === 'label-pdf') {
         const sheet = A4_LABEL_TEMPLATES.find(t => t.key === sheetKey) ?? A4_LABEL_TEMPLATES[0];
-        await generateLabelsPDF(selectedStudents, {
+        const expanded = selectedStudents.flatMap(s => Array.from({ length: copiesOf(s.id) }, () => s));
+        await generateLabelsPDF(expanded, {
+          style: loadLabelStyle(),
           centerName,
           cols: sheet.cols, rows: sheet.rows,
           marginXmm: sheet.marginXmm, marginYmm: sheet.marginYmm,
@@ -198,8 +210,8 @@ export default function BarcodesPage() {
           <p className="text-sm font-bold text-gray-700 mb-3">طريقة الطباعة</p>
           <div className="grid grid-cols-3 gap-2">
             {[
-              { key: 'label-pdf', icon: '📄', label: 'ليبل PDF', desc: 'ورق A4' },
-              { key: 'label-print', icon: '🖨️', label: 'طباعة مباشرة', desc: 'Label Printer' },
+              { key: 'label-print', icon: '🖨️', label: 'طباعة مباشرة', desc: 'طابعة الليبل' },
+              { key: 'label-pdf', icon: '📄', label: 'ليبل PDF', desc: 'ورق استيكر A4' },
               { key: 'card-pdf', icon: '🪪', label: 'كارت PDF', desc: 'إعدادات الكارت' },
             ].map(m => (
               <button key={m.key} onClick={() => setPrintMode(m.key as PrintMode)}
@@ -295,15 +307,41 @@ export default function BarcodesPage() {
         {selectedStudents.length > 0 && (
           <div className="bg-white rounded-2xl border border-gray-100 p-4">
             <div className="flex items-center justify-between mb-3">
-              <p className="text-sm font-bold text-gray-700">الطلاب المختارين ({selectedStudents.length})</p>
-              <button onClick={() => { setSelectedStudents([]); setSelectedGroups([]); }}
+              <p className="text-sm font-bold text-gray-700">
+                الطلاب المختارين ({selectedStudents.length})
+                {printMode !== 'card-pdf' && totalLabels !== selectedStudents.length && (
+                  <span className="text-xs font-normal text-gray-400"> — {totalLabels} ليبل</span>
+                )}
+              </p>
+              <button onClick={() => { setSelectedStudents([]); setSelectedGroups([]); setCopyOverrides({}); }}
                 className="text-xs text-red-500 hover:text-red-700">مسح الكل</button>
             </div>
-            <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto">
+            {printMode !== 'card-pdf' && (
+              <div className="flex flex-wrap items-center gap-2 mb-3 text-sm bg-gray-50 rounded-xl px-3 py-2">
+                <span className="text-gray-600">عدد النسخ لكل طالب:</span>
+                <div className="flex items-center gap-1">
+                  <button onClick={() => setDefaultCopies(c => Math.max(1, c - 1))} className="w-7 h-7 rounded-lg border border-gray-200 bg-white">−</button>
+                  <span className="w-8 text-center font-bold text-[#0E3B2E]">{defaultCopies}</span>
+                  <button onClick={() => setDefaultCopies(c => Math.min(20, c + 1))} className="w-7 h-7 rounded-lg border border-gray-200 bg-white">+</button>
+                </div>
+                <span className="text-xs text-gray-400">ولو طالب معاه ملازم أكتر غيّر عدده من جنب اسمه</span>
+                {Object.keys(copyOverrides).length > 0 && (
+                  <button onClick={() => setCopyOverrides({})} className="text-xs text-[#0E3B2E] underline mr-auto">رجّع الكل {defaultCopies}</button>
+                )}
+              </div>
+            )}
+            <div className="flex flex-wrap gap-2 max-h-64 overflow-y-auto">
               {selectedStudents.map(s => (
                 <div key={s.id} className="flex items-center gap-1.5 bg-[#0E3B2E]/5 border border-[#0E3B2E]/20 rounded-xl px-3 py-1.5">
                   <span className="text-xs font-medium text-gray-800">{s.fullName}</span>
                   <span className="text-xs text-gray-400 font-mono">{s.studentCode}</span>
+                  {printMode !== 'card-pdf' && (
+                    <span className="flex items-center gap-0.5 mr-1 bg-white rounded-lg border border-gray-200">
+                      <button onClick={() => setStudentCopies(s.id, copiesOf(s.id) - 1)} className="w-5 h-5 text-xs text-gray-500">−</button>
+                      <span className={`text-xs font-bold min-w-[18px] text-center ${copiesOf(s.id) > 1 ? 'text-[#B8893A]' : 'text-gray-500'}`}>×{copiesOf(s.id)}</span>
+                      <button onClick={() => setStudentCopies(s.id, copiesOf(s.id) + 1)} className="w-5 h-5 text-xs text-gray-500">+</button>
+                    </span>
+                  )}
                   <button onClick={() => removeStudent(s.id)} className="text-red-400 hover:text-red-600 text-sm mr-1">×</button>
                 </div>
               ))}
@@ -321,8 +359,10 @@ export default function BarcodesPage() {
             </>
           ) : (
             <>
-              {printMode === 'label-print' ? '🖨️ طباعة مباشرة' : '📄 توليد PDF'}
-              {selectedStudents.length > 0 && ` (${selectedStudents.length} طالب)`}
+              {printMode === 'label-print' ? '🖨️ معاينة وطباعة' : '📄 توليد PDF'}
+              {selectedStudents.length > 0 && (printMode === 'card-pdf'
+                ? ` (${selectedStudents.length} طالب)`
+                : ` (${totalLabels} ليبل)`)}
             </>
           )}
         </button>
@@ -332,6 +372,7 @@ export default function BarcodesPage() {
       {showLabelsPreview && (
         <LabelsPreviewModal
           students={selectedStudents}
+          copies={copiesMap}
           centerName={centerName}
           onClose={() => setShowLabelsPreview(false)}
         />

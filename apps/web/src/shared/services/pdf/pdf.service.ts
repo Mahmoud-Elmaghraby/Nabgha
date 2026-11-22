@@ -1,5 +1,7 @@
 import jsPDF from 'jspdf';
 import QRCode from 'qrcode';
+import { drawStudentLabel, DEFAULT_LABEL_STYLE, type LabelStyle } from './label-renderer';
+export type { LabelStyle } from './label-renderer';
 
 // فتح الـ PDF في تاب جديد — المستخدم يقدر يشوفه ويطبعه بإعدادات الورق الصحيحة
 // ملاحظة: مش بنعمل print() تلقائي عشان المتصفح بيتجاهل مقاس صفحة الـ PDF
@@ -31,6 +33,8 @@ export interface LabelOptions {
   centerName?: string;
   labelWidthMm?: number;
   labelHeightMm?: number;
+  /** شكل الليبل (مكان الـ QR / باركود خطي / حجم الاسم ...) */
+  style?: LabelStyle;
   /** هوامش ورقة الـ A4 (للقوالب الجاهزة من ورق الاستيكر) */
   marginXmm?: number;
   marginYmm?: number;
@@ -61,7 +65,6 @@ export interface CardOptions {
 
 const DEFAULT_LABEL_WIDTH_MM = 38;
 const DEFAULT_LABEL_HEIGHT_MM = 25;
-const LABEL_DPI = 300;
 
 // توليد QR كـ base64 — الباركود يحمل كود الطالب الظاهري بس (مش أي معرف داخلي للنظام)
 // ملاحظة: الكود بيتخزن كنص عادي (مثلاً STU-00003) بدون JSON عشان السكانر يشتغل
@@ -75,97 +78,20 @@ async function generateQR(code: string): Promise<string> {
   });
 }
 
-// رسم ليبل واحد على canvas بمقاس حقيقي بالمليمتر (افتراضياً 38×25مم)
-// التوزيع: QR كبير في المنتصف (أعلى)، الاسم تحته، الكود تحت الاسم
+// رسم ليبل واحد — الشكل كله في label-renderer.ts (حسب الاستايل اللي المدرس اختاره)
 async function drawLabelCanvas(
   student: StudentQRData,
   labelWidthMm: number,
   labelHeightMm: number,
   options: LabelOptions
 ): Promise<string> {
-  const { showName = true, showCode = true, showGrade = false } = options;
-  const pxPerMm = LABEL_DPI / 25.4;
-  const widthPx = Math.round(labelWidthMm * pxPerMm);
-  const heightPx = Math.round(labelHeightMm * pxPerMm);
-
-  const canvas = document.createElement('canvas');
-  canvas.width = widthPx;
-  canvas.height = heightPx;
-  const ctx = canvas.getContext('2d')!;
-
-  // خلفية بيضاء
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, widthPx, heightPx);
-
-  // حساب المساحة المتاحة للنصوص تحت الـ QR
-  const padding = heightPx * 0.03; // هامش خارجي بسيط
-  const textLineHeight = heightPx * 0.12;
-  let textLines = 0;
-  if (showName) textLines++;
-  if (showCode && student.studentCode) textLines++;
-  if (showGrade && student.grade) textLines++;
-  const textBlockHeight = textLines > 0 ? (textLines * textLineHeight + padding) : 0;
-
-  // QR — مربع كبير، متمركز أفقياً، بيشغل أكبر مساحة ممكنة
-  const availableHeightForQR = heightPx - textBlockHeight - padding * 2;
-  const qrSize = Math.min(availableHeightForQR, widthPx * 0.85);
-  const qrX = (widthPx - qrSize) / 2;
-  const qrY = padding;
-
-  const qrImg = new Image();
-  const qrData = await generateQR(student.studentCode);
-  await new Promise<void>((resolve) => {
-    qrImg.onload = () => resolve();
-    qrImg.src = qrData;
-  });
-  // رسم الـ QR بدقة عالية مع image-rendering crisp
-  ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize);
-  ctx.imageSmoothingEnabled = true;
-
-  // النصوص تحت الـ QR
-  let textY = qrY + qrSize + textLineHeight * 0.85;
-
-  // الاسم — بخط عريض، مع اقتطاع تلقائي لو أطول من عرض الليبلة
-  if (showName) {
-    const fontSize = Math.round(heightPx * 0.115);
-    ctx.font = `bold ${fontSize}px Arial`;
-    ctx.fillStyle = '#000000';
-    ctx.textAlign = 'center';
-    ctx.direction = 'rtl';
-
-    let name = student.fullName;
-    const maxWidth = widthPx * 0.92;
-    while (ctx.measureText(name).width > maxWidth && name.length > 3) {
-      name = name.slice(0, -1);
-    }
-    if (name !== student.fullName) name = name.trimEnd() + '…';
-
-    ctx.fillText(name, widthPx / 2, textY);
-    textY += textLineHeight;
-  }
-
-  // الكود
-  if (showCode && student.studentCode) {
-    const codeFontSize = Math.round(heightPx * 0.10);
-    ctx.font = `bold ${codeFontSize}px monospace`;
-    ctx.fillStyle = '#000000';
-    ctx.textAlign = 'center';
-    ctx.direction = 'ltr';
-    ctx.fillText(student.studentCode, widthPx / 2, textY);
-    textY += textLineHeight;
-  }
-
-  // المرحلة (اختياري)
-  if (showGrade && student.grade) {
-    ctx.font = `${Math.round(heightPx * 0.08)}px Arial`;
-    ctx.fillStyle = '#666666';
-    ctx.textAlign = 'center';
-    ctx.direction = 'rtl';
-    ctx.fillText(student.grade, widthPx / 2, textY);
-  }
-
-  return canvas.toDataURL('image/png');
+  const style: LabelStyle = options.style ?? {
+    ...DEFAULT_LABEL_STYLE,
+    showName: options.showName ?? true,
+    showCode: options.showCode ?? true,
+    showGrade: options.showGrade ?? false,
+  };
+  return drawStudentLabel(student, labelWidthMm, labelHeightMm, style, options.centerName);
 }
 
 // ─── Label Generator (A4 PDF — شبكة للطباعة على ورق عادي وتقطيعه) ─────
@@ -548,4 +474,4 @@ export function exportGradesPDF(
 
   const safeName = opts.sessionTitle.replace(/[^a-zA-Z0-9\u0600-\u06FF]/g, '-').slice(0, 40);
   printPDF(doc, `grades-${safeName}-${Date.now()}.pdf`);
-}
+}
