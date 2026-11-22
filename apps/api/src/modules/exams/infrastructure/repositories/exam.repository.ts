@@ -13,7 +13,19 @@ import type {
   CreateQuestionData,
   CreateExamData,
   CreateExamItemData,
+  BlueprintQueryParams,
+  QuestionAvailability,
+  SessionLinkInfo,
 } from '../../domain/repositories/exam.repository.interface';
+
+/**
+ * أعمدة JSONB لازم تتبعت كنص JSON. الـ pg driver بيحوّل الـ JS array لـ Postgres array literal
+ * ('{"أ","ب"}') وده JSON غير صالح — فإضافة أي سؤال اختياري كانت بتفشل بـ 22P02.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function toJsonb(value: unknown): any {
+  return value === null || value === undefined ? null : JSON.stringify(value);
+}
 
 @Injectable()
 export class ExamRepository implements IExamRepository {
@@ -52,7 +64,8 @@ export class ExamRepository implements IExamRepository {
       base = base.where('difficulty', '=', params.difficulty as any);
     }
     if (params.tags && params.tags.length > 0) {
-      base = base.where(sql<boolean>`tags && ${JSON.stringify(params.tags)}::text[]`);
+      // مصفوفة JS بتتبعت كـ text[] — JSON.stringify كان بيبعت '["x"]' وده مش array literal صالح
+      base = base.where(sql<boolean>`tags && ${params.tags}::text[]`);
     }
 
     const countResult = await base
@@ -68,6 +81,48 @@ export class ExamRepository implements IExamRepository {
       .execute();
 
     return { data: rows.map((r: any) => this.toQuestion(r)), total };
+  }
+
+  async createQuestionsBulk(tenantId: string, data: CreateQuestionData[]): Promise<number> {
+    if (data.length === 0) return 0;
+    const db = this.kysely.getTenantDb(tenantId);
+    let inserted = 0;
+    // دفعات صغيرة عشان حد عدد الـ parameters في Postgres
+    for (let i = 0; i < data.length; i += 200) {
+      const chunk = data.slice(i, i + 200);
+      await db
+        .insertInto('exam_questions')
+        .values(chunk.map((d) => ({
+          teacher_id:     sql<string>`${d.teacherId}::uuid`,
+          subject_id:     d.subjectId ? sql<string>`${d.subjectId}::uuid` : null,
+          grade:          d.grade          ?? null,
+          type:           d.type           as any,
+          question_text:  d.questionText,
+          image_url:      d.imageUrl       ?? null,
+          options:        toJsonb(d.options),
+          correct_answer: d.correctAnswer  ?? null,
+          model_answer:   d.modelAnswer    ?? null,
+          difficulty:     (d.difficulty    ?? 'medium') as any,
+          tags:           d.tags           ?? [],
+          default_degree: d.defaultDegree  ?? 1,
+          created_by:     d.createdBy ? sql<string>`${d.createdBy}::uuid` : null,
+        })) as any)
+        .execute();
+      inserted += chunk.length;
+    }
+    return inserted;
+  }
+
+  async findExistingQuestionTexts(tenantId: string, texts: string[]): Promise<Set<string>> {
+    if (texts.length === 0) return new Set();
+    const db   = this.kysely.getTenantDb(tenantId);
+    const rows = await db
+      .selectFrom('exam_questions')
+      .select('question_text')
+      .where('deleted_at', 'is', null)
+      .where('question_text', 'in', texts)
+      .execute();
+    return new Set(rows.map((r: any) => r.question_text));
   }
 
   async findQuestionById(tenantId: string, id: string): Promise<ExamQuestionEntity | null> {
@@ -92,7 +147,7 @@ export class ExamRepository implements IExamRepository {
         type:           data.type           as any,
         question_text:  data.questionText,
         image_url:      data.imageUrl       ?? null,
-        options:        data.options        ?? null,
+        options:        toJsonb(data.options),
         correct_answer: data.correctAnswer  ?? null,
         model_answer:   data.modelAnswer    ?? null,
         difficulty:     (data.difficulty    ?? 'medium') as any,
@@ -115,7 +170,7 @@ export class ExamRepository implements IExamRepository {
         type:           question.type           as any,
         question_text:  question.questionText,
         image_url:      question.imageUrl       ?? null,
-        options:        question.options        ?? null,
+        options:        toJsonb(question.options),
         correct_answer: question.correctAnswer  ?? null,
         model_answer:   question.modelAnswer    ?? null,
         difficulty:     question.difficulty     as any,
@@ -156,6 +211,9 @@ export class ExamRepository implements IExamRepository {
     }
     if (params.isTemplate !== undefined) {
       base = base.where('is_template', '=', params.isTemplate);
+    }
+    if (params.kind) {
+      base = base.where('kind', '=', params.kind);
     }
 
     const countResult = await base
@@ -198,6 +256,7 @@ export class ExamRepository implements IExamRepository {
         instructions: data.instructions ?? null,
         design_config: (data.designConfig ?? {}) as any,
         is_template:  data.isTemplate   ?? false,
+        kind:         data.kind         ?? 'exam',
         created_by:   data.createdBy ? sql<string>`${data.createdBy}::uuid` : null,
       })
       .returningAll()
@@ -219,6 +278,7 @@ export class ExamRepository implements IExamRepository {
         instructions: exam.instructions ?? null,
         design_config: (exam.designConfig ?? {}) as any,
         is_template:  exam.isTemplate,
+        kind:         exam.kind ?? 'exam',
         updated_at:   new Date(),
         deleted_at:   exam.deletedAt    ?? null,
       })
@@ -250,7 +310,7 @@ export class ExamRepository implements IExamRepository {
         question_id:    data.questionId ? sql<string>`${data.questionId}::uuid` : null,
         question_text:  data.questionText,
         type:           data.type           as any,
-        options:        data.options        ?? null,
+        options:        toJsonb(data.options),
         correct_answer: data.correctAnswer  ?? null,
         model_answer:   data.modelAnswer    ?? null,
         image_url:      data.imageUrl       ?? null,
@@ -287,7 +347,7 @@ export class ExamRepository implements IExamRepository {
         question_id:    item.questionId ? sql<string>`${item.questionId}::uuid` : null,
         question_text:  item.questionText,
         type:           item.type           as any,
-        options:        item.options        ?? null,
+        options:        toJsonb(item.options),
         correct_answer: item.correctAnswer  ?? null,
         model_answer:   item.modelAnswer    ?? null,
         image_url:      item.imageUrl       ?? null,
@@ -337,6 +397,177 @@ export class ExamRepository implements IExamRepository {
     return rows.map((r: any) => this.toQuestion(r));
   }
 
+  /**
+   * اختيار أسئلة لصف واحد من مواصفات التوليد.
+   * الترتيب: الأسئلة اللي ماستخدمتش قريب الأول، وجوّه كل مجموعة عشوائي.
+   * يعني لو البنك مش كفاية بنكمّل من المستخدم قريب بدل ما نرجع ناقص.
+   */
+  async findBlueprintQuestions(
+    tenantId: string,
+    params: BlueprintQueryParams,
+  ): Promise<Array<ExamQuestionEntity & { recentlyUsed: boolean }>> {
+    const db = this.kysely.getTenantDb(tenantId);
+
+    let q = db
+      .selectFrom('exam_questions as q')
+      .selectAll('q')
+      .where('q.deleted_at', 'is', null);
+
+    if (params.subjectId)  q = q.where('q.subject_id', '=', sql<string>`${params.subjectId}::uuid`);
+    if (params.grade)      q = q.where('q.grade', '=', params.grade);
+    if (params.types && params.types.length > 0) q = q.where('q.type', 'in', params.types as any[]);
+    if (params.difficulty) q = q.where('q.difficulty', '=', params.difficulty as any);
+    if (params.tags && params.tags.length > 0) {
+      q = q.where(sql<boolean>`q.tags && ${params.tags}::text[]`);
+    }
+    if (params.excludeIds.length > 0) {
+      q = q.where('q.id', 'not in', params.excludeIds.map((id) => sql<string>`${id}::uuid`));
+    }
+
+    const since = params.avoidSince;
+    const withRecent = since
+      ? q.select((eb) => eb.exists(
+          eb.selectFrom('exam_items as ei')
+            .innerJoin('exams as e', 'e.id', 'ei.exam_id')
+            .select(sql`1`.as('one'))
+            .whereRef('ei.question_id', '=', 'q.id')
+            .where('e.deleted_at', 'is', null)
+            .where('e.created_at', '>=', since),
+        ).as('recently_used'))
+      : q.select(sql<boolean>`false`.as('recently_used'));
+
+    const rows = await withRecent
+      .orderBy('recently_used', 'asc')
+      .orderBy(sql`RANDOM()`)
+      .limit(params.count)
+      .execute();
+
+    return rows.map((r: any) => Object.assign(this.toQuestion(r), { recentlyUsed: Boolean(r.recently_used) }));
+  }
+
+  async getAvailability(
+    tenantId: string,
+    params: { subjectId?: string; grade?: string; tags?: string[] },
+  ): Promise<QuestionAvailability> {
+    const db = this.kysely.getTenantDb(tenantId);
+    let base = db
+      .selectFrom('exam_questions')
+      .select(['type', 'difficulty', 'tags'])
+      .where('deleted_at', 'is', null);
+    if (params.subjectId) base = base.where('subject_id', '=', sql<string>`${params.subjectId}::uuid`);
+    if (params.grade)     base = base.where('grade', '=', params.grade);
+
+    const rows = await base.execute();
+    const wanted = params.tags?.length ? new Set(params.tags) : null;
+
+    const matrix = new Map<string, number>();
+    const tagCounts = new Map<string, number>();
+    let total = 0;
+    for (const r of rows as any[]) {
+      const tags: string[] = r.tags ?? [];
+      // قائمة الوحدات/التاجات بتتحسب قبل فلتر التاج عشان المدرس يشوف كل الاختيارات
+      for (const t of tags) tagCounts.set(t, (tagCounts.get(t) ?? 0) + 1);
+      if (wanted && !tags.some((t) => wanted.has(t))) continue;
+      total++;
+      const key = `${r.type}|${r.difficulty}`;
+      matrix.set(key, (matrix.get(key) ?? 0) + 1);
+    }
+
+    return {
+      total,
+      matrix: [...matrix.entries()].map(([k, count]) => {
+        const [type, difficulty] = k.split('|');
+        return { type, difficulty, count };
+      }),
+      tags: [...tagCounts.entries()]
+        .map(([tag, count]) => ({ tag, count }))
+        .sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag, 'ar')),
+    };
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // الربط بالحصص
+  // ═══════════════════════════════════════════════════════════
+
+  async findSessionForLink(tenantId: string, sessionId: string): Promise<SessionLinkInfo | null> {
+    const db  = this.kysely.getTenantDb(tenantId);
+    const row = await db
+      .selectFrom('sessions')
+      .select(['id', 'type', 'status', 'out_of', 'exam_id', 'title'])
+      .where('id', '=', sql<string>`${sessionId}::uuid`)
+      .where('deleted_at', 'is', null)
+      .executeTakeFirst();
+    if (!row) return null;
+    return {
+      id:     row.id,
+      type:   row.type as string,
+      status: row.status as string,
+      outOf:  row.out_of !== null && row.out_of !== undefined ? Number(row.out_of) : null,
+      examId: (row as any).exam_id ?? null,
+      title:  row.title,
+    };
+  }
+
+  async maxDegreeInSession(tenantId: string, sessionId: string): Promise<number | null> {
+    const db  = this.kysely.getTenantDb(tenantId);
+    const row = await db
+      .selectFrom('attendance')
+      .select((eb) => eb.fn.max('degree').as('max'))
+      .where('session_id', '=', sql<string>`${sessionId}::uuid`)
+      .executeTakeFirst();
+    const v = (row as any)?.max;
+    return v === null || v === undefined ? null : Number(v);
+  }
+
+  async setSessionExam(tenantId: string, sessionId: string, examId: string | null, outOf: number | null): Promise<void> {
+    const db = this.kysely.getTenantDb(tenantId);
+    const set: Record<string, any> = {
+      exam_id:    examId ? sql<string>`${examId}::uuid` : null,
+      updated_at: new Date(),
+    };
+    if (outOf !== null) set.out_of = outOf;
+    await db
+      .updateTable('sessions')
+      .set(set as any)
+      .where('id', '=', sql<string>`${sessionId}::uuid`)
+      .execute();
+  }
+
+  async syncLinkedSessionsOutOf(tenantId: string, examId: string, totalDegree: number): Promise<number> {
+    if (!(totalDegree > 0)) return 0;
+    const db  = this.kysely.getTenantDb(tenantId);
+    const res = await db
+      .updateTable('sessions as s')
+      .set({ out_of: totalDegree, updated_at: new Date() } as any)
+      .where('s.exam_id', '=', sql<string>`${examId}::uuid`)
+      .where('s.deleted_at', 'is', null)
+      .where('s.status', 'in', ['scheduled', 'ongoing'])
+      .where((eb) => eb.not(eb.exists(
+        eb.selectFrom('attendance as a')
+          .select(sql`1`.as('one'))
+          .whereRef('a.session_id', '=', 's.id')
+          .where('a.degree', '>', totalDegree),
+      )))
+      .executeTakeFirst();
+    return Number(res?.numUpdatedRows ?? 0);
+  }
+
+  async findLinkedSessions(tenantId: string, examId: string) {
+    const db   = this.kysely.getTenantDb(tenantId);
+    const rows = await db
+      .selectFrom('sessions')
+      .leftJoin('groups', 'groups.id', 'sessions.group_id')
+      .select(['sessions.id', 'sessions.title', 'sessions.start_date', 'sessions.status', 'groups.name as group_name'])
+      .where('sessions.exam_id', '=', sql<string>`${examId}::uuid`)
+      .where('sessions.deleted_at', 'is', null)
+      .orderBy('sessions.start_date', 'desc')
+      .limit(50)
+      .execute();
+    return rows.map((r: any) => ({
+      id: r.id, title: r.title, startDate: r.start_date, status: r.status, groupName: r.group_name ?? null,
+    }));
+  }
+
   // ═══════════════════════════════════════════════════════════
   // Mappers
   // ═══════════════════════════════════════════════════════════
@@ -377,6 +608,7 @@ export class ExamRepository implements IExamRepository {
       instructions: row.instructions  ?? null,
       designConfig: row.design_config ?? {},
       isTemplate:   Boolean(row.is_template),
+      kind:         row.kind === 'quiz' ? 'quiz' : 'exam',
       createdBy:    row.created_by    ?? null,
       createdAt:    row.created_at,
       updatedAt:    row.updated_at,

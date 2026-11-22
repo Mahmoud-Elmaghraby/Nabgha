@@ -380,3 +380,13 @@ async autoTransitionSessions()
 - **EX-006 ✅** `getFileBuffer` كان بيرجّع null على السيرفر (MinIO) — اتصلح. (جانبياً: صورة الحصة بقت بتتبعت مع رسائل الدرجات على السيرفر كمان.)
 - **EX-007 ✅** التوليد التلقائي كان بيدي كل سؤال درجة 1 دايماً (`degreePerQuestion` default 1) — بقى اختياري ولو مش محدد بياخد درجة السؤال من البنك.
 - **EX-008 ✅** نموذج الإجابة: `POST /exams/:id/pdf?answers=1` + زرار في القائمة والمحرر. الإجابة الصحيحة في الاختياري بقت بتتختار من الخيارات (مش كتابة حرّة).
+- **EX-009 ✅ (حرج)** إضافة أي سؤال اختياري كانت بتفشل (`22P02 invalid input syntax for type json`) لأن الـ pg driver بيحوّل الـ array لـ Postgres array مش JSON. اتصلح بـ `toJsonb()` في كل كتابة لعمود `options` (البنك + بنود الامتحان).
+- **EX-010 ✅** فلتر الوحدات/التاجات في البنك كان بيبعت `JSON.stringify` كـ text[] فبيضرب — اتصلح.
+
+## الامتحانات — المراحل 2→5 (الباك إند)
+
+- **مولّد ذكي بالمواصفات:** `POST /exams/generate` بقى بياخد `blueprint` (صفوف: نوع × مستوى × عدد × درجة × وحدة × عنوان قسم) + `avoidRecentDays` (بيأخّر الأسئلة اللي اتستخدمت قريب ومش بيمنعها) + تقرير بالنقص. `GET /exams/questions/availability` بيرجّع المتاح لكل نوع × مستوى + الوحدات.
+- **التسميع:** `exams.kind = 'quiz'` (migration 027) + فلتر في القائمة.
+- **النماذج أ/ب/ج/د:** `POST /exams/:id/pdf?version=B[&answers=1]` — خلط ثابت بالـ seed (نموذج الإجابة دايماً مطابق)، الأقسام ثابتة مكانها، و"كل ما سبق" بيفضل آخر اختيار.
+- **ربط بالحصة:** `sessions.exam_id` + `out_of` بقى NUMERIC. `POST /exams/:id/link-session`، `GET|DELETE /exams/by-session/:sessionId`، `GET /exams/:id/sessions`. تعديل أسئلة الامتحان بيحدّث درجة الحصص المفتوحة (إلا لو فيه درجة متسجلة أكبر).
+- **استيراد:** قالب Excel (`GET /exams/questions/import/template`) + رفع Excel + لصق نص من Word/واتساب، مع معاينة (`dryRun`) ومنع التكرار ورسائل أخطاء برقم الصف.

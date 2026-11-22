@@ -66,6 +66,8 @@ export const ExamDesignConfigSchema = z.object({
   custom_header_text: z.string().optional(),
 }).default({});
 
+export const ExamKindEnum = z.enum(['exam', 'quiz']);
+
 export const ListExamsSchema = z.object({
   page:       z.coerce.number().int().positive().default(1),
   limit:      z.coerce.number().int().positive().max(100).default(20),
@@ -73,6 +75,7 @@ export const ListExamsSchema = z.object({
   grade:      z.string().optional(),
   search:     z.string().optional(),
   isTemplate: z.coerce.boolean().optional(),
+  kind:       ExamKindEnum.optional(),
 });
 
 export const CreateExamSchema = z.object({
@@ -84,8 +87,8 @@ export const CreateExamSchema = z.object({
   instructions: z.string().optional().nullable(),
   designConfig: ExamDesignConfigSchema.optional(),
   isTemplate:   z.coerce.boolean().default(false),
+  kind:         ExamKindEnum.default('exam'),
 });
-
 export const UpdateExamSchema = CreateExamSchema.partial();
 
 // ─────────────────────────────────────────────────────────────
@@ -105,21 +108,62 @@ export const SaveExamItemSchema = z.object({
 });
 
 export const SaveExamItemsSchema = z.object({
-  items: z.array(SaveExamItemSchema).min(1, 'يجب أن يحتوي الامتحان على سؤال واحد على الأقل'),
+  items: z.array(SaveExamItemSchema).max(200).min(1, 'يجب أن يحتوي الامتحان على سؤال واحد على الأقل'),
 });
 
 // ─────────────────────────────────────────────────────────────
 // توليد تلقائي
 // ─────────────────────────────────────────────────────────────
+/** صف من مواصفات الامتحان: النوع + المستوى + العدد + (اختياري) الدرجة والوحدة وعنوان القسم */
+export const BlueprintRowSchema = z.object({
+  type:         QuestionTypeEnum.optional().nullable(),
+  difficulty:   DifficultyEnum.optional().nullable(),
+  count:        z.coerce.number().int().positive().max(100),
+  degree:       z.coerce.number().positive().optional().nullable(),
+  tags:         z.array(z.string().max(100)).max(30).optional(),
+  sectionTitle: z.string().max(200).optional().nullable(),
+});
+
 export const GenerateExamSchema = z.object({
   title:         z.string().min(2, 'عنوان الامتحان مطلوب'),
+  kind:          ExamKindEnum.default('exam'),
   subjectId:     z.string().uuid().optional().nullable(),
   grade:         z.string().optional().nullable(),
+  examDate:      z.coerce.date().optional().nullable(),
+  durationMins:  z.coerce.number().int().positive().max(600).optional().nullable(),
+  instructions:  z.string().max(2000).optional().nullable(),
+  /** وحدات/تاجات عامة على كل الصفوف (صف ممكن يحدد تاجات خاصة بيه) */
+  tags:          z.array(z.string().max(100)).max(30).optional(),
+  /** أخّر الأسئلة اللي اتحطت في امتحانات آخر N يوم (0 = من غير) */
+  avoidRecentDays: z.coerce.number().int().min(0).max(365).default(30),
+  blueprint:     z.array(BlueprintRowSchema).min(1).max(20).optional(),
+  // ── الوضع القديم (صف واحد) — لسه مدعوم ──
   count:         z.coerce.number().int().positive().max(100).default(10),
   difficulty:    DifficultyEnum.optional(),
   questionTypes: z.array(QuestionTypeEnum).optional(),
   // اختياري: لو مش محدد كل سؤال بياخد درجته الافتراضية من البنك
   degreePerQuestion: z.coerce.number().positive().optional(),
+});
+
+// ─────────────────────────────────────────────────────────────
+// استيراد أسئلة (Excel / نص ملصوق) — إعدادات افتراضية لكل الأسئلة المستوردة
+// ─────────────────────────────────────────────────────────────
+const boolish = z.preprocess((v) => v === true || v === 'true' || v === '1' || v === 1, z.boolean());
+
+export const ImportOptionsSchema = z.object({
+  subjectId:     z.preprocess((v) => (v === '' ? null : v), z.string().uuid().optional().nullable()),
+  grade:         z.preprocess((v) => (v === '' ? null : v), z.string().max(100).optional().nullable()),
+  difficulty:    z.preprocess((v) => (v === '' ? undefined : v), DifficultyEnum.default('medium')),
+  defaultDegree: z.preprocess((v) => (v === '' ? undefined : v), z.coerce.number().positive().max(1000).default(1)),
+  tags:          z.union([z.string(), z.array(z.string())]).optional().transform((v) =>
+    (typeof v === 'string' ? v.split(/[،,]/) : v ?? []).map((t) => t.trim()).filter(Boolean).slice(0, 20),
+  ),
+  /** true = معاينة بس من غير حفظ */
+  dryRun:        boolish.default(false),
+});
+
+export const ImportTextSchema = ImportOptionsSchema.extend({
+  text: z.string().min(3, 'الصق الأسئلة الأول').max(200_000, 'النص كبير جداً — قسّمه على مرتين'),
 });
 
 // ─────────────────────────────────────────────────────────────
@@ -133,3 +177,5 @@ export type CreateExamDto     = z.infer<typeof CreateExamSchema>;
 export type UpdateExamDto     = z.infer<typeof UpdateExamSchema>;
 export type SaveExamItemsDto  = z.infer<typeof SaveExamItemsSchema>;
 export type GenerateExamDto   = z.infer<typeof GenerateExamSchema>;
+export type BlueprintRowDto   = z.infer<typeof BlueprintRowSchema>;
+export type ImportOptionsDto  = z.infer<typeof ImportOptionsSchema>;

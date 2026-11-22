@@ -98,6 +98,7 @@ export interface SessionsTable {
   subject_id: string | null;
   title: string;
   out_of: number | null;
+  exam_id: string | null;
   start_date: Date;
   end_date: Date | null;
   start_time: string | null;
@@ -513,6 +514,7 @@ export interface ExamsTable {
   instructions:    string | null;
   design_config:   Generated<ExamDesignConfig>;
   is_template:     Generated<boolean>;
+  kind:            Generated<'exam' | 'quiz'>;
   created_by:      string | null;
   created_at:      Generated<Date>;
   updated_at:      Generated<Date>;

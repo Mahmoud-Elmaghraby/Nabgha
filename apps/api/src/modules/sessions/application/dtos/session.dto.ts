@@ -6,7 +6,7 @@ export const CreateSessionSchema = z.object({
   groupId: z.string().uuid().optional(),
   grade: z.string().optional(),
   subjectId: z.string().uuid().optional(),
-  outOf: z.number().int().positive().optional(),
+  outOf: z.number().positive().max(10000).optional(),
   startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'تاريخ غير صحيح'),
   endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   startTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
@@ -24,7 +24,7 @@ export const CreateSessionSchema = z.object({
 
 export const UpdateSessionSchema = z.object({
   title: z.string().min(1).optional(),
-  outOf: z.number().int().positive().optional(),
+  outOf: z.number().positive().max(10000).optional(),
   startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   startTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),

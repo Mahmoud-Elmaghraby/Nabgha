@@ -4,6 +4,7 @@
 
 export type ExamQuestionType = 'mcq' | 'true_false' | 'fill' | 'essay';
 export type ExamDifficulty   = 'easy' | 'medium' | 'hard';
+export type ExamKind         = 'exam' | 'quiz';
 
 export interface ExamDesignConfig {
   header_color?:      string;
@@ -69,11 +70,11 @@ export class ExamEntity {
   instructions: string | null;
   designConfig: ExamDesignConfig;
   isTemplate:   boolean;
+  kind:         ExamKind;
   createdBy:    string | null;
   createdAt:    Date;
   updatedAt:    Date;
   deletedAt:    Date | null;
-
   constructor(data: Partial<ExamEntity>) {
     Object.assign(this, data);
   }

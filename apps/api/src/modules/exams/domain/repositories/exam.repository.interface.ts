@@ -20,6 +20,27 @@ export interface ListExamsParams {
   grade?:      string;
   search?:     string;
   isTemplate?: boolean;
+  kind?:       'exam' | 'quiz';
+}
+
+/** صف واحد من مواصفات التوليد: "5 اختياري سهل من الوحدة الأولى" */
+export interface BlueprintQueryParams {
+  subjectId?:  string;
+  grade?:      string;
+  tags?:       string[];
+  types?:      string[];
+  difficulty?: string;
+  count:       number;
+  excludeIds:  string[];
+  /** الأسئلة اللي اتحطت في امتحانات من التاريخ ده تتأخر لآخر الاختيار (مش بتتمنع) */
+  avoidSince?: Date;
+}
+
+export interface QuestionAvailability {
+  total:  number;
+  /** عدد الأسئلة لكل (نوع × مستوى) */
+  matrix: Array<{ type: string; difficulty: string; count: number }>;
+  tags:   Array<{ tag: string; count: number }>;
 }
 
 export interface CreateQuestionData {
@@ -48,6 +69,7 @@ export interface CreateExamData {
   instructions?: string | null;
   designConfig?: Record<string, any>;
   isTemplate?:  boolean;
+  kind?:        'exam' | 'quiz';
   createdBy?:   string | null;
 }
 
@@ -70,6 +92,9 @@ export interface IExamRepository {
   findQuestions(tenantId: string, params: ListQuestionsParams): Promise<{ data: ExamQuestionEntity[]; total: number }>;
   findQuestionById(tenantId: string, id: string): Promise<ExamQuestionEntity | null>;
   createQuestion(tenantId: string, data: CreateQuestionData): Promise<ExamQuestionEntity>;
+  createQuestionsBulk(tenantId: string, data: CreateQuestionData[]): Promise<number>;
+  /** النصوص اللي موجودة فعلاً في البنك من القائمة دي (لمنع التكرار في الاستيراد) */
+  findExistingQuestionTexts(tenantId: string, texts: string[]): Promise<Set<string>>;
   saveQuestion(tenantId: string, question: ExamQuestionEntity): Promise<void>;
 
   // ─── الامتحانات ─────────────────────────────────────────────
@@ -89,4 +114,23 @@ export interface IExamRepository {
     tenantId: string,
     params: { subjectId?: string; grade?: string; difficulty?: string; types?: string[]; count: number },
   ): Promise<ExamQuestionEntity[]>;
+  findBlueprintQuestions(tenantId: string, params: BlueprintQueryParams): Promise<Array<ExamQuestionEntity & { recentlyUsed: boolean }>>;
+  getAvailability(tenantId: string, params: { subjectId?: string; grade?: string; tags?: string[] }): Promise<QuestionAvailability>;
+
+  // ─── الربط بالحصص ───────────────────────────────────────────
+  findSessionForLink(tenantId: string, sessionId: string): Promise<SessionLinkInfo | null>;
+  maxDegreeInSession(tenantId: string, sessionId: string): Promise<number | null>;
+  setSessionExam(tenantId: string, sessionId: string, examId: string | null, outOf: number | null): Promise<void>;
+  /** لما مجموع الامتحان يتغيّر — نحدّث out_of للحصص المفتوحة اللي مفيهاش درجة أكبر من المجموع الجديد */
+  syncLinkedSessionsOutOf(tenantId: string, examId: string, totalDegree: number): Promise<number>;
+  findLinkedSessions(tenantId: string, examId: string): Promise<Array<{ id: string; title: string; startDate: Date; status: string; groupName: string | null }>>;
+}
+
+export interface SessionLinkInfo {
+  id:      string;
+  type:    string;
+  status:  string;
+  outOf:   number | null;
+  examId:  string | null;
+  title:   string;
 }
