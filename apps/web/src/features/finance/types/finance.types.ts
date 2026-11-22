@@ -6,10 +6,11 @@ export interface Treasury {
   id: string; name: string; type: TreasuryType; balance: number;
   isActive: boolean; notes: string | null; createdAt: string; updatedAt: string;
 }
-export type TransactionType = 'income' | 'cancellation' | 'refund' | 'expense' | 'transfer_in' | 'transfer_out';
+export type TransactionType = 'income' | 'cancellation' | 'refund' | 'expense' | 'expense_reversal' | 'transfer_in' | 'transfer_out';
 export const TRANSACTION_TYPE_LABELS: Record<TransactionType, { label: string; class: string }> = {
   income:        { label: 'إيراد',          class: 'bg-emerald-50 text-emerald-600 border-emerald-200' },
   expense:       { label: 'مصروف',          class: 'bg-red-50 text-red-600 border-red-200' },
+  expense_reversal: { label: 'رجوع مصروف', class: 'bg-teal-50 text-teal-600 border-teal-200' },
   cancellation:  { label: 'إلغاء إيصال',    class: 'bg-gray-50 text-gray-500 border-gray-200' },
   refund:        { label: 'استرجاع',        class: 'bg-orange-50 text-orange-600 border-orange-200' },
   transfer_in:   { label: 'تحويل وارد',     class: 'bg-blue-50 text-blue-600 border-blue-200' },

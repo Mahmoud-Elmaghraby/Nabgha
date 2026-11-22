@@ -108,7 +108,7 @@ export default function TreasuryDetailPage() {
             ) : (
               <div className="space-y-2">
                 {transactions.map(tx => {
-                  const isCredit = tx.type === 'income' || tx.type === 'transfer_in';
+                  const isCredit = tx.type === 'income' || tx.type === 'transfer_in' || tx.type === 'expense_reversal';
                   return (
                     <div key={tx.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl border border-gray-100">
                       <div className="flex-1 min-w-0">

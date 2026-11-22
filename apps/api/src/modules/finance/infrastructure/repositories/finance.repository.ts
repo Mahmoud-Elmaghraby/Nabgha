@@ -8,6 +8,7 @@ import {
   PaymentEntity, PaymentMethod, PaymentStatus,
   PaymentTransactionEntity, TransactionType,
   ExpenseEntity, ExpenseCategory,
+  roundMoney,
 } from '../../domain/entities/finance.entity';
 import type { IFinanceRepository } from '../../domain/repositories/finance.repository.interface';
 import type { CreateTreasuryDto, ListDuesDto, ListPaymentsDto, ListExpensesDto } from '../../application/dtos/finance.dto';
@@ -260,6 +261,31 @@ export class FinanceRepository implements IFinanceRepository {
     return this.toMonthlyDue(row);
   }
 
+  async createDueIfAbsent(tenantId: string, data: {
+    studentId: string; subjectGradeId: string; month: string;
+    dueAmount: number; discountApplied: number; createdBy?: string;
+  }): Promise<MonthlyDueEntity | null> {
+    const db = this.kysely.getTenantDb(tenantId);
+    // الـ unique index (013) على (student, subject_grade, month) للفواتير غير الملغاة
+    // هو الضامن الحقيقي — لو التوليد اتشغّل مرتين في نفس اللحظة (تلقائي + يدوي)
+    // الصف المكرر بيتجاهل بدل ما يوقع التوليد كله في النص
+    const row = await db.insertInto('monthly_dues').values({
+      student_id: sql<string>`${data.studentId}::uuid`,
+      subject_grade_id: sql<string>`${data.subjectGradeId}::uuid`,
+      month: data.month, due_amount: data.dueAmount,
+      discount_applied: data.discountApplied,
+      notes: null,
+      created_by: data.createdBy ? sql<string>`${data.createdBy}::uuid` : null,
+    } as any)
+      .onConflict((oc) => oc
+        .columns(['student_id', 'subject_grade_id', 'month'] as any)
+        .where('status', '<>', 'cancelled' as any)
+        .doNothing())
+      .returningAll()
+      .executeTakeFirst();
+    return row ? this.toMonthlyDue(row) : null;
+  }
+
   async saveDue(tenantId: string, due: MonthlyDueEntity, trx?: Kysely<TenantDatabase>): Promise<void> {
     const db = trx ?? this.kysely.getTenantDb(tenantId);
     await db.updateTable('monthly_dues').set({
@@ -455,7 +481,7 @@ export class FinanceRepository implements IFinanceRepository {
     const rows = await db.selectFrom('payment_transactions')
       .select(['type', sql<string>`COALESCE(SUM(amount), 0)`.as('total')])
       .where('treasury_id', '=', sql<string>`${treasuryId}::uuid`)
-      .where('type', 'in', ['income', 'expense', 'transfer_in', 'transfer_out', 'cancellation', 'refund'])
+      .where('type', 'in', ['income', 'expense', 'expense_reversal', 'transfer_in', 'transfer_out', 'cancellation', 'refund'])
       .groupBy('type')
       .execute();
 
@@ -464,7 +490,8 @@ export class FinanceRepository implements IFinanceRepository {
 
     return {
       totalIncome: totals['income'] ?? 0,
-      totalExpenses: totals['expense'] ?? 0,
+      // المصروفات الصافية = المصروفات - اللي رجع للخزينة من تعديل/حذف مصروف
+      totalExpenses: (totals['expense'] ?? 0) - (totals['expense_reversal'] ?? 0),
       totalTransfersIn: totals['transfer_in'] ?? 0,
       totalTransfersOut: totals['transfer_out'] ?? 0,
       totalCancellations: totals['cancellation'] ?? 0,
@@ -506,9 +533,12 @@ export class FinanceRepository implements IFinanceRepository {
     return { data: rows.map(r => this.toExpense(r)), total: Number(countResult?.count ?? 0) };
   }
 
-  async findExpenseById(tenantId: string, id: string): Promise<ExpenseEntity | null> {
-    const db = this.kysely.getTenantDb(tenantId);
-    const row = await db.selectFrom('expenses')
+  async findExpenseById(
+    tenantId: string, id: string,
+    opts?: { trx?: Kysely<TenantDatabase>; forUpdate?: boolean },
+  ): Promise<ExpenseEntity | null> {
+    const db = opts?.trx ?? this.kysely.getTenantDb(tenantId);
+    let query = db.selectFrom('expenses')
       .leftJoin('treasuries', 'treasuries.id', 'expenses.treasury_id')
       .select([
         'expenses.id', 'expenses.treasury_id', 'expenses.category', 'expenses.title',
@@ -517,8 +547,10 @@ export class FinanceRepository implements IFinanceRepository {
         'treasuries.name as treasury_name',
       ] as any[])
       .where('expenses.id', '=', sql<string>`${id}::uuid`)
-      .where('expenses.deleted_at', 'is', null)
-      .executeTakeFirst();
+      .where('expenses.deleted_at', 'is', null);
+    // FOR UPDATE OF expenses بس — الـ LEFT JOIN على treasuries مينفعش يتقفل
+    if (opts?.forUpdate) query = (query as any).forUpdate().of('expenses');
+    const row = await query.executeTakeFirst();
     return row ? this.toExpense(row) : null;
   }
 
@@ -536,8 +568,8 @@ export class FinanceRepository implements IFinanceRepository {
     return this.toExpense(row);
   }
 
-  async saveExpense(tenantId: string, expense: ExpenseEntity): Promise<void> {
-    const db = this.kysely.getTenantDb(tenantId);
+  async saveExpense(tenantId: string, expense: ExpenseEntity, trx?: Kysely<TenantDatabase>): Promise<void> {
+    const db = trx ?? this.kysely.getTenantDb(tenantId);
     await db.updateTable('expenses').set({
       category: expense.category, title: expense.title, amount: expense.amount,
       expense_date: expense.expenseDate as any, notes: expense.notes,
@@ -557,13 +589,20 @@ export class FinanceRepository implements IFinanceRepository {
     const lastDayOfMonth = new Date(year, monthNum, 0).getDate();
     const monthEnd = `${month}-${String(lastDayOfMonth).padStart(2, '0')}`;
 
-    const [dues, expenses, paidCount] = await Promise.all([
+    const [dues, expenses] = await Promise.all([
+      // الأرقام كلها من نفس الصفوف عشان تتطابق مع بعض:
+      // - المستحق: صافي الفواتير غير المعفاة
+      // - المحصّل: كل اللي اتدفع فعلاً (حتى على فاتورة اتعفت بعد كده)
+      // - المتبقي: المتبقي الحقيقي على الفواتير المفتوحة بس (unpaid/partial) —
+      //   قبل كده كان "المستحق - المحصّل" فالمدفوع على فاتورة معفاة كان بيقلل المتبقي غلط
       db.selectFrom('monthly_dues')
         .select([
-          // استبعاد الفواتير المعفاة (waived) من "إجمالي المستحق" — مالهاش قيمة متبقية حقيقية
-          sql<string>`SUM(CASE WHEN status != 'waived' THEN GREATEST(due_amount - discount_applied, 0) ELSE 0 END)`.as('total_dues'),
-          db.fn.sum<string>('paid_amount').as('total_collected'),
-          db.fn.countAll<string>().as('dues_count'),
+          sql<string>`COALESCE(SUM(CASE WHEN status != 'waived' THEN GREATEST(due_amount - discount_applied, 0) ELSE 0 END), 0)`.as('total_dues'),
+          sql<string>`COALESCE(SUM(paid_amount), 0)`.as('total_collected'),
+          sql<string>`COALESCE(SUM(CASE WHEN status IN ('unpaid', 'partial') THEN GREATEST(due_amount - discount_applied - paid_amount, 0) ELSE 0 END), 0)`.as('total_pending'),
+          sql<string>`COUNT(*)`.as('dues_count'),
+          sql<string>`COUNT(*) FILTER (WHERE status = 'paid')`.as('paid_count'),
+          sql<string>`COUNT(*) FILTER (WHERE status IN ('unpaid', 'partial'))`.as('unpaid_count'),
         ])
         .where('month', '=', month)
         .where('status', '!=', 'cancelled' as any)
@@ -574,23 +613,16 @@ export class FinanceRepository implements IFinanceRepository {
         .where('expense_date', '<=', new Date(`${monthEnd}T23:59:59.999Z`) as any)
         .where('deleted_at', 'is', null)
         .executeTakeFirst(),
-      db.selectFrom('monthly_dues')
-        .select(db.fn.countAll<string>().as('count'))
-        .where('month', '=', month)
-        .where('status', '=', 'paid')
-        .executeTakeFirst(),
     ]);
 
-    const totalDues = Number(dues?.total_dues ?? 0);
-    const totalCollected = Number(dues?.total_collected ?? 0);
-    const duesCount = Number(dues?.dues_count ?? 0);
-    const paid = Number(paidCount?.count ?? 0);
-
     return {
-      totalDues, totalCollected,
-      totalPending: totalDues - totalCollected,
+      totalDues: Number(dues?.total_dues ?? 0),
+      totalCollected: Number(dues?.total_collected ?? 0),
+      totalPending: Number(dues?.total_pending ?? 0),
       totalExpenses: Number(expenses?.total_expenses ?? 0),
-      duesCount, paidCount: paid, unpaidCount: duesCount - paid,
+      duesCount: Number(dues?.dues_count ?? 0),
+      paidCount: Number(dues?.paid_count ?? 0),
+      unpaidCount: Number(dues?.unpaid_count ?? 0),
     };
   }
 
@@ -672,13 +704,14 @@ export class FinanceRepository implements IFinanceRepository {
     ]);
 
     const dueEntities = dues.map(r => this.toMonthlyDue(r));
-    const totalDues = dueEntities.reduce((sum, d) => sum + d.netDueAmount, 0);
-    const totalPaid = dueEntities.reduce((sum, d) => sum + d.paidAmount, 0);
+    // نفس قواعد إحصائيات المالية: المعفاة مش محسوبة في المستحق
+    const totalDues = roundMoney(dueEntities.reduce((sum, d) => sum + (d.status === 'waived' ? 0 : d.netDueAmount), 0));
+    const totalPaid = roundMoney(dueEntities.reduce((sum, d) => sum + d.paidAmount, 0));
     // متبقي حقيقي: الفواتير المعفاة (waived) متضافش للمتبقي حتى لو مش مدفوعة بالكامل
-    const totalPending = dueEntities.reduce(
-      (sum, d) => sum + (d.status === 'waived' ? 0 : Math.max(0, d.netDueAmount - d.paidAmount)),
+    const totalPending = roundMoney(dueEntities.reduce(
+      (sum, d) => sum + (d.status === 'waived' ? 0 : d.remainingAmount),
       0,
-    );
+    ));
 
     return {
       dues: dueEntities,

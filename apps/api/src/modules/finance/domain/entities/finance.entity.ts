@@ -1,3 +1,8 @@
+import { AppError } from '../../../../core/errors/app.error';
+
+/** تقريب لأقرب قرش — يمنع تراكم أخطاء الكسور العشرية (0.1 + 0.2) في الأرصدة */
+export const roundMoney = (n: number): number => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+
 // ─── Treasury ─────────────────────────────────────────────
 export type TreasuryType = 'cash' | 'bank' | 'vodafone' | 'instapay' | 'other';
 
@@ -15,13 +20,15 @@ export class TreasuryEntity {
   ) {}
 
   credit(amount: number): void {
-    this.balance += amount;
+    this.balance = roundMoney(this.balance + amount);
     this.updatedAt = new Date();
   }
 
   debit(amount: number): void {
-    if (amount > this.balance) throw new Error('رصيد الخزينة غير كافي');
-    this.balance -= amount;
+    if (roundMoney(amount) > roundMoney(this.balance)) {
+      throw new AppError('INSUFFICIENT_BALANCE', `رصيد الخزينة غير كافي (${this.balance} جنيه)`, 400);
+    }
+    this.balance = roundMoney(this.balance - amount);
     this.updatedAt = new Date();
   }
 
@@ -61,15 +68,15 @@ export class MonthlyDueEntity {
   ) {}
 
   get remainingAmount(): number {
-    return Math.max(0, this.dueAmount - this.discountApplied - this.paidAmount);
+    return Math.max(0, roundMoney(this.dueAmount - this.discountApplied - this.paidAmount));
   }
 
   get netDueAmount(): number {
-    return Math.max(0, this.dueAmount - this.discountApplied);
+    return Math.max(0, roundMoney(this.dueAmount - this.discountApplied));
   }
 
   addPayment(amount: number): void {
-    this.paidAmount += amount;
+    this.paidAmount = roundMoney(this.paidAmount + amount);
     if (this.paidAmount >= this.netDueAmount) {
       this.status = 'paid';
     } else if (this.paidAmount > 0) {
@@ -79,7 +86,12 @@ export class MonthlyDueEntity {
   }
 
   reversePayment(amount: number): void {
-    this.paidAmount = Math.max(0, this.paidAmount - amount);
+    this.paidAmount = Math.max(0, roundMoney(this.paidAmount - amount));
+    // الفاتورة المعفاة تفضل معفاة حتى لو اتلغى سداد كان اتعمل عليها قبل الإعفاء
+    if (this.status === 'waived') {
+      this.updatedAt = new Date();
+      return;
+    }
     if (this.paidAmount === 0) {
       this.status = 'unpaid';
     } else {
@@ -94,8 +106,20 @@ export class MonthlyDueEntity {
   }
 
   updateAmount(dueAmount: number, discountApplied: number): void {
-    this.dueAmount = dueAmount;
-    this.discountApplied = discountApplied;
+    if (discountApplied > dueAmount) {
+      throw new AppError('INVALID_AMOUNT', 'الخصم لا يمكن أن يكون أكبر من قيمة الفاتورة', 400);
+    }
+    // لو المبلغ الجديد بعد الخصم أقل من اللي اتدفع فعلاً، الفرق هيفضل "زيادة" مدفوعة
+    // من غير ما تتسجل في أي مكان — لازم استرجاع الفرق الأول من الإيصال
+    if (roundMoney(dueAmount - discountApplied) < this.paidAmount) {
+      throw new AppError(
+        'AMOUNT_BELOW_PAID',
+        `المبلغ بعد الخصم (${roundMoney(dueAmount - discountApplied)} جنيه) أقل من المدفوع فعلاً (${this.paidAmount} جنيه) — استرجع الفرق من الإيصال الأول`,
+        400,
+      );
+    }
+    this.dueAmount = roundMoney(dueAmount);
+    this.discountApplied = roundMoney(discountApplied);
     // إعادة حساب الحالة — تعديل المبلغ ممكن يخلي المدفوع يغطي الفاتورة الجديدة أو العكس
     if (this.status !== 'waived') {
       if (this.paidAmount > 0 && this.paidAmount >= this.netDueAmount) {
@@ -165,7 +189,7 @@ export class PaymentEntity {
 }
 
 // ─── Payment Transaction ──────────────────────────────────
-export type TransactionType = 'income' | 'cancellation' | 'refund' | 'expense' | 'transfer_in' | 'transfer_out';
+export type TransactionType = 'income' | 'cancellation' | 'refund' | 'expense' | 'expense_reversal' | 'transfer_in' | 'transfer_out';
 
 export class PaymentTransactionEntity {
   constructor(

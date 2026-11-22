@@ -1,6 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { Inject } from '@nestjs/common';
+import { sql } from 'kysely';
 import type { Kysely } from 'kysely';
 import type { TenantDatabase } from '@nabgha/db';
 import { IFinanceRepository, FINANCE_REPOSITORY } from '../../domain/repositories/finance.repository.interface';
@@ -10,6 +11,7 @@ import { TelegramNotifyUseCase } from '../../../telegram/application/use-cases/t
 import { KyselyService } from "../../../../shared/infrastructure/database/kysely.service";
 import { PrismaService } from "../../../../shared/infrastructure/database/prisma.service";
 import type { PaymentEntity } from '../../domain/entities/finance.entity';
+import { roundMoney } from '../../domain/entities/finance.entity';
 import type {
   CreateTreasuryDto, UpdateTreasuryDto, GenerateDuesDto, UpdateDueDto,
   CreatePaymentDto, CancelPaymentDto, RefundPaymentDto, CreateManualDueDto,
@@ -18,7 +20,7 @@ import type {
 } from '../dtos/finance.dto';
 
 @Injectable()
-export class FinanceUseCase {
+export class FinanceUseCase implements OnApplicationBootstrap {
   private readonly logger = new Logger(FinanceUseCase.name);
 
   constructor(
@@ -177,18 +179,19 @@ export class FinanceUseCase {
       if (seen.has(key)) { skipped++; continue; }
       seen.add(key);
 
-      const exists = await this.repo.dueExists(tenantId, enrollment.studentId, enrollment.subjectGradeId, data.month);
-      if (exists) { skipped++; continue; }
-
-      await this.repo.createDue(tenantId, {
+      // insert ... on conflict do nothing — استعلام واحد بدل (فحص + إدخال) لكل طالب،
+      // ومفيش فشل في النص لو التوليد التلقائي واليدوي اشتغلوا في نفس اللحظة
+      const due = await this.repo.createDueIfAbsent(tenantId, {
         studentId: enrollment.studentId,
         subjectGradeId: enrollment.subjectGradeId,
         month: data.month,
         dueAmount: enrollment.fee,
-        discountApplied: enrollment.discount,
+        // الخصم مايزيدش عن السعر (لو حد كتب خصم أكبر من سعر المادة)
+        discountApplied: Math.min(enrollment.discount, enrollment.fee),
         createdBy: userId,
       });
-      created++;
+      if (due) created++;
+      else skipped++;
     }
 
     this.logger.log(`Generated dues for ${data.month}: ${created} created, ${skipped} skipped`);
@@ -203,14 +206,23 @@ export class FinanceUseCase {
     const now = new Date();
     const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     const due = await this.repo.findDueByStudentSubjectGradeMonth(tenantId, studentId, subjectGradeId, month);
-    if (!due || due.status === 'paid' || due.status === 'waived') return;
-    due.updateAmount(due.dueAmount, discount);
+    if (!due || due.status === 'paid' || due.status === 'waived' || due.status === 'cancelled') return;
+    try {
+      due.updateAmount(due.dueAmount, Math.min(discount, due.dueAmount));
+    } catch (err: any) {
+      // الخصم الجديد هيخلي المطلوب أقل من المدفوع فعلاً — نسيب فاتورة الشهر ده زي
+      // ما هي (الخصم هيتطبق من الشهر الجاي) بدل ما نفشل تعديل الخصم نفسه
+      this.logger.warn(`Discount not synced to due ${due.id}: ${err.message}`);
+      return;
+    }
     await this.repo.saveDue(tenantId, due);
   }
 
   async updateDue(tenantId: string, id: string, data: UpdateDueDto) {
     const due = await this.getDue(tenantId, id);
     if (due.status === 'paid') throw new AppError('INVALID_STATUS', 'لا يمكن تعديل فاتورة مدفوعة', 400);
+    if (due.status === 'waived') throw new AppError('INVALID_STATUS', 'لا يمكن تعديل فاتورة معفاة', 400);
+    if (due.status === 'cancelled') throw new AppError('INVALID_STATUS', 'لا يمكن تعديل فاتورة ملغاة', 400);
     if (data.dueAmount !== undefined || data.discountApplied !== undefined) {
       due.updateAmount(
         data.dueAmount ?? due.dueAmount,
@@ -225,6 +237,9 @@ export class FinanceUseCase {
   // فاتورة يدوية — للدفع المقدم لشهر لسه ما اتولدش، أو تسجيل اشتراك طالب جديد
   // انضم في نص الشهر (يوم 20 مثلاً) ومحتاج فاتورة بمبلغ مختلف عن السعر الكامل
   async createManualDue(tenantId: string, data: CreateManualDueDto, userId: string) {
+    if ((data.discountApplied ?? 0) > data.dueAmount) {
+      throw new AppError('INVALID_AMOUNT', 'الخصم لا يمكن أن يكون أكبر من قيمة الفاتورة', 400);
+    }
     const exists = await this.repo.dueExists(tenantId, data.studentId, data.subjectGradeId, data.month);
     if (exists) {
       throw new AppError('ALREADY_EXISTS', 'يوجد بالفعل فاتورة لنفس الطالب والمادة في هذا الشهر', 409);
@@ -479,17 +494,74 @@ export class FinanceUseCase {
     });
   }
 
-  async updateExpense(tenantId: string, id: string, data: UpdateExpenseDto) {
-    const expense = await this.getExpense(tenantId, id);
-    expense.update(data as any);
-    await this.repo.saveExpense(tenantId, expense);
-    return expense;
+  // تعديل/حذف مصروف لازم ينعكس على رصيد الخزينة بقيد واضح — قبل كده كان بيعدّل
+  // سجل المصروف بس، فرصيد الخزينة كان بيفضل ناقص (أو زايد) من غير أي حركة تفسّره
+  async updateExpense(tenantId: string, id: string, data: UpdateExpenseDto, userId?: string) {
+    return this.runInTransaction(tenantId, async (trx) => {
+      const expense = await this.repo.findExpenseById(tenantId, id, { trx, forUpdate: true });
+      if (!expense) throw new AppError('NOT_FOUND', 'المصروف غير موجود', 404);
+
+      const oldAmount = roundMoney(expense.amount);
+      const newAmount = data.amount !== undefined ? roundMoney(data.amount) : oldAmount;
+      const diff = roundMoney(newAmount - oldAmount);
+
+      if (diff !== 0) {
+        const treasury = await this.getTreasuryLocked(tenantId, expense.treasuryId, trx);
+        const balanceBefore = treasury.balance;
+        if (diff > 0) {
+          // المصروف زاد → الفرق يتخصم من الخزينة
+          if (diff > treasury.balance) {
+            throw new AppError('INSUFFICIENT_BALANCE', `رصيد الخزينة (${treasury.balance} جنيه) أقل من الزيادة في المصروف (${diff} جنيه)`, 400);
+          }
+          treasury.debit(diff);
+        } else {
+          // المصروف قل → الفرق يرجع للخزينة
+          treasury.credit(-diff);
+        }
+        await this.repo.saveTreasury(tenantId, treasury, trx);
+        await this.repo.createTransaction(tenantId, {
+          treasuryId: treasury.id,
+          type: diff > 0 ? 'expense' : 'expense_reversal',
+          amount: Math.abs(diff),
+          balanceBefore,
+          balanceAfter: treasury.balance,
+          notes: `تعديل مصروف: ${expense.title} (${oldAmount} ← ${newAmount})`,
+          createdBy: userId,
+        }, trx);
+      }
+
+      expense.update({
+        ...data,
+        ...(data.amount !== undefined ? { amount: newAmount } : {}),
+        ...(data.expenseDate ? { expenseDate: new Date(data.expenseDate) } : {}),
+      } as any);
+      await this.repo.saveExpense(tenantId, expense, trx);
+      return expense;
+    });
   }
 
-  async deleteExpense(tenantId: string, id: string) {
-    const expense = await this.getExpense(tenantId, id);
-    expense.softDelete();
-    await this.repo.saveExpense(tenantId, expense);
+  async deleteExpense(tenantId: string, id: string, userId?: string) {
+    await this.runInTransaction(tenantId, async (trx) => {
+      const expense = await this.repo.findExpenseById(tenantId, id, { trx, forUpdate: true });
+      if (!expense) throw new AppError('NOT_FOUND', 'المصروف غير موجود', 404);
+
+      const treasury = await this.getTreasuryLocked(tenantId, expense.treasuryId, trx);
+      const balanceBefore = treasury.balance;
+      treasury.credit(expense.amount);
+
+      expense.softDelete();
+      await this.repo.saveExpense(tenantId, expense, trx);
+      await this.repo.saveTreasury(tenantId, treasury, trx);
+      await this.repo.createTransaction(tenantId, {
+        treasuryId: treasury.id,
+        type: 'expense_reversal',
+        amount: expense.amount,
+        balanceBefore,
+        balanceAfter: treasury.balance,
+        notes: `حذف مصروف: ${expense.title}`,
+        createdBy: userId,
+      }, trx);
+    });
   }
 
   // ─── Collection ───────────────────────────────────────────
@@ -570,6 +642,8 @@ export class FinanceUseCase {
 
   // ─── Stats ────────────────────────────────────────────────
   async getStats(tenantId: string, month: string) {
+    // الشهر جاي من query string — لو مش مبعوت أو صيغته غلط نستخدم الشهر الحالي بدل ما نوقع
+    if (!month || !/^\d{4}-\d{2}$/.test(month)) month = this.currentMonth();
     return this.repo.getStats(tenantId, month);
   }
 
@@ -681,7 +755,11 @@ export class FinanceUseCase {
    *   - المتأخرة أكثر من 3 أيام → PAYMENT_OVERDUE
    * يبعت واتساب فقط لو الإعداد المقابل مفعّل في wa_settings.
    */
-  @Cron('0 8 * * *') // 10 صباحاً Cairo = 8 UTC
+  // كل ساعة من 10 الصبح لـ 8 بالليل (بتوقيت الجهاز) بدل مرة واحدة الساعة 10:
+  // معظم السناتر بتفتح الجهاز بعد الضهر، فالميعاد الواحد كان بيعدّي والجهاز مقفول
+  // والتذكير مايتبعتش خالص. التكرار آمن لإن alreadyNotified بيمنع إرسال نفس التذكير
+  // لنفس الطالب أكتر من مرة (20 ساعة للمستحق، 7 أيام للمتأخر).
+  @Cron('0 10-20 * * *')
   async sendPaymentReminders(): Promise<void> {
     this.logger.log('🔔 Starting payment due reminders...');
     try {
@@ -864,31 +942,74 @@ export class FinanceUseCase {
   }
 
   // ─── Cron: Auto Generate Dues ─────────────────────────────
-  @Cron('0 0 1 * *')
+  // قبل كده كان بيشتغل مرة واحدة بس الساعة 12 بالليل يوم 1 في الشهر — ولو الجهاز
+  // مقفول في اللحظة دي (الطبيعي في سناتر الديسكتوب) فواتير الشهر ماكانتش بتتولد خالص.
+  // دلوقتي: بيتشيك كل ساعة + بعد تشغيل البرنامج بدقيقة، وبيولّد مرة واحدة بس لكل شهر
+  // لكل مركز (متسجلة في tenant_settings)، فمفيش فواتير بتتولد تاني للطلاب اللي
+  // اتضافوا في نص الشهر (دول ليهم الفاتورة اليدوية زي ما هو).
+  private static readonly AUTO_DUES_KEY = 'finance_auto_dues_last_month';
+  private autoDuesRunning = false;
+
+  private currentMonth(): string {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  }
+
+  onApplicationBootstrap() {
+    // بعد دقيقة من التشغيل عشان قاعدة البيانات والموديولات التانية تكون جاهزة
+    setTimeout(() => {
+      this.autoGenerateDues().catch((err) => this.logger.error(`Startup dues catch-up failed: ${err.message}`));
+    }, 60_000).unref();
+  }
+
+  @Cron('5 * * * *')
   async autoGenerateDues() {
-    // desktop mode — الـ cron شغال عادي
-    this.logger.log('Auto generating monthly dues...');
+    if (this.autoDuesRunning) return;
+    this.autoDuesRunning = true;
     try {
       const tenants = await this.prisma.tenant.findMany({ where: { isActive: true } });
-      const now = new Date();
-      // نولد فواتير الشهر الحالي
-      const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-      let totalCreated = 0;
-      let totalSkipped = 0;
+      const month = this.currentMonth();
       for (const tenant of tenants) {
         try {
-          // بدون userId — بيتخزن created_by = NULL بدل محاولة تحويل نص 'system' لـ UUID (كان بيفشل قبل كده)
+          const db = this.kysely.getTenantDb(tenant.id);
+          const last = await db.selectFrom('tenant_settings').select('value')
+            .where('key', '=', FinanceUseCase.AUTO_DUES_KEY)
+            .executeTakeFirst();
+          if (last?.value === month) continue;
+
+          const markDone = () => db.insertInto('tenant_settings')
+            .values({ key: FinanceUseCase.AUTO_DUES_KEY, value: month, updated_at: new Date() } as any)
+            .onConflict((oc) => oc.column('key').doUpdateSet({ value: month, updated_at: new Date() } as any))
+            .execute();
+
+          // أول مرة بعد التحديث (مفيش سجل): لو فواتير الشهر ده اتولدت قبل كده (يدوي أو
+          // بالـ cron القديم) نسجّل الشهر بس ومانولّدش، عشان الطلاب اللي اتضافوا في نص
+          // الشهر مايتعملهمش فاتورة شهر كامل فجأة
+          if (!last) {
+            const existing = await db.selectFrom('monthly_dues')
+              .select(sql<string>`COUNT(*)`.as('count'))
+              .where('month', '=', month)
+              .where('status', '!=', 'cancelled' as any)
+              .executeTakeFirst();
+            if (Number(existing?.count ?? 0) > 0) {
+              await markDone();
+              continue;
+            }
+          }
+
+          // بدون userId — بيتخزن created_by = NULL بدل محاولة تحويل نص 'system' لـ UUID
           const result = await this.generateDues(tenant.id, { month });
-          totalCreated += result.created;
-          totalSkipped += result.skipped;
-          this.logger.log(`Tenant ${tenant.id}: ${result.created} created, ${result.skipped} skipped`);
+
+          await markDone();
+          this.logger.log(`Auto dues ${month} — tenant ${tenant.id}: ${result.created} created, ${result.skipped} skipped`);
         } catch (err: any) {
           this.logger.error(`Failed to generate dues for tenant ${tenant.id}: ${err.message}`);
         }
       }
-      this.logger.log(`Auto dues done — total: ${totalCreated} created, ${totalSkipped} skipped across ${tenants.length} tenants`);
     } catch (err: any) {
       this.logger.error(`autoGenerateDues failed: ${err.message}`);
+    } finally {
+      this.autoDuesRunning = false;
     }
   }
 }

@@ -227,7 +227,7 @@ export class FinanceController {
     @Param('id') id: string,
     @Body(new ZodValidationPipe(UpdateExpenseSchema)) body: any,
   ) {
-    const data = await this.useCase.updateExpense(req.user.tenantId, id, body);
+    const data = await this.useCase.updateExpense(req.user.tenantId, id, body, req.user.sub);
     return { success: true, data };
   }
 
@@ -235,7 +235,7 @@ export class FinanceController {
   @RequirePermission('finance.manage')
   @HttpCode(204)
   async deleteExpense(@Request() req: any, @Param('id') id: string) {
-    await this.useCase.deleteExpense(req.user.tenantId, id);
+    await this.useCase.deleteExpense(req.user.tenantId, id, req.user.sub);
   }
 
   // ─── Collection ───────────────────────────────────────────

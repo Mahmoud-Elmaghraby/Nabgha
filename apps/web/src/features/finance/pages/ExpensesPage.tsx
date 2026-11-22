@@ -50,7 +50,7 @@ export default function ExpensesPage() {
   };
 
   const handleRemove = async (e: Expense) => {
-    if (await confirm('حذف هذا المصروف؟', { danger: true })) {
+    if (await confirm(`حذف المصروف "${e.title}"؟ المبلغ (${e.amount} جنيه) هيرجع للخزينة.`, { danger: true })) {
       try { await remove.mutateAsync(e.id); }
       catch (err: any) { toast.error(err?.response?.data?.error?.message || 'خطأ'); }
     }

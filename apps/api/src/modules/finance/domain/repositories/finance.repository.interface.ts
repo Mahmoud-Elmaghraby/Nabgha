@@ -46,6 +46,11 @@ export interface IFinanceRepository {
     studentId: string; subjectGradeId: string; month: string;
     dueAmount: number; discountApplied: number; notes?: string; createdBy?: string;
   }): Promise<MonthlyDueEntity>;
+  /** زي createDue بس بيرجع null لو فيه فاتورة نشطة بنفس الطالب/المادة/الشهر (بدل ما يرمي خطأ) */
+  createDueIfAbsent(tenantId: string, data: {
+    studentId: string; subjectGradeId: string; month: string;
+    dueAmount: number; discountApplied: number; createdBy?: string;
+  }): Promise<MonthlyDueEntity | null>;
   saveDue(tenantId: string, due: MonthlyDueEntity, trx?: Kysely<TenantDatabase>): Promise<void>;
   deleteDue(tenantId: string, id: string): Promise<void>;
   dueExists(tenantId: string, studentId: string, subjectGradeId: string, month: string): Promise<boolean>;
@@ -79,12 +84,15 @@ export interface IFinanceRepository {
 
   // ─── Expenses ─────────────────────────────────────────────
   findExpenses(tenantId: string, params: ListExpensesDto): Promise<{ data: ExpenseEntity[]; total: number }>;
-  findExpenseById(tenantId: string, id: string): Promise<ExpenseEntity | null>;
+  findExpenseById(
+    tenantId: string, id: string,
+    opts?: { trx?: Kysely<TenantDatabase>; forUpdate?: boolean },
+  ): Promise<ExpenseEntity | null>;
   createExpense(tenantId: string, data: {
     treasuryId: string; category: string; title: string;
     amount: number; expenseDate: Date; notes?: string; createdBy?: string;
   }, trx?: Kysely<TenantDatabase>): Promise<ExpenseEntity>;
-  saveExpense(tenantId: string, expense: ExpenseEntity): Promise<void>;
+  saveExpense(tenantId: string, expense: ExpenseEntity, trx?: Kysely<TenantDatabase>): Promise<void>;
 
   // ─── Stats ────────────────────────────────────────────────
   getStats(tenantId: string, month: string): Promise<{
