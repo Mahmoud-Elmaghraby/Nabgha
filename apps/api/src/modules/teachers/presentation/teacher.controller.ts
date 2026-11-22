@@ -34,7 +34,7 @@ export class TeacherController {
   @RequirePermission('teachers.create')
   async create(@Request() req: any, @Body() body: unknown) {
     const parsed = CreateTeacherSchema.safeParse(body);
-    if (!parsed.success) throw new AppError('بيانات غير صحيحة', 'VALIDATION_ERROR', 400);
+    if (!parsed.success) throw new AppError('VALIDATION_ERROR', 'بيانات غير صحيحة', 400);
     const data = await this.teacherUseCase.create(req.user.tenantId, parsed.data);
     return { success: true, data };
   }
@@ -43,7 +43,7 @@ export class TeacherController {
   @RequirePermission('teachers.edit')
   async update(@Request() req: any, @Param('id') id: string, @Body() body: unknown) {
     const parsed = UpdateTeacherSchema.safeParse(body);
-    if (!parsed.success) throw new AppError('بيانات غير صحيحة', 'VALIDATION_ERROR', 400);
+    if (!parsed.success) throw new AppError('VALIDATION_ERROR', 'بيانات غير صحيحة', 400);
     const data = await this.teacherUseCase.update(req.user.tenantId, id, parsed.data);
     return { success: true, data };
   }

@@ -24,7 +24,7 @@ export class PlansController {
   @Post()
   async create(@Body() body: unknown) {
     const parsed = CreatePlanSchema.safeParse(body);
-    if (!parsed.success) throw new AppError('بيانات غير صحيحة', 'VALIDATION_ERROR', 400);
+    if (!parsed.success) throw new AppError('VALIDATION_ERROR', 'بيانات غير صحيحة', 400);
     const data = await this.planUseCase.create(parsed.data);
     return { success: true, data };
   }
@@ -32,7 +32,7 @@ export class PlansController {
   @Patch(':id')
   async update(@Param('id') id: string, @Body() body: unknown) {
     const parsed = UpdatePlanSchema.safeParse(body);
-    if (!parsed.success) throw new AppError('بيانات غير صحيحة', 'VALIDATION_ERROR', 400);
+    if (!parsed.success) throw new AppError('VALIDATION_ERROR', 'بيانات غير صحيحة', 400);
     const data = await this.planUseCase.update(id, parsed.data);
     return { success: true, data };
   }

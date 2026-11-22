@@ -24,7 +24,7 @@ export class TenantsController {
   @Post()
   async create(@Body() body: unknown) {
     const parsed = CreateTenantSchema.safeParse(body);
-    if (!parsed.success) throw new AppError('بيانات غير صحيحة', 'VALIDATION_ERROR', 400);
+    if (!parsed.success) throw new AppError('VALIDATION_ERROR', 'بيانات غير صحيحة', 400);
     const data = await this.tenantUseCase.create(parsed.data);
     return { success: true, data };
   }
@@ -32,7 +32,7 @@ export class TenantsController {
   @Patch(':id')
   async update(@Param('id') id: string, @Body() body: unknown) {
     const parsed = UpdateTenantSchema.safeParse(body);
-    if (!parsed.success) throw new AppError('بيانات غير صحيحة', 'VALIDATION_ERROR', 400);
+    if (!parsed.success) throw new AppError('VALIDATION_ERROR', 'بيانات غير صحيحة', 400);
     const data = await this.tenantUseCase.update(id, parsed.data);
     return { success: true, data };
   }

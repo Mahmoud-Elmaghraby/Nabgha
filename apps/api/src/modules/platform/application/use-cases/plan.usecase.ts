@@ -14,19 +14,19 @@ export class PlanUseCase {
 
   async getById(id: string): Promise<PlanEntity> {
     const plan = await this.repo.findById(id);
-    if (!plan) throw new AppError('الخطة غير موجودة', 'NOT_FOUND', 404);
+    if (!plan) throw new AppError('NOT_FOUND', 'الخطة غير موجودة', 404);
     return plan;
   }
 
   async create(data: CreatePlanDto): Promise<PlanEntity> {
     const existing = await this.repo.findBySlug(data.slug);
-    if (existing) throw new AppError('الـ slug مستخدم بالفعل', 'CONFLICT', 409);
+    if (existing) throw new AppError('CONFLICT', 'الـ slug مستخدم بالفعل', 409);
     return this.repo.create(data);
   }
 
   async update(id: string, data: UpdatePlanDto): Promise<PlanEntity> {
     const plan = await this.repo.findById(id);
-    if (!plan) throw new AppError('الخطة غير موجودة', 'NOT_FOUND', 404);
+    if (!plan) throw new AppError('NOT_FOUND', 'الخطة غير موجودة', 404);
     plan.update(data);
     await this.repo.save(plan);
     return plan;
@@ -34,10 +34,10 @@ export class PlanUseCase {
 
   async delete(id: string): Promise<void> {
     const plan = await this.repo.findById(id);
-    if (!plan) throw new AppError('الخطة غير موجودة', 'NOT_FOUND', 404);
+    if (!plan) throw new AppError('NOT_FOUND', 'الخطة غير موجودة', 404);
     const tenantsCount = await this.repo.countTenants(id);
     if (tenantsCount > 0) {
-      throw new AppError('لا يمكن حذف خطة مرتبطة بمراكز', 'CONFLICT', 409);
+      throw new AppError('CONFLICT', 'لا يمكن حذف خطة مرتبطة بمراكز', 409);
     }
     await this.repo.delete(id);
   }

@@ -14,7 +14,7 @@ export class TeacherUseCase {
 
   async getById(tenantId: string, id: string): Promise<TeacherEntity> {
     const teacher = await this.repo.findById(tenantId, id);
-    if (!teacher) throw new AppError('المدرس غير موجود', 'NOT_FOUND', 404);
+    if (!teacher) throw new AppError('NOT_FOUND', 'المدرس غير موجود', 404);
     return teacher;
   }
 
@@ -24,7 +24,7 @@ export class TeacherUseCase {
 
   async update(tenantId: string, id: string, data: UpdateTeacherDto): Promise<TeacherEntity> {
     const teacher = await this.repo.findById(tenantId, id);
-    if (!teacher) throw new AppError('المدرس غير موجود', 'NOT_FOUND', 404);
+    if (!teacher) throw new AppError('NOT_FOUND', 'المدرس غير موجود', 404);
     teacher.update(data);
     await this.repo.save(tenantId, teacher);
     return teacher;
@@ -32,7 +32,7 @@ export class TeacherUseCase {
 
   async delete(tenantId: string, id: string): Promise<void> {
     const teacher = await this.repo.findById(tenantId, id);
-    if (!teacher) throw new AppError('المدرس غير موجود', 'NOT_FOUND', 404);
+    if (!teacher) throw new AppError('NOT_FOUND', 'المدرس غير موجود', 404);
     teacher.softDelete();
     await this.repo.save(tenantId, teacher);
   }
