@@ -8,7 +8,8 @@
     "start": "node dist/main",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\"",
     "check-types": "tsc --noEmit",
-    "test": "jest"
+    "test": "jest",
+    "test:scenarios": "bash test/scenarios/run-all.sh"
   },
   "dependencies": {
     "@nabgha/db": "workspace:*",

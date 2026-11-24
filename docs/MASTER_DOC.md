@@ -1,4 +1,7 @@
 # نبغة — Technical Architecture & Reference
+> ⚠️ **مرجع قديم (Legacy):** الملف ده بيتحفظ عشان التفاصيل التاريخية. **المرجع الرسمي الحالي:** [`docs/README.md`](README.md) ← المعمارية: [`architecture/ARCHITECTURE.md`](architecture/ARCHITECTURE.md).
+> لو فيه اختلاف بين الملف ده والتوثيق الجديد أو الكود، **الجديد والكود هما الصح**.
+
 > **آخر تحديث:** August 24, 2026 (Session #031 — دمج اكتشافات Session #030 غير الموثّقة)
 
 ---

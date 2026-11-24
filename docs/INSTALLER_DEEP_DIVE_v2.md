@@ -1,4 +1,6 @@
 # نبغة — Installer & Update Mechanism: التوثيق الكامل (النسخة النهائية)
+> ℹ️ لسه المرجع الأساسي للـ installer. قايمة التحقق المختصرة لكل إصدار: [`operations/DESKTOP_RELEASE.md`](operations/DESKTOP_RELEASE.md).
+
 
 > **تاريخ الجلسة الأصلية:** 30 يونيو 2026
 > **آخر تحديث:** 3 أغسطس 2026 — راجع "الجزء الحادي عشر" لمشاكل جديدة (Puppeteer، اكتشاف Node.js، النسخ الاحتياطي)

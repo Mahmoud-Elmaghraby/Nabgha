@@ -1,4 +1,7 @@
 # نبغة — Developer Guide
+> ⚠️ **مرجع قديم (Legacy):** الملف ده بيتحفظ عشان التفاصيل التاريخية. **المرجع الرسمي الحالي:** [`docs/README.md`](README.md) ← القواعد: [`engineering/CONVENTIONS.md`](engineering/CONVENTIONS.md) · النشر: [`operations/DEPLOYMENT_RUNBOOK.md`](operations/DEPLOYMENT_RUNBOOK.md).
+> لو فيه اختلاف بين الملف ده والتوثيق الجديد أو الكود، **الجديد والكود هما الصح**.
+
 > **الإصدار:** 4.2 — August 24, 2026 (دمج اكتشافات Session #030: Parent Portal + إصلاحات أمنية حرجة + دليل تشخيص الشبكة)
 > **الجمهور:** Developer جديد + Reference سريع + AI Tools
 
@@ -338,7 +341,7 @@ students → parent_otp_codes (عبر parent_phone) — مصادقة Parent Port
 packages/db/src/
 ├── migrations/
 │   ├── public/001_initial.sql   ← CREATE TABLE IF NOT EXISTS (plans, tenants, platform_users) + seed
-│   └── tenant/001_initial.sql   ← الجداول الأساسية، + migrations رقمية تباعاً حتى 022 حاليًا
+│   └── tenant/001_initial.sql   ← الجداول الأساسية، + migrations رقمية تباعاً حتى 028 حاليًا
 └── migrate.js                   ← runner ذكي
 ```
 
@@ -360,7 +363,16 @@ packages/db/src/
 015_notify_grade_recorded.sql           ← توگل إشعار الدرجة (Session #030)
 016-021_telegram_*.sql                  ← موديول تليجرام المستقل بالكامل (راجع قسم 11)
 022_attendance_telegram_grade_notified.sql
+023_fix_absence_excused_branding.sql
+024_question_bank.sql                   ← بنك الأسئلة والامتحانات (⚠️ DB-001: GRANT لـ nabgha)
+025_expense_reversal_transaction.sql    ← قيد عكس المصروف (FIN-002)
+026_attendance_credits_v2.sql           ← رصيد التعويض v2
+027_exams_kind_session_link.sql         ← التسميعات + ربط الامتحان بالحصة + out_of NUMERIC
+028_fix_times_used_trigger_schema.sql   ← إصلاح trigger الـ times_used (EX-011)
 ```
+
+> ⚠️ **على السيرفر مابنشغّلش `migrate.js`.** الإجراء في [`operations/DEPLOYMENT_RUNBOOK.md §4`](operations/DEPLOYMENT_RUNBOOK.md#4-تطبيق-migration-جديدة).
+> ⚠️ أي دالة plpgsql أو trigger لازم يكتب اسم الـ schema (شوف [`engineering/CONVENTIONS.md §2.1`](engineering/CONVENTIONS.md)).
 
 ### الاستخدام
 ```bash
