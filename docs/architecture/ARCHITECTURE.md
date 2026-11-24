@@ -125,7 +125,7 @@ modules/<name>/
 
 | # | الغرض |
 |---|---|
-| 024 | بنك الأسئلة والامتحانات (`exam_questions`، `exams`، `exam_items`). ⚠️ فيها DB-001. |
+| 024 | بنك الأسئلة والامتحانات (`exam_questions`، `exams`، `exam_items`). الـ GRANT بقى مشروط (DB-001، [ADR-0011](../adr/0011-db-001-conditional-grant.md)). |
 | 025 | قيد عكس المصروف في الخزينة (`expense_reversal`). |
 | 026 | رصيد التعويض v2 (unique لكل حضور بديل، حالة `revoked`). |
 | 027 | `exams.kind` (امتحان/تسميع)، و`sessions.exam_id`، و`sessions.out_of` بقى NUMERIC. |
@@ -141,6 +141,5 @@ modules/<name>/
 | السكانر | كيبورد USB (HID) أو كاميرا (`html5-qrcode`) | [modules/BARCODES.md](../modules/BARCODES.md) |
 
 ## 9. حدود معروفة ومهمة
-- `DB-001`: migration 024 بتعمل GRANT لـ role ثابت اسمه `nabgha`. لازم تتعدّل قبل أي نشر بيوزر قاعدة بيانات مختلف.
 - الأسرار الثابتة في `apps/desktop/src/main.ts`: قرار مقصود من المالك ([ADR-0002](../adr/0002-fixed-desktop-secrets.md)).
 - مفيش CI لحد دلوقتي، والاختبارات بتتشغّل يدوي ([TESTING](../engineering/TESTING.md)).

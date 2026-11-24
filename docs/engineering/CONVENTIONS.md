@@ -41,7 +41,7 @@
 | صفر | `row.x !== null && row.x !== undefined ? Number(row.x) : null` | ATT-012: الدرجة صفر كانت بتتقري "مش متسجلة" |
 
 ### 2.3 الـ Migrations
-- ملف جديد بالرقم اللي بعده: `packages/db/src/migrations/tenant/NNN_snake_case.sql`. **مابنعدّلش migration قديمة أبداً.**
+- ملف جديد بالرقم اللي بعده: `packages/db/src/migrations/tenant/NNN_snake_case.sql`. **مابنعدّلش migration قديمة أبداً.** الاستثناء الوحيد بشروطه في [ADR-0011](../adr/0011-db-001-conditional-grant.md).
 - أول الملف: تعليق بالعربي بيقول بيعمل إيه وليه، والتاريخ.
 - لازم تبقى idempotent: `IF NOT EXISTS`، و`DROP CONSTRAINT IF EXISTS` قبل `ADD CONSTRAINT`، و`ON CONFLICT DO NOTHING`.
 - ممنوع `GRANT` لاسم role ثابت (DB-001).

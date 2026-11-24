@@ -178,8 +178,14 @@ CREATE TRIGGER trg_increment_times_used
 -- ============================================================
 -- Grants
 -- ============================================================
+-- DB-001 (2026-11-25): الـ GRANT بيتنفّذ بس لو الـ role اللي اسمه nabgha موجود.
+-- قبل كده كان بيفشل بـ "role nabgha does not exist" على أي سيرفر بيوزر قاعدة بيانات تاني،
+-- وكان بيوقف إنشاء المركز عند 023. على الديسكتوب والسيرفر الحالي (الـ role موجود)
+-- السلوك زي ما هو بالظبط. استثناء موثّق من قاعدة "مابنعدّلش migration قديمة": ADR-0011.
 DO $$ DECLARE t TEXT; BEGIN
-  FOREACH t IN ARRAY ARRAY['exam_questions', 'exams', 'exam_items'] LOOP
-    EXECUTE format('GRANT ALL ON TABLE %I TO nabgha', t);
-  END LOOP;
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nabgha') THEN
+    FOREACH t IN ARRAY ARRAY['exam_questions', 'exams', 'exam_items'] LOOP
+      EXECUTE format('GRANT ALL ON TABLE %I TO nabgha', t);
+    END LOOP;
+  END IF;
 END $$;
