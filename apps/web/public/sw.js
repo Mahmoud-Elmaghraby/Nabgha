@@ -1,5 +1,5 @@
 // غيّر رقم النسخة مع أي تغيير في الصور/الأيقونات — الكاش القديم بيتمسح تلقائي عند التفعيل
-const CACHE_NAME = 'nabgha-v3-' + self.registration.scope;
+const CACHE_NAME = 'nabgha-v4-' + self.registration.scope; // v4: شاشة التحميل في index.html (2026-11-25)
 const STATIC_ASSETS = ['/', '/index.html', '/offline.html', '/Logo-icon-192.png'];
 
 self.addEventListener('install', (event) => {

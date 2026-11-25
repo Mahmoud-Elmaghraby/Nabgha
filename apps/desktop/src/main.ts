@@ -1,14 +1,44 @@
-import { app, BrowserWindow, Tray, Menu, nativeImage, clipboard, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, Tray, Menu, nativeImage, clipboard, ipcMain, shell, dialog } from 'electron';
 import * as path from 'path';
 import * as http from 'http';
 import * as os from 'os';
 import * as fs from 'fs';
 import { spawn, ChildProcess } from 'child_process';
+import { buildSplashHtml, SPLASH_WIDTH, SPLASH_HEIGHT } from './splash';
+
+// ── سجل التشغيل في ملف ─────────────────────────────────────────
+// قبل كده كل اللوج (Electron + API + migrations) كان على الكونسول بس، فلو البرنامج قفل عند
+// عميل مكانش فيه أي طريقة نعرف السبب. دلوقتي بيتكتب في %APPDATA%\نبغة\logs\nabgha.log
+// (آخر ~5 ميجا، والقديم بيتنقل لـ nabgha.old.log).
+const LOG_DIR = path.join(app.getPath('userData'), 'logs');
+const LOG_FILE = path.join(LOG_DIR, 'nabgha.log');
+try {
+  fs.mkdirSync(LOG_DIR, { recursive: true });
+  if (fs.existsSync(LOG_FILE) && fs.statSync(LOG_FILE).size > 5 * 1024 * 1024) {
+    fs.renameSync(LOG_FILE, path.join(LOG_DIR, 'nabgha.old.log'));
+  }
+} catch { /* اللوج مش لازم يوقف البرنامج */ }
+function writeLog(level: string, args: unknown[]): void {
+  const line = `${new Date().toISOString()} [${level}] ${args.map((a) => (a instanceof Error ? a.stack ?? a.message : typeof a === 'string' ? a : JSON.stringify(a))).join(' ')}\n`;
+  try { fs.appendFileSync(LOG_FILE, line); } catch { /* ignore */ }
+}
+for (const level of ['log', 'warn', 'error'] as const) {
+  const original = console[level].bind(console);
+  console[level] = (...args: unknown[]) => { writeLog(level.toUpperCase(), args); original(...args); };
+}
+process.on('uncaughtException', (err) => console.error('[Main] uncaughtException:', err));
+process.on('unhandledRejection', (err) => console.error('[Main] unhandledRejection:', err));
+
+/** ملفات assets جوّه البرنامج (بتشتغل من app.asar في النسخة المتسطبة) */
+function assetPath(name: string): string {
+  return path.join(__dirname, '..', 'assets', name);
+}
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let apiProcess: ChildProcess | null = null;
 let isQuitting = false;
+let apiRestarts: number[] = [];
 
 const API_PORT = 3001;
 const IS_PACKAGED = app.isPackaged;
@@ -198,10 +228,17 @@ function startAPI(): Promise<void> {
 
     apiProcess.on('exit', (code) => {
       console.log(`[API] exited with code ${code}`);
-      if (!isQuitting) {
-        // startAPI دلوقتي بتعمل killPortUser تلقائياً قبل الـ spawn
-        startAPI();
+      if (isQuitting) return;
+      // إعادة تشغيل تلقائي، بس بحد: لو وقع 5 مرات في دقيقة يبقى فيه مشكلة حقيقية (مش هنفضل في لفّة)
+      const now = Date.now();
+      apiRestarts = apiRestarts.filter((t) => now - t < 60_000);
+      apiRestarts.push(now);
+      if (apiRestarts.length > 5) {
+        console.error('[API] crashed 5 times in a minute — not restarting');
+        dialog.showErrorBox('نبغة', `الخادم الداخلي للبرنامج بيقف بشكل متكرر.\nاقفل البرنامج وافتحه تاني، ولو المشكلة فضلت كلّم الدعم الفني وابعتلهم ملف:\n${LOG_FILE}`);
+        return;
       }
+      setTimeout(() => { startAPI().catch((err) => console.error('[API] restart failed:', err)); }, 2000);
     });
 
     apiProcess.on('error', (err) => { reject(err); });
@@ -244,9 +281,9 @@ function runMigrations(): Promise<void> {
 }
 
 function createTray() {
-  const iconPath = IS_PACKAGED
-    ? path.join(RESOURCES, 'assets', 'icon.png')
-    : path.join(__dirname, '../assets/icon.png');
+  // قبل كده كان بيدوّر على assets/icon.png في resources، والملف ده مش موجود أصلاً،
+  // فأيقونة التراي كانت بتطلع فاضية. الأيقونة الموجودة icon.ico جوّه البرنامج.
+  const iconPath = [assetPath('icon.png'), assetPath('icon.ico')].find((p) => fs.existsSync(p)) ?? assetPath('icon.ico');
 
   const icon = fs.existsSync(iconPath)
     ? nativeImage.createFromPath(iconPath)
@@ -277,73 +314,63 @@ function createTray() {
   tray.on('double-click', () => mainWindow?.show());
 }
 
-function createSplashWindow(status = 'جاري التشغيل...'): BrowserWindow {
-  // ملحوظة: transparent:true اتشال عمداً — غير موثوق على وندوز (بيفشل يترندر
-  // شفاف على بعض كروت الشاشة/الدرايفرات أو لو تسريع الـ GPU متعطل، وبيظهر
-  // كمربع أبيض صريح فاضي بدل التصميم المقصود). backgroundColor بديل ثابت
-  // مايعتمدش على compositing الـ OS خالص. show:false + ready-to-show بيمنعوا
-  // كمان أي فلاش أبيض قبل ما الـ HTML يخلص تحميل.
+/**
+ * شاشة التحميل (splash.ts): اللوجو + الاسم + شريط تقدّم. بتفضل ظاهرة لحد ما الشاشة الرئيسية
+ * تترسم فعلاً — قبل كده كانت بتتقفل الأول، فكان فيه لحظة مفيش فيها أي شباك ("بيقوم ويقفل")
+ * وبعدين شباك أخضر فاضي لحد ما الواجهة تحمّل.
+ */
+function createSplashWindow(): BrowserWindow {
+  let mark = '';
+  try {
+    mark = `data:image/png;base64,${fs.readFileSync(assetPath('splash-mark.png')).toString('base64')}`;
+  } catch (err) {
+    console.warn('[Splash] logo not found:', (err as Error).message);
+  }
+  // transparent:true مش موثوق على وندوز (بيطلع مربع أبيض مع بعض كروت الشاشة)، فالخلفية لون ثابت
   const splash = new BrowserWindow({
-    width: 400, height: 300,
-    frame: false, alwaysOnTop: true,
+    width: SPLASH_WIDTH, height: SPLASH_HEIGHT,
+    frame: false, resizable: false, movable: true, center: true,
+    skipTaskbar: false, alwaysOnTop: false,
     backgroundColor: '#0E3B2E',
+    title: 'نبغة',
+    icon: assetPath('icon.ico'),
     show: false,
-    webPreferences: { nodeIntegration: false },
+    webPreferences: { nodeIntegration: false, contextIsolation: true },
   });
-
   splash.once('ready-to-show', () => splash.show());
-
-  const html = `<!DOCTYPE html>
-<html dir="rtl">
-<head>
-  <meta charset="UTF-8">
-  <style>
-    * { margin:0; padding:0; box-sizing:border-box; }
-    body {
-      background:#0E3B2E; color:white;
-      font-family:Cairo,Arial,sans-serif;
-      display:flex; flex-direction:column;
-      align-items:center; justify-content:center;
-      height:100vh; border-radius:16px;
-    }
-    h1 { font-size:48px; color:#C9A227; margin-bottom:8px; }
-    p  { font-size:14px; color:rgba(255,255,255,0.7); margin-bottom:32px; }
-    .loader {
-      width:40px; height:40px;
-      border:3px solid rgba(255,255,255,0.2);
-      border-top-color:#C9A227;
-      border-radius:50%;
-      animation:spin 1s linear infinite;
-    }
-    .status { margin-top:16px; font-size:12px; color:rgba(255,255,255,0.5); }
-    @keyframes spin { to { transform:rotate(360deg); } }
-  </style>
-</head>
-<body>
-  <h1>نبغة</h1>
-  <p>إدارة الدروس الخصوصية</p>
-  <div class="loader"></div>
-  <div class="status">${status}</div>
-</body>
-</html>`;
-
-  splash.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+  splashLoaded.set(splash, new Promise<void>((resolve) => splash.webContents.once('did-finish-load', () => resolve())));
+  splash.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(buildSplashHtml(mark, app.getVersion()))}`);
   return splash;
 }
 
-function createMainWindow() {
+/** الحالة بتتكتب بعد ما شاشة التحميل تخلص تحميل (مش قبلها فتضيع) */
+const splashLoaded = new WeakMap<BrowserWindow, Promise<void>>();
+function runInSplash(splash: BrowserWindow, js: string): void {
+  if (splash.isDestroyed()) return;
+  (splashLoaded.get(splash) ?? Promise.resolve())
+    .then(() => { if (!splash.isDestroyed()) return splash.webContents.executeJavaScript(js); })
+    .catch(() => {});
+}
+
+const STARTUP_STEPS = 4;
+function setSplashStatus(splash: BrowserWindow, text: string, step: number): void {
+  runInSplash(splash, `window.setStatus && window.setStatus(${JSON.stringify(text)}, ${step}, ${STARTUP_STEPS})`);
+}
+
+function createMainWindow(): BrowserWindow {
   const PRELOAD_PATH = IS_PACKAGED
     ? path.join(RESOURCES, 'app.asar', 'dist', 'preload.js')
     : path.join(__dirname, 'preload.js');
 
   mainWindow = new BrowserWindow({
     width: 1280, height: 800,
-    show: true,
+    minWidth: 960, minHeight: 600,
+    // مخفي لحد ما الواجهة تترسم فعلاً (waitForAppRendered) — مفيش شاشة خضرا فاضية
+    show: false,
     title: 'نبغة',
+    icon: assetPath('icon.ico'),
     autoHideMenuBar: true,
-    // نفس منطق تفادي الفلاش الأبيض — لون خلفية ثابت مطابق لهوية التصميم
-    // بدل الأبيض الافتراضي لحد ما محتوى localhost:3001 يخلص تحميل.
-    backgroundColor: '#0E3B2E',
+    backgroundColor: '#F7F7F7',
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -351,7 +378,7 @@ function createMainWindow() {
     },
   });
 
-  mainWindow.loadURL(`http://localhost:${API_PORT}`);
+  mainWindow.loadURL(`http://localhost:${API_PORT}`).catch((err) => console.error('[Main] loadURL failed:', err));
 
   mainWindow.on('close', (e) => {
     if (!isQuitting) {
@@ -359,6 +386,25 @@ function createMainWindow() {
       mainWindow?.hide();
     }
   });
+  return mainWindow;
+}
+
+/**
+ * بيستنى لحد ما React يرسم الواجهة (index.html فيه #nabgha-boot جوّه #root، وReact بيشيله أول ما يرسم).
+ * أقصى حاجة 20 ثانية وبعدين بيظهر الشباك على أي حال.
+ */
+async function waitForAppRendered(win: BrowserWindow, timeoutMs = 20_000): Promise<void> {
+  const started = Date.now();
+  while (!win.isDestroyed() && Date.now() - started < timeoutMs) {
+    try {
+      const ready = await win.webContents.executeJavaScript(
+        `(() => { const r = document.getElementById('root'); return !!r && r.children.length > 0 && !document.getElementById('nabgha-boot'); })()`,
+      );
+      if (ready) return;
+    } catch { /* الصفحة لسه بتحمّل */ }
+    await new Promise((r) => setTimeout(r, 150));
+  }
+  console.warn('[Main] app did not report rendered in time — showing anyway');
 }
 
 // ── IPC: Get Printers ─────────────────────────────────────────
@@ -532,63 +578,97 @@ ipcMain.handle(
 );
 
 // ── Single Instance Lock ───────────────────────────────────────
-// السبب الجذري لـ EADDRINUSE: كان في أكثر من Electron instance
-// شغّال في نفس الوقت — كل واحد بيعمل killPortUser على API التاني
-// وبيشغّل API جديدة على 3001 → فوضى كاملة.
-// الحل: لو instance ثاني حاول يشتغل، نقفله فوراً ونرجع للأول.
+// لو النسخة دي تانية (المستخدم داس على الأيقونة مرتين مثلاً)، تقفل على طول ومتعملش أي حاجة.
+// قبل كده app.quit() كان بيتنادى بس الكود كان بيكمل: النسخة التانية كانت بتفتح شاشة تحميل،
+// وتشغّل migrations، و**تقتل سيرفر النسخة الأولى** (killPortUser) قبل ما تقفل.
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 if (!gotSingleInstanceLock) {
   console.log('[App] Another instance is already running — quitting.');
-  app.quit();
+  app.exit(0);
+} else {
+  app.on('second-instance', () => {
+    // لو المستخدم حاول يفتح نبغة تاني وهي شغّالة
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  });
+
+  app.whenReady().then(() => {
+    app.setAppUserModelId('com.nabgha.desktop');
+    console.log(`[App] starting v${app.getVersion()} — log: ${LOG_FILE}`);
+    createTray();
+    void startup(createSplashWindow());
+  });
 }
 
-app.on('second-instance', () => {
-  // لو المستخدم حاول يفتح نبغة تاني وهي شغّالة
-  if (mainWindow) {
-    if (mainWindow.isMinimized()) mainWindow.restore();
-    mainWindow.show();
-    mainWindow.focus();
-  }
-});
-
-// ── App Ready ─────────────────────────────────────────────────
-app.whenReady().then(async () => {
-  app.setAppUserModelId('com.nabgha.desktop');
-
-  const splash = createSplashWindow('جاري تجهيز قاعدة البيانات...');
-  createTray();
-
+/** تسلسل التشغيل. لو حاجة فشلت: رسالة واضحة + إعادة المحاولة، بدل ما البرنامج يقفل من غير ولا كلمة */
+async function startup(splash: BrowserWindow): Promise<void> {
   try {
+    setSplashStatus(splash, 'جاري تجهيز قاعدة البيانات…', 1);
     await runMigrations();
 
-    splash.webContents.executeJavaScript(
-      `document.querySelector('.status').textContent = 'جاري تشغيل الخادم...'`
-    ).catch(() => {});
-
+    setSplashStatus(splash, 'جاري تشغيل الخادم…', 2);
     // نقتل أي API قديمة من run سابقة قبل ما نبدأ — يحمي من EADDRINUSE
-    // لو الـ Electron اتغلق بشكل مش نظيف وسابت process على البورت
     await killPortUser(API_PORT);
     await startAPI();
 
-    splash.webContents.executeJavaScript(
-      `document.querySelector('.status').textContent = 'جاري الاتصال...'`
-    ).catch(() => {});
+    setSplashStatus(splash, 'جاري الاتصال…', 3);
+    await waitForAPI(90);
 
-    await waitForAPI();
-
-  splash.destroy();
-createMainWindow();
+    setSplashStatus(splash, 'جاري فتح البرنامج…', 4);
+    const win = createMainWindow();
+    await waitForAppRendered(win);
+    win.maximize();
+    win.show();
+    win.focus();
+    if (!splash.isDestroyed()) splash.destroy();
 
     const lanIP = getLanIP();
     console.log(`نبغة شغالة على http://localhost:${API_PORT}`);
     console.log(`من الموبايل: http://${lanIP}:${API_PORT}`);
-
   } catch (err) {
-console.error('Startup failed:', err);
-splash.destroy();
+    console.error('Startup failed:', err);
+    const reason = (err as Error)?.message ?? String(err);
+    runInSplash(splash, `window.setError && window.setError(${JSON.stringify('البرنامج ماقدرش يشتغل')})`);
+    const { response } = await dialog.showMessageBox(splash.isDestroyed() ? (undefined as any) : splash, {
+      type: 'error',
+      title: 'نبغة',
+      message: 'البرنامج ماقدرش يشتغل',
+      detail: `${friendlyStartupError(reason)}\n\nلو المشكلة اتكررت، كلّم الدعم الفني وابعتلهم الملف ده:\n${LOG_FILE}`,
+      buttons: ['إعادة المحاولة', 'فتح ملف السجل', 'إغلاق'],
+      defaultId: 0,
+      cancelId: 2,
+      noLink: true,
+    });
+    if (response === 0) {
+      if (mainWindow && !mainWindow.isDestroyed()) { mainWindow.destroy(); mainWindow = null; }
+      if (apiProcess) {
+        // نوقف الـ API القديم من غير ما الـ exit handler يشغّله تاني
+        apiProcess.removeAllListeners('exit');
+        apiProcess.kill();
+        apiProcess = null;
+      }
+      apiRestarts = [];
+      if (!splash.isDestroyed()) splash.destroy();
+      return startup(createSplashWindow());
+    }
+    if (response === 1) await shell.openPath(LOG_FILE);
+    isQuitting = true;
+    if (!splash.isDestroyed()) splash.destroy();
     app.quit();
   }
-});
+}
+
+function friendlyStartupError(reason: string): string {
+  if (/Node\.js/.test(reason)) return 'Node.js مش موجود على الجهاز — التثبيت ناقص. أعد تثبيت البرنامج.';
+  if (/Migration failed|ECONNREFUSED|password authentication|database/i.test(reason)) {
+    return 'قاعدة البيانات مش شغالة أو مش بترد. اتأكد إن خدمة PostgreSQL شغالة، أو اعمل Restart للجهاز وجرّب تاني.';
+  }
+  if (/API timeout|API not available/.test(reason)) return 'الخادم الداخلي للبرنامج ماقامش في الوقت المتوقع.';
+  return reason;
+}
 
 // ── Cleanup ───────────────────────────────────────────────────
 app.on('before-quit', () => {

@@ -1,6 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '../../../shared/lib/api/client';
+import { printHtml } from '../../../shared/lib/printHtml';
 
 interface ReceiptData {
   receiptNumber: number;
@@ -28,11 +29,27 @@ const PAYMENT_METHOD_AR: Record<string, string> = {
   vodafone: 'فودافون كاش', bank: 'تحويل بنكي', other: 'أخرى',
 };
 
-// طول صفحة ثابت للطباعة (مم) — بدل القياس التلقائي بالجافاسكريبت (كان بيعتمد
-// على توقيت رندر/تحميل خطوط مختلف من جهاز لجهاز، وده اللي كان بيسبب مشاكل
-// غير ثابتة). 150مم كافي جدًا لأي إيصال عادي (الإيصال الطبيعي حوالي 90-120مم)،
-// فبيضمن صفحة واحدة دايمًا على أي جهاز، بفارق بسيط من الورق الفاضي في الآخر.
-const FIXED_PAGE_HEIGHT_MM = 150;
+/**
+ * شكل الإيصال على ورق 80مم. بيتطبع في iframe معزول (printHtml) بطول الإيصال بالظبط.
+ * FIN-013: قبل كده كان بيتطبع من صفحة البرنامج كلها بـ position:fixed وطول ثابت 150مم،
+ * فكان بيطلع نسختين وبينهم ورق فاضي.
+ */
+const RECEIPT_CSS = `
+  .receipt { box-sizing: border-box; width: 100%; padding: 2mm 4mm 0; font-family: 'Arial', sans-serif;
+    font-size: 12px; direction: rtl; color: #000; line-height: 1.6; }
+  .receipt .name { font-size: 18px; font-weight: bold; text-align: center; letter-spacing: 1px; margin-bottom: 1mm; }
+  .receipt .subtitle { font-size: 10px; text-align: center; margin-bottom: 2mm; }
+  .receipt .line-dashed { border-top: 1px dashed #000; margin: 2mm 0; }
+  .receipt .line-double { border-top: 3px double #000; margin: 2mm 0; }
+  .receipt .row { display: flex; justify-content: space-between; align-items: center; gap: 2mm; margin: 1.5mm 0; font-size: 12px; }
+  .receipt .label { color: #333; white-space: nowrap; }
+  .receipt .value { font-weight: bold; text-align: left; }
+  .receipt .amount-box { text-align: center; margin: 3mm 0; padding: 2mm 0; border-top: 2px solid #000; border-bottom: 2px solid #000; }
+  .receipt .amount-num { font-size: 22px; font-weight: bold; }
+  .receipt .receipt-num { font-size: 10px; text-align: center; color: #333; }
+  .receipt .footer { text-align: center; font-size: 10px; margin-top: 2mm; }
+  .receipt .footer-phone { font-size: 11px; font-weight: bold; }
+`;
 
 function useBrandingInfo(monthlyDueId?: string) {
   return useQuery({
@@ -56,15 +73,24 @@ function useBrandingInfo(monthlyDueId?: string) {
 export function ThermalReceipt({ receipt, onClose, autoPrint = false }: ThermalReceiptProps) {
   const { data: branding } = useBrandingInfo(receipt.monthlyDueId);
   const printRef = useRef<HTMLDivElement>(null);
+  const [printing, setPrinting] = useState(false);
+
+  const handlePrint = async () => {
+    if (!printRef.current || printing) return;
+    setPrinting(true);
+    try {
+      await printHtml(printRef.current.innerHTML, RECEIPT_CSS, { pageWidthMm: 80, title: `إيصال ${receipt.receiptNumber}` });
+    } finally {
+      setPrinting(false);
+    }
+  };
 
   useEffect(() => {
     if (autoPrint && branding) {
-      setTimeout(() => window.print(), 400);
+      const t = setTimeout(() => { void handlePrint(); }, 300);
+      return () => clearTimeout(t);
     }
-  }, [autoPrint, branding]);
-
-  const handlePrint = () => window.print();
-  const pageSizeValue = `${FIXED_PAGE_HEIGHT_MM}mm`;
+  }, [autoPrint, branding]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const d = new Date(receipt.paidAt);
   const date = `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
@@ -77,52 +103,10 @@ export function ThermalReceipt({ receipt, onClose, autoPrint = false }: ThermalR
 
   return (
     <>
-      <style>{`
-        @media print {
-          body * { visibility: hidden; }
-          #thermal-receipt-print, #thermal-receipt-print * { visibility: visible; }
-          #thermal-receipt-print {
-            position: fixed !important;
-            top: 0 !important;
-            left: 0 !important;
-          }
-          /* دفاع إضافي: حتى لو عناصر الصفحة المخفية (visibility:hidden) فضلت
-             شاغلة مساحتها، بنقفل ارتفاع جذر التطبيق فعليًا عشان الطول الكلي
-             المستخدم في حساب الصفحة يقرب من طول الإيصال بس مش طول الشاشة كلها. */
-          #root { height: 0 !important; overflow: hidden !important; }
-          @page { size: 80mm ${pageSizeValue}; margin: 0; }
-        }
-        #thermal-receipt-print {
-          position: absolute;
-          top: -10000px;
-          left: -10000px;
-          width: 76mm;
-          font-family: 'Arial', sans-serif;
-          font-size: 12px;
-          direction: rtl;
-          padding: 4mm 3mm;
-          color: #000;
-          line-height: 1.6;
-        }
-        #thermal-receipt-print .center { text-align: center; }
-        #thermal-receipt-print .bold { font-weight: bold; }
-        #thermal-receipt-print .name { font-size: 18px; font-weight: bold; text-align: center; letter-spacing: 1px; margin-bottom: 1mm; }
-        #thermal-receipt-print .subtitle { font-size: 10px; text-align: center; margin-bottom: 2mm; }
-        #thermal-receipt-print .line-solid { border-top: 1px solid #000; margin: 2mm 0; }
-        #thermal-receipt-print .line-dashed { border-top: 1px dashed #000; margin: 2mm 0; }
-        #thermal-receipt-print .line-double { border-top: 3px double #000; margin: 2mm 0; }
-        #thermal-receipt-print .row { display: flex; justify-content: space-between; align-items: center; margin: 1.5mm 0; font-size: 12px; }
-        #thermal-receipt-print .label { color: #333; }
-        #thermal-receipt-print .value { font-weight: bold; }
-        #thermal-receipt-print .amount-box { text-align: center; margin: 3mm 0; padding: 2mm 0; border-top: 2px solid #000; border-bottom: 2px solid #000; }
-        #thermal-receipt-print .amount-num { font-size: 22px; font-weight: bold; }
-        #thermal-receipt-print .receipt-num { font-size: 10px; text-align: center; color: #555; }
-        #thermal-receipt-print .footer { text-align: center; font-size: 10px; margin-top: 2mm; }
-        #thermal-receipt-print .footer-phone { font-size: 11px; font-weight: bold; }
-      `}</style>
 
-      {/* Printable Content */}
-      <div id="thermal-receipt-print" ref={printRef}>
+      {/* محتوى الطباعة — مخفي هنا، وبيتنسخ لـ iframe الطباعة (printHtml) */}
+      <div ref={printRef} style={{ display: 'none' }} aria-hidden="true">
+      <div className="receipt">
 
         {/* Header */}
         <div className="name">{centerName}</div>
@@ -130,6 +114,7 @@ export function ThermalReceipt({ receipt, onClose, autoPrint = false }: ThermalR
         <div className="line-double"/>
 
         {/* Receipt Info */}
+        <div className="receipt-num">إيصال رقم: {receipt.receiptNumber}</div>
 
         <div className="row">
           <span className="label">التاريخ:</span>
@@ -197,6 +182,7 @@ export function ThermalReceipt({ receipt, onClose, autoPrint = false }: ThermalR
         </div>
 
       </div>
+      </div>
 
       {/* Modal Preview */}
       <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" dir="rtl">
@@ -257,8 +243,8 @@ export function ThermalReceipt({ receipt, onClose, autoPrint = false }: ThermalR
               className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50 transition-colors">
               إغلاق
             </button>
-            <button onClick={handlePrint}
-              className="flex-1 py-2.5 bg-[#0E3B2E] text-white rounded-xl text-sm font-medium hover:bg-[#1F6B4E] transition-colors flex items-center justify-center gap-2">
+            <button onClick={handlePrint} disabled={printing}
+              className="flex-1 py-2.5 bg-[#0E3B2E] text-white rounded-xl text-sm font-medium hover:bg-[#1F6B4E] transition-colors flex items-center justify-center gap-2 disabled:opacity-60">
               <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <polyline points="6 9 6 2 18 2 18 9"/>
                 <path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/>
