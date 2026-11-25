@@ -307,13 +307,16 @@ export function AppLayout({ children }: AppLayoutProps) {
         </div>
       )}
 
-      {!isChatPage && <DisplayModeControls />}
+      {/* بانل الحضور عرضه 320px على الشمال (md وأكبر) — الأزرار العايمة بتتزاح جنبه */}
+      {!isChatPage && <DisplayModeControls leftOffset={splitMode ? 320 : 0} />}
       {!isChatPage && <InstallBanner />}
-      {!isChatPage && <FloatingFab />}
+      {!isChatPage && <FloatingFab leftOffset={splitMode && window.innerWidth >= 768 ? 320 : 0} />}
 
       {/* Attendance Panel — Fixed Side Panel */}
       {splitMode && (
-        <div className="hidden md:fixed md:flex md:top-0 md:left-0 md:h-full md:z-30">
+        // في وضع الناف بار البانل بيبدأ تحت الشريط العلوي (72px) — قبل كده كان بيبدأ من فوق
+        // فراسه (العنوان وزرار القفل) كانت مستخبية ورا الناف بار
+        <div className={`hidden md:fixed md:flex md:left-0 md:z-30 ${isNavbar ? 'md:top-[72px] md:h-[calc(100vh-72px)]' : 'md:top-0 md:h-full'}`}>
           <AttendancePanel onClose={() => setSplitMode(false)} />
         </div>
       )}

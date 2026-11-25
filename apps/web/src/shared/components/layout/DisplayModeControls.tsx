@@ -2,14 +2,15 @@ import { useTouchMode } from '@/shared/hooks/useTouchMode';
 
 // أزرار صغيرة عايمة: وضع اللمس + ملء الشاشة (للشاشات التفاعلية والتابلت).
 // مخفية على الموبايل الصغير (MobileNav بيغطي الجزء ده).
-export function DisplayModeControls() {
+/** leftOffset: لما بانل الحضور مفتوح على الشمال، الأزرار بتتزاح جنبه بدل ما تغطّيه */
+export function DisplayModeControls({ leftOffset = 0 }: { leftOffset?: number }) {
   const { touchActive, toggleTouch, isFullscreen, fullscreenSupported, toggleFullscreen } = useTouchMode();
   const btn = (active: boolean) =>
     `w-11 h-11 flex items-center justify-center rounded-full shadow-lg border transition-colors ${
       active ? 'bg-[#0E3B2E] text-white border-[#0E3B2E]' : 'bg-white text-[#0E3B2E] border-gray-200 hover:bg-gray-50'
     }`;
   return (
-    <div className="hidden md:flex fixed bottom-4 left-4 z-40 flex-col gap-2 print:hidden">
+    <div className="hidden md:flex fixed bottom-4 z-40 flex-col gap-2 print:hidden" style={{ left: 16 + leftOffset }}>
       <button type="button" onClick={toggleTouch} className={btn(touchActive)}
         title={touchActive ? 'إيقاف وضع الشاشة التفاعلية' : 'تفعيل وضع الشاشة التفاعلية (أزرار أكبر)'}>
         <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

@@ -11,7 +11,8 @@ interface OngoingSession {
   status: string;
 }
 
-export function FloatingFab() {
+/** leftOffset: لما بانل الحضور مفتوح على الشمال، الزرار بيتزاح جنبه بدل ما يغطّيه */
+export function FloatingFab({ leftOffset = 0 }: { leftOffset?: number } = {}) {
   const toast = useToast();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
@@ -123,7 +124,7 @@ export function FloatingFab() {
 
       <div
         className="fixed z-50"
-        style={{ left: position.x, top: position.y, touchAction: 'none' }}
+        style={{ left: Math.max(position.x, leftOffset + 16), top: position.y, touchAction: 'none' }}
       >
         {open && !showSessions && (
           <div className="absolute bottom-16 left-0 flex flex-col gap-2 items-start">
