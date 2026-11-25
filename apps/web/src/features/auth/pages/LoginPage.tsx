@@ -47,7 +47,8 @@ const HIGHLIGHTS = [
 export default function LoginPage() {
   // تحقق من الـ setup في Desktop mode
   useEffect(() => {
-    fetch('/api/v1/auth/setup/check')
+    // الـ endpoint نفسه POST — قبل كده كان بيتنادى GET فبيرجّع 404 دايماً
+    fetch('/api/v1/auth/setup/check', { method: 'POST' })
       .then(r => r.json())
       .then(data => {
         if (data?.data?.needsSetup) {
