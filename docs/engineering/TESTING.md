@@ -9,7 +9,7 @@
 | Type-check للـ API | لازم يعدّي من غير أخطاء جديدة | `pnpm --filter api check-types` |
 | Type-check للواجهة | فيه حوالي 84 خطأ قديم (WEB-TS-001)، وممنوع نزوّد عليهم | `npx tsc --noEmit -p apps/web/tsconfig.app.json` |
 | Build للواجهة | لازم يعدّي | `pnpm --filter web build` |
-| **اختبارات سيناريوهات** على Postgres حقيقي | 6 ملفات، 131 فحص | [`apps/api/test/scenarios`](../../apps/api/test/scenarios/README.md) |
+| **اختبارات سيناريوهات** على Postgres حقيقي | 7 ملفات، 142 فحص | [`apps/api/test/scenarios`](../../apps/api/test/scenarios/README.md) |
 | Unit tests بـ Jest | مفيش فعلياً | — |
 | E2E | مفيش | — |
 | CI | مفيش | — |

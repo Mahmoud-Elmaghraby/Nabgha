@@ -8,6 +8,7 @@ const archiver: any = require('archiver');
 import { PgDumpLocatorService } from '../../infrastructure/backup/pg-dump-locator.service';
 import { ModuleSettingsRepository } from '../../infrastructure/settings.repository';
 import { AppError } from '../../../../core/errors/app.error';
+import { isBackupAvailable } from '../../../../shared/infrastructure/guards/backup-availability.guard';
 
 const execFileAsync = promisify(execFile);
 const AUTO_BACKUP_SETTING_KEY = 'auto_backup_enabled';
@@ -36,6 +37,10 @@ export class BackupUseCase {
 
   /** ينشئ نسخة احتياطية كاملة (قاعدة بيانات + ملفات التخزين) في ملف zip واحد */
   async createBackup(tenantId: string, trigger: 'manual' | 'scheduled'): Promise<string> {
+    // BACKUP-006: حماية تانية غير الـ guard — pg_dump بياخد قاعدة البيانات كلها (كل المراكز)
+    if (!isBackupAvailable()) {
+      throw AppError.forbidden('BACKUP_DESKTOP_ONLY', 'النسخ الاحتياطي من البرنامج متاح في نسخة الديسكتوب بس.');
+    }
     const pgDumpPath = await this.pgDumpLocator.locate();
     if (!pgDumpPath) {
       throw new AppError('BACKUP_FAILED', 'تعذر العثور على أداة pg_dump على هذا الجهاز', 500);

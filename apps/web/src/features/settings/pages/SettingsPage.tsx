@@ -1,10 +1,12 @@
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { PageHeader } from '@/shared/components';
 import { CenterSettingsForm } from '../components/CenterSettingsForm';
 import { SubjectsManager } from '../../subjects/components/SubjectsManager';
 import { CardDesignerForm } from '../components/CardDesignerForm';
 import { BrandingSettingsForm } from '../components/BrandingSettingsForm';
 import { BackupSettingsForm } from '../components/BackupSettingsForm';
+import { backupApi } from '../api/backup.api';
 
 type Tab = 'center' | 'subjects' | 'card' | 'branding' | 'backup';
 
@@ -18,6 +20,13 @@ const TABS: { key: Tab; label: string }[] = [
 
 export default function SettingsPage() {
   const [tab, setTab] = useState<Tab>('center');
+  // BACKUP-006: تبويب النسخ الاحتياطي بيظهر في الديسكتوب بس
+  const { data: backupAvailable = false } = useQuery({
+    queryKey: ['backup-availability'],
+    queryFn: () => backupApi.isAvailable(),
+    staleTime: Infinity,
+  });
+  const visibleTabs = TABS.filter(t => t.key !== 'backup' || backupAvailable);
 
   return (
     <div className="min-h-screen" dir="rtl">
@@ -28,7 +37,7 @@ export default function SettingsPage() {
 
       <div className="bg-white border-b border-gray-100 px-4 md:px-6">
         <div className="flex gap-1 overflow-x-auto">
-          {TABS.map(t => (
+          {visibleTabs.map(t => (
             <button
               key={t.key}
               onClick={() => setTab(t.key)}
@@ -50,7 +59,7 @@ export default function SettingsPage() {
           {tab === 'subjects' && <SubjectsManager />}
           {tab === 'card' && <CardDesignerForm />}
           {tab === 'branding' && <BrandingSettingsForm />}
-          {tab === 'backup' && <BackupSettingsForm />}
+          {tab === 'backup' && backupAvailable && <BackupSettingsForm />}
         </div>
       </div>
     </div>

@@ -7,6 +7,11 @@ export interface BackupFile {
 }
 
 export const backupApi = {
+  /** BACKUP-006: النسخ من البرنامج متاح في الديسكتوب بس */
+  isAvailable: async (): Promise<boolean> => {
+    const res = await apiClient.get('/settings/backup/availability');
+    return !!res.data.data.available;
+  },
   create: async (): Promise<{ filename: string }> => {
     const res = await apiClient.post('/settings/backup/create');
     return res.data.data;
