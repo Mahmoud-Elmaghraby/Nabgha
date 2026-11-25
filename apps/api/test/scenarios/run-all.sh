@@ -5,7 +5,7 @@ cd "$(dirname "$0")/../.."
 export TS_NODE_TRANSPILE_ONLY=1
 REQ="-r ./test/scenarios/support/alias.js -r tsconfig-paths/register"
 fail=0
-for t in wa.check auth.check exam-pdf-html.check scan.check backup.check credits.scenarios exams.scenarios; do
+for t in wa.check auth.check exam-pdf-html.check scan.check backup.check inbox.check credits.scenarios exams.scenarios; do
   echo; echo "════ $t ════"
   npx ts-node $REQ "test/scenarios/$t.ts" || fail=1
 done

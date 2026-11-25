@@ -10,6 +10,7 @@ import { MobileNav } from './MobileNav';
 import { useLayoutPreference } from '@/shared/hooks/useLayoutPreference';
 import { usePwaInstall } from '@/shared/hooks/usePwaInstall';
 import { DisplayModeControls } from './DisplayModeControls';
+import { useLocation } from 'react-router-dom';
 import { InstallBanner } from './InstallBanner';
 
 interface AppLayoutProps {
@@ -49,6 +50,8 @@ export function AppLayout({ children }: AppLayoutProps) {
   const [activeTab, setActiveTab] = useState<'app' | 'cert'>('app');
   const [copied, setCopied]       = useState(false);
   const { mode, toggle }          = useLayoutPreference();
+  // صفحة المحادثات محتاجة الجزء اللي تحت للرد — الأزرار العايمة وبانر التثبيت كانوا بيغطّوا زرار الإرسال
+  const isChatPage = useLocation().pathname.startsWith('/inbox');
   const pwa                       = usePwaInstall();
 
   // ===== رابط التطبيق ورابط الشهادة — يعتمد على IP الشبكة الحقيقي =====
@@ -304,9 +307,9 @@ export function AppLayout({ children }: AppLayoutProps) {
         </div>
       )}
 
-      <DisplayModeControls />
-      <InstallBanner />
-      <FloatingFab />
+      {!isChatPage && <DisplayModeControls />}
+      {!isChatPage && <InstallBanner />}
+      {!isChatPage && <FloatingFab />}
 
       {/* Attendance Panel — Fixed Side Panel */}
       {splitMode && (

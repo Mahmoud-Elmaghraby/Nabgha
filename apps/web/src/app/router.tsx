@@ -24,6 +24,7 @@ const SpinnerPage = lazy(() => import('../features/spinner/pages/SpinnerPage'));
 const SessionsPage = lazy(() => import('../features/sessions/pages/SessionsPage'));
 const ExamsPage = lazy(() => import('../features/exams/pages/ExamsPage'));
 const MorePage = lazy(() => import('../features/more/MorePage'));
+const InboxPage = lazy(() => import('../features/inbox/pages/InboxPage'));
 const WhatsAppPage = lazy(() => import('../features/whatsapp/pages/WhatsAppPage'));
 const TelegramPage = lazy(() => import('../features/settings/pages/TelegramPage'));
 const SettingsPage = lazy(() => import('../features/settings/pages/SettingsPage'));
@@ -176,6 +177,8 @@ const router = createBrowserRouter([
   { path: '/sessions', element: protectedPage(<SessionsPage />) },
   { path: '/exams', element: protectedPage(<ExamsPage />) },
   { path: '/more', element: protectedPage(<MorePage />) },
+  { path: '/inbox', element: protectedPage(<InboxPage />) },
+  { path: '/inbox/:phone', element: protectedPage(<InboxPage />) },
   { path: '/attendance', element: protectedPage(<ComingSoon title="الحضور" />) },
   { path: '/finance', element: protectedPage(<FinancePage />) },
   { path: '/finance/dues', element: protectedPage(<FinanceDuesPage />) },

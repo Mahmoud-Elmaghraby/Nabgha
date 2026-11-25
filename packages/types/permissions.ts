@@ -103,6 +103,14 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     ],
   },
   {
+    group: 'inbox',
+    groupLabel: 'المحادثات (صندوق الوارد)',
+    permissions: [
+      { key: 'inbox.view',  label: 'عرض رسايل أولياء الأمور' },
+      { key: 'inbox.reply', label: 'الرد على أولياء الأمور' },
+    ],
+  },
+  {
     group: 'settings',
     groupLabel: 'الإعدادات',
     permissions: [

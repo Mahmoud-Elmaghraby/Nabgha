@@ -2,6 +2,9 @@ import { Injectable, Logger, OnModuleDestroy, Inject } from '@nestjs/common';
 import { Redis } from 'ioredis';
 import makeWASocket, {
   DisconnectReason,
+  downloadMediaMessage,
+  getContentType,
+  normalizeMessageContent,
   fetchLatestBaileysVersion,
   makeCacheableSignalKeyStore,
   useMultiFileAuthState,
@@ -10,7 +13,7 @@ import makeWASocket, {
 import * as path from 'path';
 import * as fs from 'fs';
 import * as qrcode from 'qrcode';
-import type { IWaProvider, WaConnectionState, WaSendResult } from '../domain/interfaces/wa-provider.interface';
+import type { IWaProvider, WaConnectionState, WaIncomingMessage, WaMediaType, WaSendResult } from '../domain/interfaces/wa-provider.interface';
 import { IWaSettingsRepository, WA_SETTINGS_REPOSITORY } from '../domain/repositories/wa.repository.interface';
 import { normalizePhone } from '../../../shared/utils/phone.util';
 
@@ -61,7 +64,12 @@ export class BaileysProvider implements IWaProvider, OnModuleDestroy {
   private qrCallbacks     = new Map<string, (qr: string) => void>();
   private connectedCallbacks    = new Map<string, (phone: string) => void>();
   private disconnectedCallbacks = new Map<string, (reason: string) => void>();
-  private messageCallbacks      = new Map<string, (phone: string, body: string) => void>();
+  private messageCallbacks      = new Map<string, (msg: WaIncomingMessage) => void>();
+  /**
+   * معرّفات الرسايل اللي البرنامج بعتها في آخر 10 دقايق (WA-110). واتساب بيرجّع لنا كل رسالة
+   * بنبعتها كـ fromMe، فلازم نفرّق بينها وبين رد المدرس من موبايله عشان ماتتسجّلش مرتين.
+   */
+  private recentlySentIds       = new Map<string, number>();
   private reconnectAttempts     = new Map<string, number>();
   private circuitBreakers       = new Map<string, CircuitBreakerState>();
   /**
@@ -190,6 +198,7 @@ export class BaileysProvider implements IWaProvider, OnModuleDestroy {
         this.logger.debug(`Sending WA ${label} to ${jid} for tenant ${tenantId}`);
         const result = await live.sendMessage(jid, content(jid) as any);
         this.lastSendAt.set(tenantId, Date.now());
+        this.rememberSent(result?.key?.id);
 
         this.recordSendSuccess(tenantId);
         return { success: true, messageId: result?.key?.id ?? undefined };
@@ -478,26 +487,88 @@ export class BaileysProvider implements IWaProvider, OnModuleDestroy {
     sock.ev.on('messages.upsert', ({ messages, type }) => {
       // 'append' = رسايل قديمة بتتزامن بعد إعادة الاتصال — مش رسايل جديدة
       if (type !== 'notify') return;
+      const callback = this.messageCallbacks.get(tenantId);
+      if (!callback) return;
       for (const msg of messages) {
-        if (!msg.key.fromMe && msg.message) {
-          // بنقبل بس محادثات فردية برقم تليفون: مش جروبات (@g.us)، ولا حالات الواتساب
-          // (status@broadcast)، ولا قنوات (@newsletter). في Baileys 7 المحادثة ممكن تيجي
-          // بمعرّف خصوصية (@lid) والرقم الحقيقي في remoteJidAlt.
-          const key: any = msg.key;
-          const pnJid = [key.remoteJid, key.remoteJidAlt, key.senderPn]
-            .find((j: string | undefined) => typeof j === 'string' && j.endsWith('@s.whatsapp.net'));
-          if (!pnJid) continue;
-          const phone = pnJid.split('@')[0].split(':')[0];
-          const body  =
-            msg.message.conversation ??
-            msg.message.extendedTextMessage?.text ??
-            '';
-          if (phone && body) {
-            this.messageCallbacks.get(tenantId)?.(phone, body);
-          }
+        try {
+          const incoming = this.toIncoming(sock, msg);
+          if (incoming) callback(incoming);
+        } catch (err: any) {
+          this.logger.warn(`Could not parse inbound message for tenant ${tenantId}: ${err?.message}`);
         }
       }
     });
+  }
+
+  /**
+   * WA-110: تحويل رسالة Baileys لـ WaIncomingMessage.
+   * - محادثات فردية برقم تليفون بس: مش جروبات (@g.us)، ولا حالات (status@broadcast)، ولا قنوات.
+   *   في Baileys 7 المحادثة ممكن تيجي بمعرّف خصوصية (@lid) والرقم الحقيقي في remoteJidAlt (WA-106).
+   * - fromMe: رد المدرس من الموبايل. رسايل البرنامج نفسه بترجع fromMe كمان، فبنتجاهلها (recentlySentIds).
+   * - الفويس نوت والصور والفيديو والملفات: بنرجّع download() والـ use case يقرر يحفظ ولا لأ.
+   */
+  private toIncoming(sock: ReturnType<typeof makeWASocket>, msg: any): WaIncomingMessage | null {
+    if (!msg?.message) return null;
+    const key: any = msg.key ?? {};
+    const pnJid = [key.remoteJid, key.remoteJidAlt, key.senderPn]
+      .find((j: string | undefined) => typeof j === 'string' && j.endsWith('@s.whatsapp.net'));
+    if (!pnJid) return null;
+    const phone = pnJid.split('@')[0].split(':')[0];
+    if (!phone) return null;
+
+    const fromMe = !!key.fromMe;
+    const messageId: string | null = key.id ?? null;
+    if (fromMe && messageId && this.recentlySentIds.has(messageId)) return null;
+
+    const content: any = normalizeMessageContent(msg.message);
+    const kind = content ? getContentType(content) : undefined;
+    if (!content || !kind) return null;
+    // مش رسايل: تفاعلات، تعديل/حذف، مفاتيح تشفير، استطلاعات اتحدّثت…
+    if (['protocolMessage', 'reactionMessage', 'senderKeyDistributionMessage', 'messageContextInfo',
+      'pollUpdateMessage', 'keepInChatMessage', 'editedMessage'].includes(kind)) return null;
+
+    const ts = Number(msg.messageTimestamp?.toNumber?.() ?? msg.messageTimestamp ?? 0);
+    const base = { phone, fromMe, messageId, timestamp: ts > 0 ? new Date(ts * 1000) : new Date() };
+
+    if (kind === 'conversation') return { ...base, body: String(content.conversation ?? '') };
+    if (kind === 'extendedTextMessage') return { ...base, body: String(content.extendedTextMessage?.text ?? '') };
+
+    const mediaKinds: Record<string, WaMediaType> = {
+      audioMessage: 'audio', imageMessage: 'image', videoMessage: 'video',
+      documentMessage: 'document', stickerMessage: 'sticker',
+    };
+    const mediaType = mediaKinds[kind];
+    if (mediaType) {
+      const m = content[kind] ?? {};
+      const size = Number(m.fileLength?.toNumber?.() ?? m.fileLength ?? 0) || undefined;
+      return {
+        ...base,
+        body: String(m.caption ?? ''),
+        media: {
+          type: mediaType,
+          mime: String(m.mimetype ?? 'application/octet-stream'),
+          seconds: m.seconds ? Number(m.seconds) : undefined,
+          size,
+          fileName: m.fileName ? String(m.fileName) : undefined,
+          download: () => downloadMediaMessage(
+            msg, 'buffer', {},
+            { logger: undefined as any, reuploadRequest: sock.updateMediaMessage },
+          ) as Promise<Buffer>,
+        },
+      };
+    }
+    return { ...base, body: '', unsupportedType: kind };
+  }
+
+  private rememberSent(id: string | null | undefined): void {
+    if (!id) return;
+    const now = Date.now();
+    this.recentlySentIds.set(id, now);
+    if (this.recentlySentIds.size > 500) {
+      for (const [k, t] of this.recentlySentIds) {
+        if (now - t > 10 * 60_000) this.recentlySentIds.delete(k);
+      }
+    }
   }
 
   /** قطع الاتصال بدون حذف ملفات الجلسة — يُستخدم عند restart أو انقطاع مؤقت */
@@ -619,7 +690,7 @@ export class BaileysProvider implements IWaProvider, OnModuleDestroy {
     this.disconnectedCallbacks.set(tenantId, callback);
   }
 
-  onMessage(tenantId: string, callback: (phone: string, body: string) => void): void {
+  onMessage(tenantId: string, callback: (msg: WaIncomingMessage) => void): void {
     this.messageCallbacks.set(tenantId, callback);
   }
 

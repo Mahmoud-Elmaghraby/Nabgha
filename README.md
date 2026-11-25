@@ -62,7 +62,7 @@ pnpm --filter web dev
 ```bash
 pnpm --filter api check-types                       # لازم تعدّي من غير أخطاء
 pnpm --filter web build                             # لازم ينجح
-cd apps/api && pnpm test:scenarios                  # 169 فحص على Postgres حقيقي (شوف docs/engineering/TESTING.md)
+cd apps/api && pnpm test:scenarios                  # 221 فحص على Postgres حقيقي (شوف docs/engineering/TESTING.md)
 ```
 
 القواعد كلها في [docs/engineering/CONVENTIONS.md](docs/engineering/CONVENTIONS.md).

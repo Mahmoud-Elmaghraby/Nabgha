@@ -35,13 +35,55 @@
 - بتحوّل أي صيغة لـ `20XXXXXXXXXX`: `010…`، و`+20 …`، و`0020…`، و`10…` من غير الصفر الأولاني (WA-108).
 - الأرقام اللي مش مصرية بتفضل زي ما هي.
 
+## 4.1 صندوق الوارد (المحادثات) — WA-110
+
+**الشاشة:** `/inbox` (و`/inbox/:phone`). على الكمبيوتر القايمة والمحادثة جنب بعض، وعلى الموبايل كل واحدة لوحدها.
+
+**البيانات:** `wa_chat_messages` (migration 029):
+- `direction`: `in` أو `out`.
+- `source`: `parent` (ولي الأمر)، `app` (رد من البرنامج)، `phone` (رد من موبايل المركز).
+- `media_*`: الملفات، و`media_status` قيمته `stored` أو `too_large` أو `failed` أو `unsupported`.
+- `wa_message_id`: عليه unique، ومنه بنعرف الرسالة المتكررة.
+- الإشعارات التلقائية بتفضل في `wa_messages_log`، وبتتعرض في المحادثة بكل صيغ الرقم (`phoneVariants`).
+- `wa_inbound_messages` القديم: اتنقل محتواه، ومابقاش حد بيكتب فيه. `GET /whatsapp/inbound` لسه موجود بيقرا منه (قديم).
+
+**الاستقبال** (`BaileysProvider.toIncoming` ← `InboxUseCase.recordIncoming`):
+- `normalizeMessageContent` بيفك الرسايل المختفية وview-once.
+- بنتجاهل: التفاعلات، والحذف والتعديل (`protocolMessage`)، والجروبات، والحالات.
+- الموقع وجهة الاتصال بيتسجّلوا `unsupported`، والواجهة بتقول "افتحها من الموبايل".
+- `fromMe` = المدرس رد من موبايله. رسايل البرنامج نفسه بترجع `fromMe` كمان، وبنتجاهلها لو معرّفها في `recentlySentIds` (آخر 10 دقايق) أو `wa_message_id` موجود.
+- الميديا: `downloadMediaMessage` ← `InboxMediaStore` (`INBOX_MEDIA_PATH` أو `%APPDATA%\Nabgha\inbox-media\YYYY-MM\uuid.ext`). أقصى حجم 16 ميجا.
+
+**الـ API** (`/inbox`):
+
+| Method | المسار | الصلاحية |
+|---|---|---|
+| GET | `conversations?search&unreadOnly&limit&offset` | `inbox.view` |
+| GET | `unread-count` | `inbox.view` |
+| GET | `conversations/:phone/messages?before&limit` | `inbox.view` |
+| PUT | `conversations/:phone/read` | `inbox.view` |
+| POST | `conversations/:phone/messages` `{ body }` | `inbox.reply` |
+| POST | `messages/:id/retry` | `inbox.reply` |
+| GET | `messages/:id/media` | `inbox.view` (الملف بيتبعت من المكان الخاص، مع حماية من path traversal) |
+
+**الرد:**
+1. بيتسجّل `pending` ويرجع على طول.
+2. الإرسال بيتم في الخلفية عن طريق `provider.sendMessage(..., { priority: true })`. يعني نفس الطابور وفحص الرقم، من غير ما يستنى الفاصل.
+3. الحالة بتتحدّث لـ `sent` ومعاها `wa_message_id`، أو لـ `failed` ومعاها سبب مفهوم.
+
+**الجاي:**
+- تليجرام في نفس الصندوق (الجدول والـ API معمولين بحيث يقبلوا قناة تانية).
+- ردود جاهزة.
+- "سجّل الغياب بعذر" من رسالة العذر.
+
 ## 6. المفتوح
-- **WA-110:** مفيش شاشة لعرض الرسايل الواردة من أولياء الأمور.
 - **WA-111:** الإرسال الجماعي "المجدول" مش شغال، ومش ظاهر في الواجهة.
 - **WA-112:** سجل الرسايل بيربط بالطالب برقم التليفون، فالإخوات بنفس الرقم ممكن يظهر عندهم اسم غلط. محتاج عمود `student_id`.
 - **ميزات مقترحة** (لسه ماتحددش ترتيبها، شوف ROADMAP): صندوق وارد موحّد، مساعد رد تلقائي لولي الأمر، ملخص يومي.
 
 ## 7. الاختبارات
+`inbox.check.ts` (52): migration 029، الوارد بكل أنواعه، الصدى، المحادثات والإخوات والبحث، الصفحات، الرد والفشل والإعادة، أشكال رسايل Baileys الحقيقية، path traversal.
+
 `wa.check.ts` (14): توحيد الأرقام، الفاصل جوّه الطابور، الحد بعد التسخين.
 
 ⚠️ **المركز التجريبي أرقامه وهمية، وممنوع نوصّل عليه رقم واتساب حقيقي.**

@@ -273,6 +273,27 @@ export interface WaInboundMessagesTable {
   created_at: Generated<Date>;
 }
 
+/** صندوق وارد الواتساب (migration 029، WA-110) */
+export interface WaChatMessagesTable {
+  id: Generated<string>;
+  phone: string;
+  direction: 'in' | 'out';
+  source: 'parent' | 'app' | 'phone';
+  body: Generated<string>;
+  media_type: string | null;
+  media_path: string | null;
+  media_mime: string | null;
+  media_seconds: number | null;
+  media_size: number | null;
+  media_status: string | null;
+  wa_message_id: string | null;
+  status: Generated<'pending' | 'sent' | 'failed'>;
+  error_message: string | null;
+  sent_by: string | null;
+  is_read: Generated<boolean>;
+  created_at: Generated<Date>;
+}
+
 // ─── Finance Types ────────────────────────────────────────
 export interface TreasuriesTable {
   id: Generated<string>;
@@ -447,6 +468,7 @@ export interface TenantDatabase {
   wa_messages_log: WaMessagesLogTable;
   wa_bulk_jobs: WaBulkJobsTable;
   wa_inbound_messages: WaInboundMessagesTable;
+  wa_chat_messages: WaChatMessagesTable;
   treasuries: TreasuriesTable;
   monthly_dues: MonthlyDuesTable;
   payments: PaymentsTable;

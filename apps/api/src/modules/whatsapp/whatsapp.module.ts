@@ -22,6 +22,10 @@ import { UpdateTemplateUseCase } from './application/use-cases/update-template.u
 import { HandleInboundUseCase } from './application/use-cases/handle-inbound.usecase';
 import { WaHealthMonitorUseCase } from './application/use-cases/wa-health-monitor.usecase';
 import { WaController } from './presentation/wa.controller';
+import { InboxController } from './presentation/inbox.controller';
+import { InboxUseCase } from './application/use-cases/inbox.usecase';
+import { WaChatRepository } from './infrastructure/wa-chat.repository';
+import { InboxMediaStore } from './infrastructure/inbox-media.store';
 import {
   WA_SESSION_REPOSITORY,
   WA_SETTINGS_REPOSITORY,
@@ -38,7 +42,7 @@ import { SettingsModule } from '../settings/settings.module';
   // (BrandingService) بدل "نبغة" الثابتة — SettingsModule مبيستوردش WhatsAppModule
   // فمفيش circular dependency.
   imports: [SettingsModule],
-  controllers: [WaController],
+  controllers: [WaController, InboxController],
   providers: [
     { provide: WA_PROVIDER_TOKEN, useClass: BaileysProvider },
     { provide: WA_SESSION_REPOSITORY, useClass: WaSessionRepository },
@@ -59,6 +63,9 @@ import { SettingsModule } from '../settings/settings.module';
     UpdateTemplateUseCase,
     HandleInboundUseCase,
     WaHealthMonitorUseCase,
+    InboxUseCase,
+    WaChatRepository,
+    InboxMediaStore,
   ],
   exports: [
     SendNotificationUseCase, GetMessagesUseCase, ResolveAudienceUseCase,

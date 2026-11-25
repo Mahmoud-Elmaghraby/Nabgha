@@ -4,7 +4,7 @@ import { IWaSessionRepository, WA_SESSION_REPOSITORY } from '../../domain/reposi
 import { IWaSettingsRepository, WA_SETTINGS_REPOSITORY } from '../../domain/repositories/wa.repository.interface';
 import { IWaTemplateRepository, WA_TEMPLATE_REPOSITORY } from '../../domain/repositories/wa.repository.interface';
 import { WA_DEFAULT_TEMPLATES, WA_TEMPLATE_KEYS } from '../../domain/entities/wa-template.entity';
-import { HandleInboundUseCase } from './handle-inbound.usecase';
+import { InboxUseCase } from './inbox.usecase';
 
 @Injectable()
 export class ConnectDeviceUseCase {
@@ -15,7 +15,7 @@ export class ConnectDeviceUseCase {
     @Inject(WA_SESSION_REPOSITORY) private readonly sessionRepo: IWaSessionRepository,
     @Inject(WA_SETTINGS_REPOSITORY) private readonly settingsRepo: IWaSettingsRepository,
     @Inject(WA_TEMPLATE_REPOSITORY) private readonly templateRepo: IWaTemplateRepository,
-    private readonly handleInbound: HandleInboundUseCase,
+    private readonly inbox: InboxUseCase,
   ) {}
 
   async execute(tenantId: string): Promise<{ status: string; qrCode?: string }> {
@@ -65,12 +65,13 @@ export class ConnectDeviceUseCase {
       await this.sessionRepo.save(s);
     });
 
-    // ── Inbound Messages — الآن كل رسالة واردة بتتخزن تلقائياً ──
-    this.provider.onMessage(tenantId, async (phone, body) => {
+    // ── صندوق الوارد (WA-110): رسايل أولياء الأمور (نص/صوت/صور/ملفات) + ردود المركز من الموبايل ──
+    // بتتسجّل في wa_chat_messages. wa_inbound_messages القديم مابقاش بيتكتب فيه (migration 029 نقلت محتواه).
+    this.provider.onMessage(tenantId, async (msg) => {
       try {
-        await this.handleInbound.execute({ tenantId, phone, body });
+        await this.inbox.recordIncoming(tenantId, msg);
       } catch (err: any) {
-        this.logger.error(`Failed to handle inbound message from ${phone}: ${err.message}`);
+        this.logger.error(`Failed to record inbox message (${msg.phone}): ${err.message}`);
       }
     });
 

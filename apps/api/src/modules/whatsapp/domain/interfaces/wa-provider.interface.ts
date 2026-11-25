@@ -11,6 +11,30 @@ export interface WaConnectionState {
   qrExpiresAt?: Date;
 }
 
+export type WaMediaType = 'audio' | 'image' | 'video' | 'document' | 'sticker';
+
+/** رسالة جاية من واتساب — من ولي الأمر، أو من موبايل المركز نفسه (fromMe) — WA-110 */
+export interface WaIncomingMessage {
+  /** رقم الطرف التاني بصيغة 20XXXXXXXXXX */
+  phone: string;
+  /** true = المركز هو اللي بعتها من الموبايل مباشرة (مش من البرنامج) */
+  fromMe: boolean;
+  messageId: string | null;
+  timestamp: Date;
+  /** النص، أو الكابشن لو صورة/فيديو/ملف */
+  body: string;
+  media?: {
+    type: WaMediaType;
+    mime: string;
+    seconds?: number;
+    size?: number;
+    fileName?: string;
+    download: () => Promise<Buffer>;
+  };
+  /** نوع رسالة مش بندعمه (موقع، جهة اتصال…) — بنسجّل إن فيه رسالة بس */
+  unsupportedType?: string;
+}
+
 export interface IWaProvider {
   connect(tenantId: string): Promise<void>;
   disconnect(tenantId: string): Promise<void>;
@@ -35,7 +59,7 @@ export interface IWaProvider {
   onQrCode(tenantId: string, callback: (qr: string) => void): void;
   onConnected(tenantId: string, callback: (phone: string) => void): void;
   onDisconnected(tenantId: string, callback: (reason: string) => void): void;
-  onMessage(tenantId: string, callback: (phone: string, body: string) => void): void;
+  onMessage(tenantId: string, callback: (msg: WaIncomingMessage) => void): void;
   /** فيه إعادة اتصال تلقائي متجدولة (عشان مراقب الصحة مايبدأش اتصال تاني فوقها) */
   isReconnecting(tenantId: string): boolean;
 }

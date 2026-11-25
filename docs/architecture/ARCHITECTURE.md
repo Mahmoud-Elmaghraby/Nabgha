@@ -116,7 +116,7 @@ modules/<name>/
 
 ## 7. قاعدة البيانات
 - **الـ migrations:**
-  - `packages/db/src/migrations/tenant/NNN_*.sql`، ولحد دلوقتي وصلنا لـ **028**.
+  - `packages/db/src/migrations/tenant/NNN_*.sql`، ولحد دلوقتي وصلنا لـ **029**.
   - الـ public: `public/001_initial.sql`.
   - السجل في `<schema>.schema_migrations`.
 - **الديسكتوب:** `migrate.js` بيشتغل مع كل تشغيل للبرنامج.
@@ -130,6 +130,7 @@ modules/<name>/
 | 026 | رصيد التعويض v2 (unique لكل حضور بديل، حالة `revoked`). |
 | 027 | `exams.kind` (امتحان/تسميع)، و`sessions.exam_id`، و`sessions.out_of` بقى NUMERIC. |
 | 028 | إصلاح trigger الـ `times_used` (اسم الـ schema). |
+| 029 | `wa_chat_messages` — صندوق وارد الواتساب (WA-110). |
 
 ## 8. التكاملات الخارجية
 

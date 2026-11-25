@@ -51,6 +51,7 @@
 - النشر على السيرفر بالإجراء اللي في [RUNBOOK §4](../operations/DEPLOYMENT_RUNBOOK.md#4-تطبيق-migration-جديدة).
 
 ## 3. الـ Frontend
+- **صفحة جديدة = سطر واحد في `shared/components/layout/navItems.tsx`.** الناف بار والسايد بار والموبايل وصفحة "المزيد" كلهم بيقروا منه (NAV-001). ماتعملش قايمة صفحات تانية.
 - الـ server state كله بـ React Query، وأي mutation بتعمل invalidate للـ keys المتأثرة.
 - كل الأرقام والتواريخ اللي بتظهر للمستخدم بالعربي، وعرض الكود (`STU-00012`) بـ `dir="ltr"` و`font-mono`.
 - **إدخال السكانر:** أي input بيستقبل كود لازم يعدّي على `normaliseScannerInput`، والسيرفر كمان بيعمل `normalizeScannedCode` (BAR-001).

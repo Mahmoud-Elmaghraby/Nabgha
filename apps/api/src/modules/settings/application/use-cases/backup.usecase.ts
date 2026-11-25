@@ -243,6 +243,13 @@ export class BackupUseCase {
         archive.directory(storageDir, 'storage');
       }
 
+      // ملفات صندوق الوارد (فويس نوت وصور أولياء الأمور — WA-110)، في فولدر خاص برّا /storage
+      const inboxMediaDir = process.env.INBOX_MEDIA_PATH
+        ?? path.join(process.env.APPDATA ?? process.cwd(), 'Nabgha', 'inbox-media');
+      if (fs.existsSync(inboxMediaDir)) {
+        archive.directory(inboxMediaDir, 'inbox-media');
+      }
+
       const manifest = JSON.stringify({
         createdAt: new Date().toISOString(),
         trigger,
