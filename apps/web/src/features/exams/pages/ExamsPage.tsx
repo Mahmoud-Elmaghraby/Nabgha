@@ -15,10 +15,10 @@ export default function ExamsPage() {
 
       <div className="px-4 md:px-6 pt-4">
         {/* التبويبات الرئيسية */}
-        <div className="flex border-b border-gray-200 mb-6 bg-white rounded-t-xl px-4 pt-2">
+        <div className="flex border-b border-gray-200 mb-6 bg-white rounded-t-xl px-2 sm:px-4 pt-2">
           <button
             onClick={() => setActiveTab('exams')}
-            className={`flex items-center gap-2 py-3 px-5 text-sm font-bold border-b-2 transition-all ${
+            className={`flex items-center gap-2 py-3 px-3 sm:px-5 text-sm font-bold whitespace-nowrap border-b-2 transition-all ${
               activeTab === 'exams'
                 ? 'border-[#0E3B2E] text-[#0E3B2E]'
                 : 'border-transparent text-gray-500 hover:text-gray-700'
@@ -36,7 +36,7 @@ export default function ExamsPage() {
 
           <button
             onClick={() => setActiveTab('bank')}
-            className={`flex items-center gap-2 py-3 px-5 text-sm font-bold border-b-2 transition-all ${
+            className={`flex items-center gap-2 py-3 px-3 sm:px-5 text-sm font-bold whitespace-nowrap border-b-2 transition-all ${
               activeTab === 'bank'
                 ? 'border-[#0E3B2E] text-[#0E3B2E]'
                 : 'border-transparent text-gray-500 hover:text-gray-700'

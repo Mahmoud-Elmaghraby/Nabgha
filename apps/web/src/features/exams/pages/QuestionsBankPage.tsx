@@ -152,7 +152,7 @@ export function QuestionsBankPage() {
           <div className="divide-y divide-gray-100">
             {data.data.map(q => (
               <div key={q.id} className="p-4 hover:bg-gray-50/70 transition-colors flex items-start justify-between gap-4">
-                <div className="space-y-1.5 flex-1">
+                <div className="space-y-1.5 flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-xs font-semibold px-2 py-0.5 bg-gray-100 text-gray-700 rounded">
                       {QUESTION_TYPE_LABELS[q.type]}

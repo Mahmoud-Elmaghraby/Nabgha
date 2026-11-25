@@ -154,9 +154,9 @@ export function ExamsListPage() {
         ) : (
           <div className="divide-y divide-gray-100">
             {data.data.map(exam => (
-              <div key={exam.id} className="p-4 hover:bg-gray-50/70 transition-colors flex items-center justify-between gap-4">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
+              <div key={exam.id} className="p-4 hover:bg-gray-50/70 transition-colors flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
+                <div className="space-y-1 min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
                     <h3 className="text-sm font-bold text-gray-900">{exam.title}</h3>
                     {exam.kind === 'quiz' && (
                       <span className="text-xs px-2 py-0.5 bg-sky-50 text-sky-700 rounded font-medium">تسميع</span>
@@ -167,14 +167,14 @@ export function ExamsListPage() {
                       </span>
                     )}
                   </div>
-                  <div className="flex items-center gap-4 text-xs text-gray-400">
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-400">
                     <span>المجموع: <strong>{exam.totalDegree} درجة</strong></span>
                     {exam.durationMins && <span>المدة: {exam.durationMins} دقيقة</span>}
                     {exam.examDate && <span>التاريخ: {new Date(exam.examDate).toLocaleDateString('ar-EG')}</span>}
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 flex-shrink-0">
+                <div className="flex flex-wrap items-center gap-2 sm:flex-shrink-0">
                   {/* زر منشئ الأسئلة */}
                   <button
                     onClick={() => setBuilderExamId(exam.id)}

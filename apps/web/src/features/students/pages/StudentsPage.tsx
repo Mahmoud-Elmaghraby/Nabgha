@@ -103,8 +103,9 @@ export default function StudentsPage() {
       />
 
       <div className="px-4 md:px-6 py-4 bg-white border-b border-gray-100">
-        <div className="flex gap-3 max-w-2xl">
-          <div className="relative flex-1">
+        {/* على الموبايل البحث في سطر والفلترين تحته (قبل كده الصف كان أعرض من الشاشة) */}
+        <div className="flex flex-wrap sm:flex-nowrap gap-3 max-w-2xl">
+          <div className="relative w-full sm:w-auto sm:flex-1">
             <input
               type="text"
               placeholder="بحث بالاسم أو رقم الهاتف..."
@@ -119,7 +120,7 @@ export default function StudentsPage() {
           <select
             value={gradeFilter}
             onChange={e => setGradeFilter(e.target.value)}
-            className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0E3B2E]/20 focus:border-[#0E3B2E]"
+            className="flex-1 sm:flex-none min-w-0 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0E3B2E]/20 focus:border-[#0E3B2E]"
           >
             <option value="">كل المراحل</option>
             {GRADE_OPTIONS.map(g => <option key={g} value={g}>{g}</option>)}
@@ -127,7 +128,7 @@ export default function StudentsPage() {
           <select
             value={subjectFilter}
             onChange={e => setSubjectFilter(e.target.value)}
-            className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0E3B2E]/20 focus:border-[#0E3B2E]"
+            className="flex-1 sm:flex-none min-w-0 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0E3B2E]/20 focus:border-[#0E3B2E]"
           >
             <option value="">كل المواد</option>
             <option value="none">بدون مجموعة</option>
