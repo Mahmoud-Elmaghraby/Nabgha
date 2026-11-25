@@ -6,6 +6,7 @@ import { SessionFormModal } from '@/features/sessions/components/SessionFormModa
 import { useGroups } from '@/features/groups/hooks/useGroups';
 import type { DayOfWeek } from '@/features/groups/types/group.types';
 import { usePermissions } from '@/shared/hooks/usePermissions';
+import { BackupHealthBanner } from '@/features/settings/components/BackupHealthBanner';
 
 const JS_DAY_TO_DAY_OF_WEEK: DayOfWeek[] = [
   'sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday',
@@ -156,6 +157,9 @@ export default function DashboardPage() {
             )}
           </div>
         </div>
+
+        {/* تنبيه النسخ الاحتياطي (BACKUP-007) — بيظهر بس لو فيه مشكلة */}
+        <BackupHealthBanner />
 
         {/* ══ GRID ══ */}
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_296px] gap-5">

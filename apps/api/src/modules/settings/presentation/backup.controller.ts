@@ -20,6 +20,17 @@ export class BackupController {
     return { success: true, data: { available: isBackupAvailable() } };
   }
 
+  /**
+   * BACKUP-007: حالة النسخ (آخر نجاح / آخر فشل / مفعّل ولا لأ) للإعدادات وتنبيه الصفحة الرئيسية.
+   * من غير BackupAvailabilityGuard: برّا الديسكتوب بترجع available=false ومابتلمسش حاجة.
+   */
+  @Get('status')
+  @RequirePermission('settings.view')
+  async status(@Request() req: any) {
+    const data = await this.backupUseCase.getStatus(req.user.tenantId);
+    return { success: true, data };
+  }
+
   @Post('create')
   @UseGuards(BackupAvailabilityGuard)
   @RequirePermission('settings.edit')

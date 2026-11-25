@@ -17,7 +17,8 @@
 | Telegram | ⏳ مستني مراجعة | — | `MASTER_DOC §10` |
 | Parent Portal | ⏳ مستني مراجعة | — | `MASTER_DOC §10.7` |
 | Platform Admin | ⏳ مستني مراجعة | — | `DEVELOPER_GUIDE §9` |
-| Settings / Backup / Upload | ⏳ مستني مراجعة | — | `MASTER_DOC §8، §10.6` |
+| Backup (النسخ الاحتياطي) | ✅ اتراجع | 2026-11-25 | [BACKUP.md](BACKUP.md) |
+| Settings / Upload (باقي الإعدادات) | ⏳ مستني مراجعة | — | `MASTER_DOC §8، §10.6` |
 | Subjects / Teachers / Dashboard | ⏳ مستني مراجعة | — | `PROGRESS_TRACKER` |
 
 أي موديول بيتراجع بيتعمله ملف هنا بنفس الأقسام، وبيتشال من خانة "مستني مراجعة".

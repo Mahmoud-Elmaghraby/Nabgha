@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { PageHeader } from '@/shared/components';
 import { CenterSettingsForm } from '../components/CenterSettingsForm';
@@ -19,7 +20,10 @@ const TABS: { key: Tab; label: string }[] = [
 ];
 
 export default function SettingsPage() {
-  const [tab, setTab] = useState<Tab>('center');
+  // ?tab=backup بيفتح التبويب على طول (تنبيه النسخ الاحتياطي في الصفحة الرئيسية)
+  const [searchParams] = useSearchParams();
+  const initialTab = searchParams.get('tab');
+  const [tab, setTab] = useState<Tab>(TABS.some(t => t.key === initialTab) ? (initialTab as Tab) : 'center');
   // BACKUP-006: تبويب النسخ الاحتياطي بيظهر في الديسكتوب بس
   const { data: backupAvailable = false } = useQuery({
     queryKey: ['backup-availability'],

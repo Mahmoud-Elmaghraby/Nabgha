@@ -127,6 +127,6 @@ build + installer جديد + تجربة عند عميل واحد قبل التع
 ---
 
 ## مستمر طول الوقت — الجودة
-- tests: ✅ 142 فحص سيناريو على Postgres حقيقي (`pnpm test:scenarios`). الجاي: تغطية المالية والصلاحيات، وربطها بـ CI.
+- tests: ✅ 169 فحص سيناريو على Postgres حقيقي (`pnpm test:scenarios`). الجاي: تغطية المالية والصلاحيات، وربطها بـ CI.
 - CI على GitHub Actions: lint + type-check + build مع كل push.
 - تقليل `any` (723 استخدام حاليًا) في الأجزاء اللي بنعدّل فيها.
